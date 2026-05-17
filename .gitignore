@@ -1,0 +1,36 @@
+# 依賴管理
+node_modules/
+package-lock.json
+bun.lock
+tests/node_modules/
+tests/package-lock.json
+
+# 執行日誌
+logs/
+
+# 快取與暫存
+cache/
+blobs/
+
+# 翻譯輸出（可重新生成）
+translated/
+
+# 原始圖片（版權考量 & 檔案大小）
+original/
+
+# OCR 配對報告（可再生）
+knowledge_base/reports/
+
+# 測試覆蓋率（含本地路徑）
+coverage/
+tests/coverage/
+
+# 使用者個人偏好（本地維護，執行時自動產生）
+TODO_LIST.md
+.default-model
+.default-engines
+knowledge_base/self/
+
+# 作業系統
+.DS_Store
+Thumbs.db

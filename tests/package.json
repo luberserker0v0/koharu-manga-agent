@@ -1,0 +1,14 @@
+{
+  "name": "manga-translation-tests",
+  "private": true,
+  "scripts": {
+    "test": "jest --config tests/jest.config.js",
+    "test:unit": "jest --config tests/jest.config.js --testPathPattern=unit",
+    "test:integration": "jest --config tests/jest.config.js --testPathPattern=integration",
+    "test:e2e": "jest --config tests/jest.config.js --testPathPattern=e2e",
+    "test:coverage": "jest --config tests/jest.config.js --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
