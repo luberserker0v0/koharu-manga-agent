@@ -78,16 +78,17 @@ comics/1/
         ├── manga-translate-zhtw/
         │   ├── SKILL.md
         │   ├── scripts/
-        │   │   ├── upload_pages.js
-        │   │   ├── llm_control.js
-        │   │   ├── select_engines.js
-        │   │   ├── quality_check.js
-        │   │   ├── apply_fixes.js
-        │   │   ├── extract_references.js
-        │   │   ├── build_knowledge_base.js
-        │   │   ├── update_knowledge_base.js
-        │   │   ├── self_reflection.js
-        │   │   └── delete_page.js
+        │   │   ├── one_click_translate.js  # **主要指令**
+        │   │   ├── upload_pages.js         # 內部模組
+        │   │   ├── llm_control.js          # 內部模組
+        │   │   ├── select_engines.js       # 內部模組
+        │   │   ├── quality_check.js        # 內部模組
+        │   │   ├── apply_fixes.js          # 內部模組
+        │   │   ├── extract_references.js   # 內部模組
+        │   │   ├── build_knowledge_base.js # 內部模組
+        │   │   ├── update_knowledge_base.js# 內部模組
+        │   │   ├── self_reflection.js      # 內部模組
+        │   │   └── delete_page.js          # 內部模組
         │   ├── .default-model
         │   └── .default-engines
         ├── koharu-pipeline-launcher/

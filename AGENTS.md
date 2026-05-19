@@ -19,25 +19,17 @@
 - 翻譯過程中不打斷
 
 ## 工作流程
-0. `create_project`：創建帶時間戳的唯一名稱專案（如 `translate_20260519_123456`），避免命名衝突
-1. `open_project`：開啟目標專案
-2. `upload_pages`（如需）：若專案尚未包含圖片，使用 `upload_pages.js` 上傳 `original/` 資料夾內的圖片（路徑見 `koharu.json`）
-3. `load_llm`：載入 LLM 模型（`--load-default` 優先以 provider/openai-compatible 載入，失敗後嘗試 local 模式）
-4. `select_engines`：選擇管線引擎（檢查 `.default-engines` 快取，若無則讓使用者為每個步驟挑選）
-5. `start_pipeline`：啟動翻譯管線，設定 `targetLanguage`（預設見 `koharu.json`）
-6. **等待完成**：呼叫 `pipeline-runner` subagent 監聽事件，**嚴格阻塞等待**至收到完成摘要
-7. `quality_check`：預設執行品質檢查（用 `Question tool` 問使用者是否跳過）
-   - 呼叫 `quality-checker` subagent，自行載入知識庫並注入 LLM 評估提示詞
-   - **必要**：用 LLM 檢查每筆翻譯是否確實從原文翻譯為目標語言（預設 zh-TW）
-   - **自選**（用 `Question tool` 問使用者）：
-     - 用 LLM 檢查翻譯是否通順、符合上下文或劇情
-     - 檢查專案是否有已翻譯的參考資料，讓 LLM 學習語氣、風格、專有名詞及角色名稱，穩定翻譯質量
-   - 若品質不佳，使用 LLM 重新翻譯，並透過 `history/apply` 更新場景，必要時觸發重新渲染
-8. `export`：呼叫匯出 API，將結果輸出至 `translated/` 目錄（路徑見 `koharu.json`，格式優先選擇 `rendered`）
-9. `update_knowledge_base`：詢問是否更新知識庫（或累積 3 次翻譯後提醒）
-   - 呼叫 `knowledge-builder` subagent 批次更新知識庫
-10. `close_project`：關閉專案以釋放資源
-11. `delete_project`：刪除專案資料夾（若 `autoDeleteProject` 為 `true`，預設啟用）
+**主要指令**：使用 `one_click_translate.js` 執行前置作業，接著由 Agent 協調 Subagent 完成後續步驟。
+```bash
+node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --target "zh-TW"
+```
+**執行流程**：
+0. `one_click_translate.js`：自動建立專案、上傳圖片、載入 LLM/引擎、啟動管線。
+1. **腳本回傳 `operationId`** 並結束。
+2. `pipeline-runner` Subagent：Agent 啟動此 Subagent 監聽 SSE 事件至完成。
+3. `quality_check`：基礎檢查（可選進階 LLM 評估）。
+4. `export`：匯出至 `translated/`。
+5. `close/delete_project`：清理資源。
 
 ## 知識庫學習流程（可選）
 翻譯完成後，可執行以下步驟建立/更新知識庫：
@@ -77,19 +69,20 @@
 | `knowledge-builder` | 使用者要求或累積 3 次後 | 提取參考，更新知識庫 | 跳過更新，知識庫保持原狀 |
 
 ## 常用腳本路徑
-| 用途 | 腳本 |
-|------|------|
-| 專案操作 | `.opencode/skills/koharu-project-opener/scripts/open-project.js` |
-| 頁面上傳 | `.opencode/skills/manga-translate-zhtw/scripts/upload_pages.js` |
-| LLM 控制 | `.opencode/skills/manga-translate-zhtw/scripts/llm_control.js` |
-| 引擎選擇 | `.opencode/skills/manga-translate-zhtw/scripts/select_engines.js` |
-| 管線啟動 | `.opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js` |
-| 事件監聽 | `.opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js` |
-| 專案匯出 | `.opencode/skills/manga-translate-zhtw/scripts/export_project.js` |
-| 品質檢查 | `.opencode/skills/manga-translate-zhtw/scripts/quality_check.js` |
-| 套用修正 | `.opencode/skills/manga-translate-zhtw/scripts/apply_fixes.js` |
-| 刪除頁面 | `.opencode/skills/manga-translate-zhtw/scripts/delete_page.js` |
-| 提取參考 | `.opencode/skills/manga-translate-zhtw/scripts/extract_references.js` |
-| 建立知識庫 | `.opencode/skills/manga-translate-zhtw/scripts/build_knowledge_base.js` |
-| 更新知識庫 | `.opencode/skills/manga-translate-zhtw/scripts/update_knowledge_base.js` |
-| 自我反思 | `.opencode/skills/manga-translate-zhtw/scripts/self_reflection.js` |
+| 用途 | 腳本 | 狀態 |
+|------|------|------|
+| **一鍵翻譯** | `.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js` | **主要指令** |
+| 專案操作 | `.opencode/skills/koharu-project-opener/scripts/open-project.js` | 內部模組 |
+| 頁面上傳 | `.opencode/skills/manga-translate-zhtw/scripts/upload_pages.js` | 內部模組 |
+| LLM 控制 | `.opencode/skills/manga-translate-zhtw/scripts/llm_control.js` | 內部模組 |
+| 引擎選擇 | `.opencode/skills/manga-translate-zhtw/scripts/select_engines.js` | 內部模組 |
+| 管線啟動 | `.opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js` | 內部模組 |
+| 事件監聽 | `.opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js` | 內部模組 |
+| 專案匯出 | `.opencode/skills/manga-translate-zhtw/scripts/export_project.js` | 內部模組 |
+| 品質檢查 | `.opencode/skills/manga-translate-zhtw/scripts/quality_check.js` | 內部模組 |
+| 套用修正 | `.opencode/skills/manga-translate-zhtw/scripts/apply_fixes.js` | 內部模組 |
+| 刪除頁面 | `.opencode/skills/manga-translate-zhtw/scripts/delete_page.js` | 內部模組 |
+| 提取參考 | `.opencode/skills/manga-translate-zhtw/scripts/extract_references.js` | 內部模組 |
+| 建立知識庫 | `.opencode/skills/manga-translate-zhtw/scripts/build_knowledge_base.js` | 內部模組 |
+| 更新知識庫 | `.opencode/skills/manga-translate-zhtw/scripts/update_knowledge_base.js` | 內部模組 |
+| 自我反思 | `.opencode/skills/manga-translate-zhtw/scripts/self_reflection.js` | 內部模組 |

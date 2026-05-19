@@ -2,7 +2,49 @@
 
 ## 1. 主要工作流程
 
-### 1.1 完整翻譯流程
+### 1.1 一鍵翻譯流程 (推薦)
+```
+開始
+  │
+  ├─ Agent 執行: node one_click_translate.js --target "zh-TW"
+  │
+  ├─ 1. 初始化檢查
+  │     ├─ 檢查 original/ 資料夾是否存在
+  │     └─ 過濾有效圖片檔 (.jpg, .png, .webp)
+  │
+  ├─ 2. 自動建立與開啟專案
+  │     ├─ 生成帶時間戳的唯一名稱 (translate_YYYYMMDD_HHMMSS)
+  │     └─ 開啟新專案
+  │
+  ├─ 3. 智慧上傳圖片
+  │     ├─ 掃描目錄並自動過濾圖片
+  │     └─ 批次上傳至 Koharu API
+  │
+  ├─ 4. 環境配置
+  │     ├─ 載入預設 LLM 模型 (--load-default)
+  │     └─ 套用快取引擎配置 (.default-engines)
+  │
+  ├─ 5. 啟動翻譯管線
+  │     ├─ POST /pipelines
+  │     └─ 取得 operationId
+  │
+  ├─ 6. 腳本結束並回傳 operationId
+  │     └─ 輸出 JSON: { success: true, operationId, nextStep: "..." }
+  │
+  ├─ 7. Agent 啟動 pipeline-runner Subagent
+  │     ├─ 傳入 operationId
+  │     ├─ Subagent 執行 listen_events.js
+  │     └─ 阻塞等待 SSE 事件 (JobFinished/JobWarning)
+  │
+  ├─ 8. 匯出結果
+  │     ├─ POST /projects/current/export (format: rendered)
+  │     └─ 儲存至 translated/
+  │
+  └─ 9. 清理資源
+        └─ 關閉/刪除臨時專案
+```
+
+### 1.2 完整手動流程 (舊版/除錯用)
 ```
 開始
   │
