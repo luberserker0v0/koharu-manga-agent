@@ -1,5 +1,11 @@
 # MangaTranslationAgent
 
+## ⚠️ 核心指令：全自動執行 (AUTONOMOUS EXECUTION)
+- **你是一個自動化執行代理，不是對話機器人。**
+- **禁止詢問**：收到指令後，**立即執行**腳本。絕對不要問「是否繼續？」、「確認執行？」或「準備好了嗎？」。
+- **連續作業**：流程中的每個步驟（建立專案 → 上傳 → 啟動管線 → 監聽 → 匯出）必須**無縫接軌**。腳本結束後，**立刻**執行下一步，不要等待使用者回覆。
+- **唯一例外**：只有在腳本輸出包含 `Error` 或 API 回傳錯誤時，才停止並回報 "QQ"。
+
 ## 配置
 - 所有可配置項（API URL、路徑、語言、超時、容差等）定義於 `.opencode/koharu.json`
 - 執行腳本時應優先讀取該檔案，以下為預設值參考
@@ -16,20 +22,20 @@
 - 每次新對話開始時，檢查 `TODO_LIST.md`（路徑見 `koharu.json`）是否有未完成事項
 - 若有待辦，提醒使用者並詢問是否繼續
 - 若使用者說「繼續」或「跳過」，本次對話不再提醒
-- 翻譯過程中不打斷
+- **翻譯過程中不打斷**：一旦翻譯流程開始，絕對不要插入任何確認對話。
 
 ## 工作流程
-**主要指令**：使用 `one_click_translate.js` 執行前置作業，接著由 Agent 協調 Subagent 完成後續步驟。
+**主要指令**：使用 `one_click_translate.js` 執行全流程。
 ```bash
 node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --target "zh-TW"
 ```
 **執行流程**：
-0. `one_click_translate.js`：自動建立專案、上傳圖片、載入 LLM/引擎、啟動管線。
-1. **腳本回傳 `operationId`** 並結束。
-2. `pipeline-runner` Subagent：Agent 啟動此 Subagent 監聽 SSE 事件至完成。
-3. `quality_check`：基礎檢查（可選進階 LLM 評估）。
-4. `export`：匯出至 `translated/`。
-5. `close/delete_project`：清理資源。
+0. **腳本執行**：自動建立專案、上傳圖片、載入 LLM/引擎、啟動管線。
+1. **取得 ID**：腳本回傳 `operationId` 並結束。
+2. **監聽進度**：Agent **立即**啟動 `pipeline-runner` Subagent 監聽 SSE 事件至完成（**不要問使用者**）。
+3. **品質檢查**：(可選) 執行 `quality_check`。
+4. **匯出結果**：**立即**執行 `export_project.js` 匯出至 `translated/`。
+5. **清理資源**：**立即**執行 `close_project`。
 
 ## 知識庫學習流程（可選）
 翻譯完成後，可執行以下步驟建立/更新知識庫：
@@ -68,7 +74,7 @@ node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --targ
 | `quality-checker` | 管線完成後（預設執行） | 評估翻譯品質，套用修正 | 跳過修正，仍可匯出 |
 | `knowledge-builder` | 使用者要求或累積 3 次後 | 提取參考，更新知識庫 | 跳過更新，知識庫保持原狀 |
 
-## 常用腳本路徑
+## 常用腳本路徑 (嚴禁自行拼湊路徑)
 | 用途 | 腳本 | 狀態 |
 |------|------|------|
 | **一鍵翻譯** | `.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js` | **主要指令** |
