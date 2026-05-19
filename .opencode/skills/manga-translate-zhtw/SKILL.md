@@ -186,7 +186,7 @@ node .opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js \
 **正確呼叫方式 (Task Tool)**：
 ```json
 {
-  "subagent_type": "pipeline-runner",
+  "subagent_type": "general",
   "description": "監聽 Koharu 管線 SSE 事件",
   "prompt": "請執行 listen_events.js 監聽 operationId: {operationId} 直到完成。",
   "command": "node .opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js --job-id \"{operationId}\""
