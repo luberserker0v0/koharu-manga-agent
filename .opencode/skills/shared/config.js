@@ -46,6 +46,7 @@ const SHARED_DEFAULTS = {
     targetLanguage: "zh-TW",
     exportFormat: "rendered",
     tolerance: 10,
+    autoDeleteProject: true,
   },
 };
 

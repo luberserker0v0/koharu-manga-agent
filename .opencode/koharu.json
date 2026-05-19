@@ -23,7 +23,8 @@
   "defaults": {
     "targetLanguage": "zh-TW",
     "exportFormat": "rendered",
-    "tolerance": 10
+    "tolerance": 10,
+    "autoDeleteProject": true
   },
   "engines": {
     "detect": "comic-text-detector",

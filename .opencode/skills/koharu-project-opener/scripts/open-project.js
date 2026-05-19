@@ -16,6 +16,7 @@ function parseArgs() {
     create: null,
     close: false,
     current: false,
+    delete: null,
     apiUrl: config.DEFAULT_BASE_URL,
   };
   for (let i = 0; i < args.length; i++) {
@@ -24,6 +25,7 @@ function parseArgs() {
     else if (args[i] === "--create" && args[i + 1]) { parsed.create = args[i + 1]; i++; }
     else if (args[i] === "--close") parsed.close = true;
     else if (args[i] === "--current") parsed.current = true;
+    else if (args[i] === "--delete" && args[i + 1]) { parsed.delete = args[i + 1]; i++; }
     else if (args[i] === "--api-url" && args[i + 1]) { parsed.apiUrl = args[i + 1]; i++; }
   }
   return parsed;
@@ -85,6 +87,30 @@ async function getCurrentProject(apiUrl) {
   return { success: true, data };
 }
 
+async function deleteProject(id, apiUrl) {
+  const fs = require("fs").promises;
+  const path = require("path");
+
+  // 先取得專案列表找到路徑
+  const listResult = await listProjects(apiUrl);
+  if (!listResult.success) return { success: false, error: "無法取得專案列表" };
+
+  const target = listResult.data.find(p => p.id === id);
+  if (!target) return { success: false, error: `找不到專案 "${id}"` };
+
+  // 關閉專案（若正在使用中）
+  await closeProject(apiUrl);
+
+  // 遞歸刪除專案資料夾
+  const projectPath = target.path;
+  try {
+    await fs.rm(projectPath, { recursive: true, force: true });
+    return { success: true, message: `專案 "${id}" 已從磁碟刪除` };
+  } catch (err) {
+    return { success: false, error: `刪除失敗: ${err.message}` };
+  }
+}
+
 function formatProjectTable(projects) {
   const header = "| ID | 專案名稱 | 路徑 | 最後更新時間 |";
   const separator = "|----|---------|------|-------------|";
@@ -130,7 +156,13 @@ async function main() {
     process.exit(result.success ? 0 : 1);
   }
 
-  console.error("請指定操作：--list、--open <id>、--create <name>、--close、--current");
+  if (opts.delete) {
+    const result = await deleteProject(opts.delete, opts.apiUrl);
+    console.log(JSON.stringify(result, null, 2));
+    process.exit(result.success ? 0 : 1);
+  }
+
+  console.error("請指定操作：--list、--open <id>、--create <name>、--close、--current、--delete <id>");
   process.exit(1);
 }
 

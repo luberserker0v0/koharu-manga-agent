@@ -19,7 +19,7 @@
 - 翻譯過程中不打斷
 
 ## 工作流程
-0. `list_projects`：用 `Question tool` 列出 koharu 專案讓使用者選擇
+0. `create_project`：創建帶時間戳的唯一名稱專案（如 `translate_20260519_123456`），避免命名衝突
 1. `open_project`：開啟目標專案
 2. `upload_pages`（如需）：若專案尚未包含圖片，使用 `upload_pages.js` 上傳 `original/` 資料夾內的圖片（路徑見 `koharu.json`）
 3. `load_llm`：載入 LLM 模型（`--load-default` 優先以 provider/openai-compatible 載入，失敗後嘗試 local 模式）
@@ -37,6 +37,7 @@
 9. `update_knowledge_base`：詢問是否更新知識庫（或累積 3 次翻譯後提醒）
    - 呼叫 `knowledge-builder` subagent 批次更新知識庫
 10. `close_project`：關閉專案以釋放資源
+11. `delete_project`：刪除專案資料夾（若 `autoDeleteProject` 為 `true`，預設啟用）
 
 ## 知識庫學習流程（可選）
 翻譯完成後，可執行以下步驟建立/更新知識庫：
