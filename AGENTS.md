@@ -33,6 +33,16 @@ node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --targ
 0. **腳本執行**：自動建立專案、上傳圖片、載入 LLM/引擎、啟動管線。
 1. **取得 ID**：腳本回傳 `operationId` 並結束。
 2. **監聽進度**：Agent **立即**啟動 `pipeline-runner` Subagent 監聽 SSE 事件至完成（**不要問使用者**）。
+   - **重要**：呼叫 `task` 工具時，**必須包含 `description` 欄位**，否則會報錯。
+   - **正確範例**：
+     ```json
+     {
+       "subagent_type": "pipeline-runner",
+       "description": "監聽 Koharu 管線 SSE 事件",
+       "prompt": "請執行 listen_events.js 監聽 operationId: {operationId} 直到完成。",
+       "command": "node .opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js --job-id \"{operationId}\""
+     }
+     ```
 3. **品質檢查**：(可選) 執行 `quality_check`。
 4. **匯出結果**：**立即**執行 `export_project.js` 匯出至 `translated/`。
 5. **清理資源**：**立即**執行 `close_project`。
