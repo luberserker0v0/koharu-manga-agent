@@ -9,6 +9,14 @@ metadata:
   tools: nodejs, http-api
 ---
 
+## ⚠️ 核心指令：全自動執行 (AUTONOMOUS EXECUTION)
+- **禁止詢問**：收到翻譯指令後，**立即執行**腳本。絕對不要問「是否繼續？」、「確認執行？」。
+- **主要指令**：使用 `one_click_translate.js` 執行全流程。
+  ```bash
+  node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --target "zh-TW"
+  ```
+- **連續作業**：流程中的每個步驟必須**無縫接軌**。腳本結束後，**立刻**執行下一步，不要等待使用者回覆。
+
 ## 功能概述
 
 本 skill 提供自動化漫畫翻譯流程，透過 Koharu HTTP API 將日文/英文/韓文漫畫頁面翻譯並渲染為繁體中文。支援完整管線：文字偵測 → OCR → 翻譯 → 去字修復 → 文字渲染。
@@ -31,7 +39,19 @@ metadata:
 
 ## 執行流程
 
-### 0. 列出專案
+### 0. 一鍵翻譯 (推薦)
+
+**直接執行以下指令，不要分步詢問：**
+
+```bash
+node .opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js --target "zh-TW"
+```
+
+### 1. 手動流程 (僅供除錯參考)
+
+> **注意**：除非使用者明確要求「手動執行」或「除錯」，否則請勿使用以下步驟。
+
+### 1.1 列出專案
 
 ```bash
 node .opencode/skills/koharu-project-opener/scripts/open-project.js --list
@@ -161,7 +181,7 @@ node .opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js \
 
 ### 5. 監聽管線進度
 
-取得 operationId 後，詢問使用者是否監聽，若同意則執行：
+取得 operationId 後，**立即執行**監聽腳本（不要詢問）：
 
 ```bash
 node .opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js \
