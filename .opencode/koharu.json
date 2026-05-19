@@ -27,7 +27,10 @@
     "autoDeleteProject": true
   },
   "engines": {
-    "detect": "comic-text-detector",
+    "detect": "pp-doclayout-v3",
+    "fontDetect": "yuzumarker-font-detection",
+    "segment": "comic-text-detector-seg",
+    "bubbleSegment": "speech-bubble-segmentation",
     "ocr": "paddle-ocr-vl-1.5",
     "translate": "llm",
     "clean": "aot-inpainting",
