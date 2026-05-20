@@ -181,12 +181,12 @@ node .opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js \
 
 ### 5. 監聽管線進度
 
-取得 operationId 後，**立即啟動 `pipeline-runner` Subagent**（不要詢問，不要直接在 Shell 執行）：
+取得 operationId 後，**立即使用 `@pipeline-runner` 呼叫子代理**（不要詢問，不要直接在 Shell 執行）：
 
 **正確呼叫方式 (Task Tool)**：
 ```json
 {
-  "subagent_type": "general",
+  "subagent_type": "pipeline-runner",
   "description": "監聽 Koharu 管線 SSE 事件",
   "prompt": "請執行 listen_events.js 監聽 operationId: {operationId} 直到完成。",
   "command": "node .opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js --job-id \"{operationId}\""
