@@ -1,0 +1,14 @@
+:root {
+  --bg: #f3f1ea;
+  --panel: #fffdf7;
+  --panel-strong: #f5ebd8;
+  --text: #1f1a17;
+  --muted: #746a61;
+  --line: #d5c8b8;
+  --accent: #8f3d24;
+  --accent-strong: #6d2815;
+  --shadow: 0 16px 40px rgba(45, 29, 18, 0.08);
+  --radius: 18px;
+  --font-ui: "Segoe UI", "Noto Sans TC", sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", monospace;
+}

@@ -1,0 +1,16 @@
+export const IPC_CHANNELS = {
+  SETTINGS_READ: "settings:read",
+  SETTINGS_WRITE: "settings:write",
+  DESKTOP_INFO: "desktop:info",
+  OPEN_PATH: "desktop:open-path",
+  VALIDATE_PATHS: "desktop:validate-paths",
+  PICK_DIRECTORY: "desktop:pick-directory",
+  PICK_DIRECTORIES: "desktop:pick-directories",
+  CONFIRM_DIALOG: "desktop:confirm-dialog",
+  READ_JSON_FILE: "desktop:read-json-file",
+  WRITE_JSON_FILE: "desktop:write-json-file",
+  DELETE_PATH: "desktop:delete-path",
+  OPEN_KOHARU_EDITOR: "koharu-editor:open",
+  CLOSE_KOHARU_EDITOR: "koharu-editor:close",
+  KOHARU_EDITOR_CLOSED: "koharu-editor:closed",
+} as const;
