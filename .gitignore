@@ -7,10 +7,14 @@ tests/package-lock.json
 
 # 執行日誌
 logs/
+*.log
 
 # 快取與暫存
 cache/
 blobs/
+cache/process-agent.sqlite
+gui/dist/
+backend/.omo/
 
 # 翻譯輸出（可重新生成）
 translated/
@@ -30,6 +34,12 @@ TODO_LIST.md
 .default-model
 .default-engines
 knowledge_base/self/
+knowledge_base/index*.json
+post_edit/
+references/extracted/
+references/manifests/
+references/other_images/
+.opencode/opencode.json
 
 # 作業系統
 .DS_Store

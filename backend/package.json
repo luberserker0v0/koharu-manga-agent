@@ -1,0 +1,13 @@
+{
+  "name": "manga-translation-backend",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "prestart": "node scripts/ensure_koharu_runtime.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.15.6",
+    "opencode-ai": "^1.15.6"
+  }
+}
