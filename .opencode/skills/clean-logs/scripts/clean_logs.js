@@ -13,7 +13,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const config = require("../../shared/config");
+const config = require("../lib/config");
 
 const LOGS_DIR = config.PATHS.LOGS;
 const SUBAGENTS = config.SUBAGENTS;

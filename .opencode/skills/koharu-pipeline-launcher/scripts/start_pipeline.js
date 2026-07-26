@@ -10,8 +10,8 @@
  *     [--pages "page-id-1,page-id-2"] [--system-prompt "..."] [--default-font "..."]
  */
 
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 function parseArgs() {
   const args = process.argv.slice(2);

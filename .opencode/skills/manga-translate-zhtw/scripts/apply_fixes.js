@@ -9,8 +9,8 @@
  *   node apply_fixes.js --fixes-file fixes.json
  */
 
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 const fs = require("fs");
 const path = require("path");
 

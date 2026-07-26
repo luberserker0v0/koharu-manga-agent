@@ -2,15 +2,16 @@
 
 /**
  * listen_events.js
- * 監聽 Koharu SSE 事件串流，追蹤各階段進度，直到收到 JobFinished 或 JobWarning 事件。
+ * Listen to Koharu SSE events for a pipeline operation until completion,
+ * warning, timeout, or disconnect.
  *
- * 用法:
+ * Usage:
  *   node listen_events.js --job-id <uuid> [--base-url http://127.0.0.1:9999] [--timeout 600]
  */
 
 const http = require("http");
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -31,7 +32,7 @@ function parseArgs() {
   }
 
   if (!opts.jobId) {
-    console.error("錯誤: 缺少 --job-id 參數");
+    console.error("Error: missing required --job-id");
     process.exit(1);
   }
 
@@ -55,37 +56,38 @@ function getStepLabel(step) {
 }
 
 function printSummary(stepTracker, finalStatus) {
-  console.log("\n" + "═".repeat(60));
-  console.log("📋 管線執行摘要");
-  console.log("═".repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
+  console.log("Pipeline summary");
+  console.log("=".repeat(60));
 
-  const steps = Object.keys(stepTracker);
-  for (const step of steps) {
+  for (const step of Object.keys(stepTracker)) {
     const info = stepTracker[step];
     const label = getStepLabel(step);
-    let icon;
-    if (info.status === "completed") icon = "✅";
-    else if (info.status === "failed") icon = "❌";
-    else if (info.status === "running") icon = "⏳";
-    else if (info.status === "skipped") icon = "⏭️";
-    else icon = "❓";
+    let icon = "-";
+    if (info.status === "completed") icon = "[OK]";
+    else if (info.status === "failed") icon = "[ERR]";
+    else if (info.status === "running") icon = "[RUN]";
+    else if (info.status === "skipped") icon = "[SKIP]";
 
     let detail = "";
     if (info.totalPages > 0) {
-      detail = " (" + info.processedPages + "/" + info.totalPages + " 頁)";
+      detail = ` (${info.processedPages}/${info.totalPages} pages)`;
     }
     if (info.error) {
-      detail += " | 錯誤: " + info.error;
+      detail += ` | error: ${info.error}`;
     }
 
-    console.log(icon + " " + label + ": " + info.status.toUpperCase() + detail);
+    console.log(
+      `${icon} ${label}: ${String(info.status).toUpperCase()}${detail}`
+    );
   }
 
   if (finalStatus) {
-    console.log("─".repeat(60));
-    console.log("最終狀態: " + finalStatus);
+    console.log("-".repeat(60));
+    console.log(`Final status: ${finalStatus}`);
   }
-  console.log("═".repeat(60));
+
+  console.log("=".repeat(60));
 }
 
 async function checkJobStatus(baseUrl, jobId) {
@@ -94,13 +96,82 @@ async function checkJobStatus(baseUrl, jobId) {
     if (res.ok) {
       const data = await res.json();
       const ops = data.operations || [];
-      const op = ops.find(o => o.id === jobId);
-      if (op) return { found: true, status: op.status };
+      const op = ops.find((entry) => entry.id === jobId);
+      if (op) {
+        return { found: true, status: op.status };
+      }
       return { found: false, status: "not_found" };
     }
-  } catch (e) {
+  } catch {
     return { found: false, status: "error" };
   }
+
+  return { found: false, status: "error" };
+}
+
+async function getScene(baseUrl) {
+  const res = await apiFetch(ENDPOINTS.SCENE, { baseUrl });
+  if (!res.ok) {
+    return null;
+  }
+  return res.json();
+}
+
+function summarizeScene(scene) {
+  const pages = scene?.scene?.pages || {};
+  let totalPages = 0;
+  let translatedNodes = 0;
+
+  for (const page of Object.values(pages)) {
+    totalPages += 1;
+    for (const node of Object.values(page.nodes || {})) {
+      const textNode = node.kind?.text;
+      if (textNode?.translation) {
+        translatedNodes += 1;
+      }
+    }
+  }
+
+  return {
+    totalPages,
+    translatedNodes,
+  };
+}
+
+async function recoverFinishedOperation(baseUrl, jobId, reason) {
+  const scene = await getScene(baseUrl);
+  const summary = summarizeScene(scene);
+
+  if (summary.translatedNodes > 0) {
+    return {
+      recovered: true,
+      finalStatus: "completed_before_listener_attached",
+      stepTracker: {
+        translate: {
+          status: "completed",
+          processedPages: summary.totalPages,
+          totalPages: summary.totalPages,
+          error: null,
+        },
+      },
+      message: `Recovered operation ${jobId} from scene state after ${reason}.`,
+    };
+  }
+
+  return {
+    recovered: false,
+    finalStatus: reason,
+    stepTracker: {},
+    message: `Unable to recover operation ${jobId} after ${reason}. No translated scene state was found.`,
+  };
+}
+
+async function finishWithRecovery(baseUrl, jobId, reason, successExitCode = 0) {
+  const recovery = await recoverFinishedOperation(baseUrl, jobId, reason);
+
+  console.log(`\n[${formatTimestamp()}] ${recovery.message}`);
+  printSummary(recovery.stepTracker, recovery.finalStatus);
+  process.exit(recovery.recovered ? successExitCode : 1);
 }
 
 async function listenEvents(opts) {
@@ -110,10 +181,13 @@ async function listenEvents(opts) {
 
   const statusCheck = await checkJobStatus(baseUrl, opts.jobId);
   if (!statusCheck.found || config.TERMINAL_STATES.includes(statusCheck.status)) {
-    console.log("\n[" + formatTimestamp() + "] ⚠️  管線似乎已經完成 (狀態: " + statusCheck.status + ")");
-    console.log("[" + formatTimestamp() + "] 無法顯示進度摘要，因為事件串流已結束。");
-    console.log("═".repeat(60));
-    process.exit(0);
+    await finishWithRecovery(
+      baseUrl,
+      opts.jobId,
+      statusCheck.found ? statusCheck.status : "listener_attached_too_late",
+      0
+    );
+    return;
   }
 
   const reqOpts = {
@@ -128,20 +202,21 @@ async function listenEvents(opts) {
     timeout: opts.timeout * 1000,
   };
 
-  console.log("[" + formatTimestamp() + "] 連線至 SSE 串流: " + baseUrl + eventPath);
-  console.log("[" + formatTimestamp() + "] 過濾 Job ID: " + opts.jobId);
-  console.log("[" + formatTimestamp() + "] 超時設定: " + opts.timeout + " 秒");
-  console.log("─".repeat(60));
+  console.log(`[${formatTimestamp()}] Listening to SSE: ${baseUrl}${eventPath}`);
+  console.log(`[${formatTimestamp()}] Job ID: ${opts.jobId}`);
+  console.log(`[${formatTimestamp()}] Timeout: ${opts.timeout} seconds`);
+  console.log("-".repeat(60));
 
   const stepTracker = {};
   let currentStep = null;
-  let totalPages = 0;
   let finalStatus = null;
   let finished = false;
 
   const req = http.request(reqOpts, (res) => {
     if (res.statusCode !== 200) {
-      console.error("[" + formatTimestamp() + "] 連線失敗: HTTP " + res.statusCode);
+      console.error(
+        `[${formatTimestamp()}] SSE request failed: HTTP ${res.statusCode}`
+      );
       process.exit(1);
     }
 
@@ -161,10 +236,11 @@ async function listenEvents(opts) {
           eventType = line.slice(6).trim();
         } else if (line.startsWith("data:")) {
           const dataStr = line.slice(5).trim();
-          if (!dataStr) continue;
+          if (!dataStr) {
+            continue;
+          }
 
           const data = parseSSEEvent(dataStr);
-
           const eventJobId = data.id || data.jobId;
           if (eventJobId && eventJobId !== opts.jobId) {
             eventType = "";
@@ -174,7 +250,7 @@ async function listenEvents(opts) {
           const ts = formatTimestamp();
 
           if (eventType === "jobFinished" || data.event === "jobFinished") {
-            console.log("\n[" + ts + "] ✅ JobFinished");
+            console.log(`\n[${ts}] jobFinished`);
             finalStatus = data.status || "finished";
 
             for (const step of Object.keys(stepTracker)) {
@@ -187,43 +263,76 @@ async function listenEvents(opts) {
             finished = true;
             res.destroy();
             process.exit(0);
-          } else if (eventType === "jobWarning" || data.event === "jobWarning") {
+          } else if (
+            eventType === "jobWarning" ||
+            data.event === "jobWarning"
+          ) {
             const step = data.step || currentStep || "unknown";
-            console.log("\n[" + ts + "] ⚠️  JobWarning");
-            console.log("[" + ts + "] 步驟: " + getStepLabel(step));
-            console.log("[" + ts + "] 警告: " + (data.message || JSON.stringify(data)));
-            console.log("─".repeat(60));
+            console.log(`\n[${ts}] jobWarning`);
+            console.log(`[${ts}] Step: ${getStepLabel(step)}`);
+            console.log(
+              `[${ts}] Message: ${data.message || JSON.stringify(data)}`
+            );
+            console.log("-".repeat(60));
 
             if (!stepTracker[step]) {
-              stepTracker[step] = { status: "failed", processedPages: 0, totalPages: 0, error: null };
+              stepTracker[step] = {
+                status: "failed",
+                processedPages: 0,
+                totalPages: 0,
+                error: null,
+              };
             }
+
             stepTracker[step].status = "failed";
-            stepTracker[step].error = data.message || "未知錯誤";
-          } else if (eventType === "jobProgress" || data.event === "jobProgress") {
+            stepTracker[step].error = data.message || "Unknown warning";
+          } else if (
+            eventType === "jobProgress" ||
+            data.event === "jobProgress"
+          ) {
             const step = data.step || "?";
-            const pct = data.overallPercent != null ? data.overallPercent + "%" : "N/A";
-            const currentPage = data.currentPage != null ? data.currentPage + 1 : "?";
-            const tp = data.totalPages;
-            if (tp && !totalPages) totalPages = tp;
+            const pct =
+              data.overallPercent != null ? `${data.overallPercent}%` : "N/A";
+            const currentPage =
+              data.currentPage != null ? data.currentPage + 1 : "?";
+            const totalPages = data.totalPages;
 
             if (step !== currentStep) {
-              if (currentStep && stepTracker[currentStep] && stepTracker[currentStep].status === "running") {
+              if (
+                currentStep &&
+                stepTracker[currentStep] &&
+                stepTracker[currentStep].status === "running"
+              ) {
                 stepTracker[currentStep].status = "completed";
               }
 
               currentStep = step;
               if (!stepTracker[step]) {
-                stepTracker[step] = { status: "running", processedPages: 0, totalPages: tp || 0, error: null };
+                stepTracker[step] = {
+                  status: "running",
+                  processedPages: 0,
+                  totalPages: totalPages || 0,
+                  error: null,
+                };
               } else {
                 stepTracker[step].status = "running";
               }
-              if (tp) stepTracker[step].totalPages = tp;
+
+              if (totalPages) {
+                stepTracker[step].totalPages = totalPages;
+              }
 
               let found = false;
-              for (const ks of config.KNOWN_STEPS) {
-                if (ks === step) found = true;
-                else if (found && stepTracker[ks] && stepTracker[ks].status !== "completed" && stepTracker[ks].status !== "failed") {
-                  stepTracker[ks].status = "skipped";
+              for (const knownStep of config.KNOWN_STEPS) {
+                if (knownStep === step) {
+                  found = true;
+                } else if (
+                  found &&
+                  stepTracker[knownStep] &&
+                  stepTracker[knownStep].status !== "completed" &&
+                  stepTracker[knownStep].status !== "failed"
+                ) {
+                  stepTracker[knownStep].status = "skipped";
                 }
               }
             }
@@ -232,15 +341,27 @@ async function listenEvents(opts) {
               stepTracker[step].processedPages = data.currentPage + 1;
             }
 
-            const pageInfo = tp ? " (" + currentPage + "/" + tp + ")" : "";
-            process.stdout.write("\r[" + ts + "] ⏳ 進度: " + pct + " | 步驟: " + getStepLabel(step) + pageInfo + "   ");
-          } else if (eventType === "jobStarted" || data.event === "jobStarted") {
-            console.log("\n[" + ts + "] 🚀 JobStarted: " + (data.id || opts.jobId));
+            const pageInfo = totalPages
+              ? ` (${currentPage}/${totalPages})`
+              : "";
+            process.stdout.write(
+              `\r[${ts}] Progress: ${pct} | Step: ${getStepLabel(step)}${pageInfo}   `
+            );
+          } else if (
+            eventType === "jobStarted" ||
+            data.event === "jobStarted"
+          ) {
+            console.log(`\n[${ts}] jobStarted: ${data.id || opts.jobId}`);
           } else if (eventType === "snapshot" || data.event === "snapshot") {
-            // skip
+            // Ignore snapshots.
           } else {
-            console.log("\n[" + ts + "] 📡 " + (eventType || data.event || "unknown") + ": " + JSON.stringify(data).slice(0, 200));
+            console.log(
+              `\n[${ts}] ${eventType || data.event || "unknown"}: ${JSON.stringify(
+                data
+              ).slice(0, 200)}`
+            );
           }
+
           eventType = "";
         } else if (line === "") {
           eventType = "";
@@ -248,30 +369,49 @@ async function listenEvents(opts) {
       }
     });
 
-    res.on("end", () => {
+    res.on("end", async () => {
       if (!finished) {
-        console.log("\n[" + formatTimestamp() + "] 串流已關閉");
-        printSummary(stepTracker, finalStatus || "disconnected");
-        process.exit(1);
+        await finishWithRecovery(
+          baseUrl,
+          opts.jobId,
+          finalStatus || "sse_disconnected_before_terminal_event"
+        );
       }
     });
   });
 
-  req.on("error", (err) => {
-    console.error("\n[" + formatTimestamp() + "] 連線錯誤: " + err.message);
-    printSummary(stepTracker, finalStatus || "error");
-    process.exit(1);
+  req.on("error", async (err) => {
+    console.error(`\n[${formatTimestamp()}] Request error: ${err.message}`);
+    await finishWithRecovery(
+      baseUrl,
+      opts.jobId,
+      finalStatus || "sse_request_error"
+    );
   });
 
-  req.on("timeout", () => {
-    console.error("\n[" + formatTimestamp() + "] ⏱️  超時 (" + opts.timeout + "s)");
+  req.on("timeout", async () => {
+    console.error(`\n[${formatTimestamp()}] Timeout after ${opts.timeout}s`);
     req.destroy();
-    printSummary(stepTracker, finalStatus || "timeout");
-    process.exit(1);
+    await finishWithRecovery(
+      baseUrl,
+      opts.jobId,
+      finalStatus || "timeout"
+    );
   });
 
   req.end();
 }
 
-const opts = parseArgs();
-listenEvents(opts);
+if (require.main === module) {
+  const opts = parseArgs();
+  listenEvents(opts);
+}
+
+module.exports = {
+  checkJobStatus,
+  getScene,
+  listenEvents,
+  parseArgs,
+  recoverFinishedOperation,
+  summarizeScene,
+};

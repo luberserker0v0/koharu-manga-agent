@@ -7,8 +7,8 @@
  * 2. 格式化輸出為 JSON 或 Markdown 表格
  */
 
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 function parseArgs() {
   const args = process.argv.slice(2);

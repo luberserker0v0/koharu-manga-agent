@@ -8,8 +8,8 @@
  *   node delete_page.js --page-id <uuid> [--base-url http://127.0.0.1:9999]
  */
 
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 const args = process.argv.slice(2);
 let pageId = null;

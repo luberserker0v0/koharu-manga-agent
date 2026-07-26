@@ -2,9 +2,9 @@
 
 /**
  * export_project.js
- * 透過 Koharu HTTP API 匯出當前專案。
+ * Export the current Koharu project through the HTTP API.
  *
- * 用法:
+ * Usage:
  *   node export_project.js --format "rendered" --output "./translated/"
  *   node export_project.js --format "psd" --output "./translated/"
  *   node export_project.js --format "khr" --output "./translated/"
@@ -14,8 +14,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -27,19 +27,30 @@ function parseArgs() {
   };
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--format" && args[i + 1]) { opts.format = args[++i]; }
-    else if (args[i] === "--pages" && args[i + 1]) { opts.pages = args[++i].split(",").map((s) => s.trim()); }
-    else if (args[i] === "--output" && args[i + 1]) { opts.output = args[++i]; }
-    else if (args[i] === "--base-url" && args[i + 1]) { opts.baseUrl = args[++i].replace(/\/+$/, ""); }
+    if (args[i] === "--format" && args[i + 1]) {
+      opts.format = args[++i];
+    } else if (args[i] === "--pages" && args[i + 1]) {
+      opts.pages = args[++i].split(",").map((s) => s.trim());
+    } else if (args[i] === "--output" && args[i + 1]) {
+      opts.output = args[++i];
+    } else if (args[i] === "--base-url" && args[i + 1]) {
+      opts.baseUrl = args[++i].replace(/\/+$/, "");
+    }
   }
 
   if (!opts.format) {
-    console.error("錯誤: 缺少 --format 參數（khr, psd, rendered, inpainted）");
+    console.error(
+      "Error: missing required --format (khr, psd, rendered, inpainted)"
+    );
     process.exit(1);
   }
 
   if (!config.VALID_EXPORT_FORMATS.includes(opts.format)) {
-    console.error(`錯誤: 無效格式 "${opts.format}"。有效選項: ${config.VALID_EXPORT_FORMATS.join(", ")}`);
+    console.error(
+      `Error: unsupported format "${opts.format}". Supported formats: ${config.VALID_EXPORT_FORMATS.join(
+        ", "
+      )}`
+    );
     process.exit(1);
   }
 
@@ -48,7 +59,9 @@ function parseArgs() {
 
 async function exportProject(opts) {
   const body = { format: opts.format };
-  if (opts.pages && opts.pages.length > 0) body.pages = opts.pages;
+  if (opts.pages && opts.pages.length > 0) {
+    body.pages = opts.pages;
+  }
 
   try {
     const res = await apiFetch(ENDPOINTS.EXPORT, {
@@ -59,7 +72,12 @@ async function exportProject(opts) {
 
     if (!res.ok) {
       const text = await res.text();
-      console.error(JSON.stringify({ success: false, error: `匯出失敗 (${res.status}): ${text}` }));
+      console.error(
+        JSON.stringify({
+          success: false,
+          error: `Export failed (${res.status}): ${text}`,
+        })
+      );
       process.exit(1);
     }
 
@@ -71,42 +89,38 @@ async function exportProject(opts) {
     }
 
     const buffer = Buffer.from(await res.arrayBuffer());
+    let filePath;
 
-    if (contentType.includes("application/zip") || contentType.includes("application/octet-stream")) {
+    if (
+      contentType.includes("application/zip") ||
+      contentType.includes("application/octet-stream")
+    ) {
       const ext = opts.format === "khr" ? "khr" : "zip";
-      const filename = `export_${Date.now()}.${ext}`;
-      const filePath = path.join(outputDir, filename);
-      fs.writeFileSync(filePath, buffer);
-      console.log(JSON.stringify({
-        success: true,
-        message: `匯出完成`,
-        path: filePath,
-        size: buffer.length,
-      }));
+      filePath = path.join(outputDir, `export_${Date.now()}.${ext}`);
     } else if (contentType.includes("image/")) {
       const ext = contentType.includes("png") ? "png" : "jpg";
-      const filename = `export_${Date.now()}.${ext}`;
-      const filePath = path.join(outputDir, filename);
-      fs.writeFileSync(filePath, buffer);
-      console.log(JSON.stringify({
-        success: true,
-        message: `匯出完成`,
-        path: filePath,
-        size: buffer.length,
-      }));
+      filePath = path.join(outputDir, `export_${Date.now()}.${ext}`);
     } else {
-      const filename = `export_${Date.now()}_${opts.format}`;
-      const filePath = path.join(outputDir, filename);
-      fs.writeFileSync(filePath, buffer);
-      console.log(JSON.stringify({
+      filePath = path.join(outputDir, `export_${Date.now()}_${opts.format}`);
+    }
+
+    fs.writeFileSync(filePath, buffer);
+
+    console.log(
+      JSON.stringify({
         success: true,
-        message: `匯出完成`,
+        message: "Export completed",
         path: filePath,
         size: buffer.length,
-      }));
-    }
+      })
+    );
   } catch (err) {
-    console.error(JSON.stringify({ success: false, error: `連線失敗: ${err.message}` }));
+    console.error(
+      JSON.stringify({
+        success: false,
+        error: `Export request failed: ${err.message}`,
+      })
+    );
     process.exit(1);
   }
 }

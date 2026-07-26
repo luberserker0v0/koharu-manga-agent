@@ -10,8 +10,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const config = require("../../shared/config");
-const { apiFetch, ENDPOINTS } = require("../../shared/api");
+const config = require("../lib/config");
+const { apiFetch, ENDPOINTS } = require("../lib/api");
 
 function parseArgs() {
   const args = process.argv.slice(2);
