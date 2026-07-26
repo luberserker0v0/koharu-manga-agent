@@ -1,0 +1,1203 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "caseId": "character_title_mix",
+      "category": "character_title_mix",
+      "sourceSnippet": [
+        "艾莉絲大人已經下令了。",
+        "艾莉絲小姐會親自啟動星核。"
+      ],
+      "context": {
+        "summary": "角色名與稱呼混用，同時帶出世界觀名詞。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": true,
+        "runtime": {
+          "chapterId": "ch_term_001",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "Alice-sama gave the order.",
+              "translation": "艾莉絲大人已經下令了。",
+              "pageName": "001.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "Miss Alice will activate the Star Core.",
+              "translation": "艾莉絲小姐會親自啟動星核。",
+              "pageName": "001.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "001.jpg",
+              "original": "Alice-sama gave the order.",
+              "translation": "愛麗絲大人已經下令了。"
+            },
+            {
+              "id": "q2",
+              "pageName": "001.jpg",
+              "original": "Miss Alice will activate the Star Core.",
+              "translation": "愛麗絲小姐會親自啟動星核。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [
+              {
+                "name": "艾莉絲",
+                "aliases": ["艾莉絲小姐"],
+                "speech_style": [],
+                "example_lines": []
+              }
+            ],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "星核", "category": "worldbuilding" }
+        ],
+        "mustExtractCharacters": [
+          { "name": "艾莉絲", "aliases": ["艾莉絲大人", "艾莉絲小姐"] }
+        ],
+        "mustUseCanonical": ["艾莉絲", "星核"],
+        "mustNotUse": ["愛麗絲"],
+        "allowedVariants": [
+          { "canonical": "艾莉絲", "variants": ["艾莉絲大人", "艾莉絲小姐"] }
+        ],
+        "notes": "角色名本體需固定為艾莉絲，稱呼可以保留。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 1,
+        "terminology": 1,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Star Core",
+            "translation": "星核",
+            "category": "worldbuilding",
+            "confidence": 0.94,
+            "notes": "Repeated worldbuilding term."
+          }
+        ],
+        "characterEntries": [
+          {
+            "name": "艾莉絲",
+            "aliases": ["艾莉絲大人", "艾莉絲小姐"],
+            "title_forms": ["大人", "小姐"],
+            "speech_style": [],
+            "example_lines": [
+              { "translation": "艾莉絲大人已經下令了。" }
+            ],
+            "confidence": 0.93
+          }
+        ],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Character root form normalized to 艾莉絲."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.92,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["character_name_consistency", "term_consistency"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["characterEntries", "terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "001.jpg",
+            "original": "Alice-sama gave the order.",
+            "currentTranslation": "愛麗絲大人已經下令了。",
+            "revisedTranslation": "艾莉絲大人已經下令了。",
+            "reason": "Normalize character canonical name while preserving title form."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "001.jpg",
+            "original": "Miss Alice will activate the Star Core.",
+            "currentTranslation": "愛麗絲小姐會親自啟動星核。",
+            "revisedTranslation": "艾莉絲小姐會親自啟動星核。",
+            "reason": "Use the same canonical character name across repeated mentions."
+          }
+        ],
+        "notes": "Canonical name fixed, title forms preserved."
+      }
+    },
+    {
+      "caseId": "formal_name_alias_mix",
+      "category": "formal_name_alias_mix",
+      "sourceSnippet": [
+        "北境遠征軍已經抵達關口。",
+        "遠征軍將在黎明前進入山道。"
+      ],
+      "context": {
+        "summary": "正式名稱與簡稱共存，需抽出主詞條並保留可證實簡稱。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": true,
+        "runtime": {
+          "chapterId": "ch_term_002",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "The Northern Expeditionary Army reached the pass.",
+              "translation": "北境遠征軍已經抵達關口。",
+              "pageName": "002.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "The Expeditionary Army will enter the mountain road at dawn.",
+              "translation": "遠征軍將在黎明前進入山道。",
+              "pageName": "002.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "002.jpg",
+              "original": "The Northern Expeditionary Army reached the pass.",
+              "translation": "北征隊已經抵達關口。"
+            },
+            {
+              "id": "q2",
+              "pageName": "002.jpg",
+              "original": "The Expeditionary Army will enter the mountain road at dawn.",
+              "translation": "北征隊將在黎明前進入山道。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [
+              {
+                "term": "Northern Expeditionary Army",
+                "translation": "北境遠征軍",
+                "category": "organization",
+                "notes": "Seed canonical term.",
+                "examples": []
+              }
+            ],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "北境遠征軍", "category": "organization" }
+        ],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": ["北境遠征軍"],
+        "mustNotUse": ["北征隊"],
+        "allowedVariants": [
+          { "canonical": "北境遠征軍", "variants": ["遠征軍"] }
+        ],
+        "notes": "可識別遠征軍為簡稱，但正式固定詞應是北境遠征軍。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 1,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Northern Expeditionary Army",
+            "translation": "北境遠征軍",
+            "category": "organization",
+            "confidence": 0.95,
+            "notes": "Formal organization name with attested short form.",
+            "examples": ["北境遠征軍已經抵達關口。"]
+          }
+        ],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Treat 遠征軍 as an attested alias, not a separate canonical term."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.89,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["organization_term_consistency"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "002.jpg",
+            "original": "The Northern Expeditionary Army reached the pass.",
+            "currentTranslation": "北征隊已經抵達關口。",
+            "revisedTranslation": "北境遠征軍已經抵達關口。",
+            "reason": "Replace unsupported alias with the extracted canonical organization name."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "002.jpg",
+            "original": "The Expeditionary Army will enter the mountain road at dawn.",
+            "currentTranslation": "北征隊將在黎明前進入山道。",
+            "revisedTranslation": "北境遠征軍將在黎明前進入山道。",
+            "reason": "Use a single canonical organization name within the same case."
+          }
+        ],
+        "notes": "Unsupported fan alias removed."
+      }
+    },
+    {
+      "caseId": "location_org_repeat",
+      "category": "location_org_repeat",
+      "sourceSnippet": [
+        "銀羽議會將在天穹城召開閉門會議。",
+        "天穹城外圍的封鎖線已由銀羽議會接管。"
+      ],
+      "context": {
+        "summary": "地名與組織名交錯重現，需同時抽對兩組專有名詞。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_003",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "The Silverfeather Council will hold a closed meeting in Skyvault City.",
+              "translation": "銀羽議會將在天穹城召開閉門會議。",
+              "pageName": "003.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "The blockade outside Skyvault City is now controlled by the Silverfeather Council.",
+              "translation": "天穹城外圍的封鎖線已由銀羽議會接管。",
+              "pageName": "003.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "003.jpg",
+              "original": "The Silverfeather Council will hold a closed meeting in Skyvault City.",
+              "translation": "銀羽議會將在天穹之城召開閉門會議。"
+            },
+            {
+              "id": "q2",
+              "pageName": "003.jpg",
+              "original": "The blockade outside Skyvault City is now controlled by the Silverfeather Council.",
+              "translation": "天穹之城外圍的封鎖線已由銀羽議會接管。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "銀羽議會", "category": "organization" },
+          { "canonical": "天穹城", "category": "location" }
+        ],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": ["銀羽議會", "天穹城"],
+        "mustNotUse": ["天穹之城"],
+        "allowedVariants": [],
+        "notes": "天穹之城不應和天穹城並存。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 2,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Silverfeather Council",
+            "translation": "銀羽議會",
+            "category": "organization",
+            "confidence": 0.96,
+            "notes": "Repeated governing body."
+          },
+          {
+            "term": "Skyvault City",
+            "translation": "天穹城",
+            "category": "location",
+            "confidence": 0.95,
+            "notes": "Repeated location name."
+          }
+        ],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Organization and location extracted separately."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.9,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["location_consistency", "organization_consistency"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "003.jpg",
+            "original": "The Silverfeather Council will hold a closed meeting in Skyvault City.",
+            "currentTranslation": "銀羽議會將在天穹之城召開閉門會議。",
+            "revisedTranslation": "銀羽議會將在天穹城召開閉門會議。",
+            "reason": "Use the extracted canonical location term."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "003.jpg",
+            "original": "The blockade outside Skyvault City is now controlled by the Silverfeather Council.",
+            "currentTranslation": "天穹之城外圍的封鎖線已由銀羽議會接管。",
+            "revisedTranslation": "天穹城外圍的封鎖線已由銀羽議會接管。",
+            "reason": "Keep the location name stable across the case."
+          }
+        ],
+        "notes": "Location drift removed."
+      }
+    },
+    {
+      "caseId": "technique_repeat",
+      "category": "technique_repeat",
+      "sourceSnippet": [
+        "她在啟動月蝕式前，先校準了星脈驅動。",
+        "一旦月蝕式失控，整個星脈驅動都會燒毀。"
+      ],
+      "context": {
+        "summary": "招式/能力詞在不同句位重現，需固定兩個世界觀術語。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_004",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "Before activating Eclipse Form, she recalibrated the Star Vein Drive.",
+              "translation": "她在啟動月蝕式前，先校準了星脈驅動。",
+              "pageName": "004.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "If Eclipse Form goes out of control, the entire Star Vein Drive will burn out.",
+              "translation": "一旦月蝕式失控，整個星脈驅動都會燒毀。",
+              "pageName": "004.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "004.jpg",
+              "original": "Before activating Eclipse Form, she recalibrated the Star Vein Drive.",
+              "translation": "她在啟動月蝕型前，先校準了星脈驅動。"
+            },
+            {
+              "id": "q2",
+              "pageName": "004.jpg",
+              "original": "If Eclipse Form goes out of control, the entire Star Vein Drive will burn out.",
+              "translation": "一旦月蝕型失控，整個星脈驅動都會燒毀。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "月蝕式", "category": "technique" },
+          { "canonical": "星脈驅動", "category": "worldbuilding" }
+        ],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": ["月蝕式", "星脈驅動"],
+        "mustNotUse": ["月蝕型"],
+        "allowedVariants": [],
+        "notes": "式與型不可混用。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 2,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Eclipse Form",
+            "translation": "月蝕式",
+            "category": "technique",
+            "confidence": 0.97,
+            "notes": "Repeated named technique."
+          },
+          {
+            "term": "Star Vein Drive",
+            "translation": "星脈驅動",
+            "category": "worldbuilding",
+            "confidence": 0.95,
+            "notes": "Repeated device term."
+          }
+        ],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Technique and device separated cleanly."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.94,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["technique_term_consistency"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "004.jpg",
+            "original": "Before activating Eclipse Form, she recalibrated the Star Vein Drive.",
+            "currentTranslation": "她在啟動月蝕型前，先校準了星脈驅動。",
+            "revisedTranslation": "她在啟動月蝕式前，先校準了星脈驅動。",
+            "reason": "Use the repeated technique canonical form."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "004.jpg",
+            "original": "If Eclipse Form goes out of control, the entire Star Vein Drive will burn out.",
+            "currentTranslation": "一旦月蝕型失控，整個星脈驅動都會燒毀。",
+            "revisedTranslation": "一旦月蝕式失控，整個星脈驅動都會燒毀。",
+            "reason": "Keep the named technique consistent across repeated mentions."
+          }
+        ],
+        "notes": "Technique normalized."
+      }
+    },
+    {
+      "caseId": "worldbuilding_vs_common_word",
+      "category": "worldbuilding_vs_common_word",
+      "sourceSnippet": [
+        "一旦回響被封住，祭壇就再也不會回應。",
+        "他們把回響存進灰燼潮留下的容器裡。"
+      ],
+      "context": {
+        "summary": "看似普通詞的回響，在此案例中是明確世界觀術語。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_005",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "Once the Resonance is sealed, the altar will never answer again.",
+              "translation": "一旦回響被封住，祭壇就再也不會回應。",
+              "pageName": "005.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "They stored the Resonance inside a vessel left by the Ash Tide.",
+              "translation": "他們把回響存進灰燼潮留下的容器裡。",
+              "pageName": "005.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "005.jpg",
+              "original": "Once the Resonance is sealed, the altar will never answer again.",
+              "translation": "一旦回聲被封住，祭壇就再也不會回應。"
+            },
+            {
+              "id": "q2",
+              "pageName": "005.jpg",
+              "original": "They stored the Resonance inside a vessel left by the Ash Tide.",
+              "translation": "他們把回聲存進灰燼潮留下的容器裡。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "回響", "category": "worldbuilding" },
+          { "canonical": "灰燼潮", "category": "worldbuilding" }
+        ],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": ["回響", "灰燼潮"],
+        "mustNotUse": ["回聲"],
+        "allowedVariants": [],
+        "notes": "回響是術語，不是普通回聲。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 2,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Resonance",
+            "translation": "回響",
+            "category": "worldbuilding",
+            "confidence": 0.91,
+            "notes": "Repeated as a stored or sealed entity."
+          },
+          {
+            "term": "Ash Tide",
+            "translation": "灰燼潮",
+            "category": "worldbuilding",
+            "confidence": 0.9,
+            "notes": "Named phenomenon."
+          }
+        ],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Context distinguishes 回響 from generic 回聲."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.9,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["worldbuilding_term_consistency"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "005.jpg",
+            "original": "Once the Resonance is sealed, the altar will never answer again.",
+            "currentTranslation": "一旦回聲被封住，祭壇就再也不會回應。",
+            "revisedTranslation": "一旦回響被封住，祭壇就再也不會回應。",
+            "reason": "Use the extracted worldbuilding term rather than a generic noun."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "005.jpg",
+            "original": "They stored the Resonance inside a vessel left by the Ash Tide.",
+            "currentTranslation": "他們把回聲存進灰燼潮留下的容器裡。",
+            "revisedTranslation": "他們把回響存進灰燼潮留下的容器裡。",
+            "reason": "Keep the worldbuilding term stable across repeated lines."
+          }
+        ],
+        "notes": "Generic substitute removed."
+      }
+    },
+    {
+      "caseId": "homophone_near_synonym",
+      "category": "homophone_near_synonym",
+      "sourceSnippet": [
+        "瑟琳手背上的聖痕開始發亮。",
+        "一旦聖痕裂開，她就再也無法與鐘塔共鳴。"
+      ],
+      "context": {
+        "summary": "需靠上下文判斷聖痕，而不是近義或同音詞。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_006",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "The Sacred Mark on Serin's hand began to glow.",
+              "translation": "瑟琳手背上的聖痕開始發亮。",
+              "pageName": "006.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "If the Sacred Mark cracks, she will no longer resonate with the clocktower.",
+              "translation": "一旦聖痕裂開，她就再也無法與鐘塔共鳴。",
+              "pageName": "006.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "006.jpg",
+              "original": "The Sacred Mark on Serin's hand began to glow.",
+              "translation": "瑟琳手背上的聖衡開始發亮。"
+            },
+            {
+              "id": "q2",
+              "pageName": "006.jpg",
+              "original": "If the Sacred Mark cracks, she will no longer resonate with the clocktower.",
+              "translation": "一旦聖衡裂開，她就再也無法與鐘塔共鳴。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "聖痕", "category": "worldbuilding" },
+          { "canonical": "鐘塔", "category": "location" }
+        ],
+        "mustExtractCharacters": [
+          { "name": "瑟琳", "aliases": [] }
+        ],
+        "mustUseCanonical": ["聖痕", "瑟琳"],
+        "mustNotUse": ["聖衡"],
+        "allowedVariants": [],
+        "notes": "同音近義詞不可誤替換。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 1,
+        "terminology": 2,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Sacred Mark",
+            "translation": "聖痕",
+            "category": "worldbuilding",
+            "confidence": 0.94,
+            "notes": "Repeated bodily worldbuilding mark."
+          },
+          {
+            "term": "Clocktower",
+            "translation": "鐘塔",
+            "category": "location",
+            "confidence": 0.88,
+            "notes": "Repeated proper place."
+          }
+        ],
+        "characterEntries": [
+          {
+            "name": "瑟琳",
+            "aliases": [],
+            "speech_style": [],
+            "example_lines": [
+              { "translation": "瑟琳手背上的聖痕開始發亮。" }
+            ],
+            "confidence": 0.89
+          }
+        ],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Context rules out the near-synonym 聖衡."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.91,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["near_synonym_disambiguation"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries", "characterEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "006.jpg",
+            "original": "The Sacred Mark on Serin's hand began to glow.",
+            "currentTranslation": "瑟琳手背上的聖衡開始發亮。",
+            "revisedTranslation": "瑟琳手背上的聖痕開始發亮。",
+            "reason": "Use the context-supported canonical term and avoid the near-synonym."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "006.jpg",
+            "original": "If the Sacred Mark cracks, she will no longer resonate with the clocktower.",
+            "currentTranslation": "一旦聖衡裂開，她就再也無法與鐘塔共鳴。",
+            "revisedTranslation": "一旦聖痕裂開，她就再也無法與鐘塔共鳴。",
+            "reason": "Keep the canonical term stable across repeated mentions."
+          }
+        ],
+        "notes": "Near-synonym rejected."
+      }
+    }
+  ],
+  "negativeCases": [
+    {
+      "caseId": "ordinary_dialogue_no_terms",
+      "category": "no_proper_nouns",
+      "sourceSnippet": [
+        "今天先吃飯吧。",
+        "等一下再去看雨停了沒有。"
+      ],
+      "context": {
+        "summary": "沒有任何應固定的專有名詞。",
+        "repeatCount": 0,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_neg_001",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "Let's eat first today.",
+              "translation": "今天先吃飯吧。",
+              "pageName": "n001.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "We can check whether the rain has stopped later.",
+              "translation": "等一下再去看雨停了沒有。",
+              "pageName": "n001.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "n001.jpg",
+              "original": "Let's eat first today.",
+              "translation": "今天先吃飯吧。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": [],
+        "mustNotUse": ["今天", "吃飯", "下雨"],
+        "allowedVariants": [],
+        "notes": "普通對話不應硬抽名詞。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 0,
+        "styleExamples": 0,
+        "terminologyEntries": [],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "No durable proper nouns detected."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass",
+        "score": 0.99,
+        "totalTranslations": 1,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["no_unnecessary_normalization"],
+        "failedChecks": [],
+        "usedKnowledgeSources": [],
+        "proposedTranslations": [],
+        "notes": "No terminology intervention required."
+      }
+    },
+    {
+      "caseId": "common_noun_repetition_not_term",
+      "category": "common_noun_repetition",
+      "sourceSnippet": [
+        "大家今天都很累。",
+        "今天的晚餐也只能大家一起分著吃。"
+      ],
+      "context": {
+        "summary": "高頻普通名詞不應被誤當成專有名詞。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_neg_002",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "Everyone is tired today.",
+              "translation": "大家今天都很累。",
+              "pageName": "n002.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "Even tonight's dinner has to be shared by everyone.",
+              "translation": "今天的晚餐也只能大家一起分著吃。",
+              "pageName": "n002.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "n002.jpg",
+              "original": "Everyone is tired today.",
+              "translation": "大家今天都很累。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": [],
+        "mustNotUse": ["大家", "今天", "晚餐"],
+        "allowedVariants": [],
+        "notes": "重複出現不等於專有名詞。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 0,
+        "styleExamples": 0,
+        "terminologyEntries": [],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Repeated common nouns remain generic."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass",
+        "score": 0.98,
+        "totalTranslations": 1,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["no_false_positive_terminology"],
+        "failedChecks": [],
+        "usedKnowledgeSources": [],
+        "proposedTranslations": [],
+        "notes": "No forced terminology normalization."
+      }
+    },
+    {
+      "caseId": "single_ambiguous_oneoff",
+      "category": "single_ambiguous_oneoff",
+      "sourceSnippet": [
+        "那座白塔今晚沒有亮燈。"
+      ],
+      "context": {
+        "summary": "只出現一次且上下文不足，應保守處理。",
+        "repeatCount": 1,
+        "hasAliasOrTitleForms": false,
+        "runtime": {
+          "chapterId": "ch_term_neg_003",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "The white tower had no light tonight.",
+              "translation": "那座白塔今晚沒有亮燈。",
+              "pageName": "n003.jpg",
+              "nodeId": "k1"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "n003.jpg",
+              "original": "The white tower had no light tonight.",
+              "translation": "那座白塔今晚沒有亮燈。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": [],
+        "mustNotUse": ["白塔"],
+        "allowedVariants": [],
+        "notes": "若只有一次且無更多背景，不應過度固化。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 1,
+        "characters": 0,
+        "terminology": 0,
+        "styleExamples": 0,
+        "terminologyEntries": [],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Single mention with weak evidence; not promoted."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass",
+        "score": 0.96,
+        "totalTranslations": 1,
+        "issues": [],
+        "warnings": [
+          {
+            "type": "uncertain_term",
+            "message": "白塔 appears only once and remains unresolved as a durable proper noun."
+          }
+        ],
+        "passedChecks": ["conservative_handling"],
+        "failedChecks": [],
+        "usedKnowledgeSources": [],
+        "proposedTranslations": [],
+        "notes": "Uncertainty is stated explicitly."
+      }
+    },
+    {
+      "caseId": "wrong_alias_not_promoted",
+      "category": "wrong_alias_rejection",
+      "sourceSnippet": [
+        "正式名稱是霜衛隊，不是霜騎隊。",
+        "霜衛隊今晚會接管北門。"
+      ],
+      "context": {
+        "summary": "文本明確指出錯誤別名，AO 不應把錯誤別名升格。",
+        "repeatCount": 2,
+        "hasAliasOrTitleForms": true,
+        "runtime": {
+          "chapterId": "ch_term_neg_004",
+          "knowledgeTranslationPairs": [
+            {
+              "original": "The formal name is Frost Guard, not Frost Riders.",
+              "translation": "正式名稱是霜衛隊，不是霜騎隊。",
+              "pageName": "n004.jpg",
+              "nodeId": "k1"
+            },
+            {
+              "original": "The Frost Guard will take over the north gate tonight.",
+              "translation": "霜衛隊今晚會接管北門。",
+              "pageName": "n004.jpg",
+              "nodeId": "k2"
+            }
+          ],
+          "qualityTranslations": [
+            {
+              "id": "q1",
+              "pageName": "n004.jpg",
+              "original": "The formal name is Frost Guard, not Frost Riders.",
+              "translation": "正式名稱是霜騎隊，不是霜騎隊。"
+            },
+            {
+              "id": "q2",
+              "pageName": "n004.jpg",
+              "original": "The Frost Guard will take over the north gate tonight.",
+              "translation": "霜騎隊今晚會接管北門。"
+            }
+          ],
+          "seedKnowledgeBase": {
+            "metadata": {
+              "schema_version": "2.0",
+              "manga_id": "fixture_series",
+              "chapter_ids": [],
+              "project_name": "fixture_seed",
+              "source": "self",
+              "created_at": "2026-06-22T00:00:00.000Z",
+              "updated_at": "2026-06-22T00:00:00.000Z",
+              "last_enriched_at": "2026-06-22T00:00:00.000Z",
+              "enrichment_mode": "ao",
+              "source_projects": []
+            },
+            "translation_pairs": [],
+            "terminology": [],
+            "characters": [],
+            "style_profile": {},
+            "style_examples": []
+          }
+        }
+      },
+      "expected": {
+        "mustExtractTerms": [
+          { "canonical": "霜衛隊", "category": "organization" }
+        ],
+        "mustExtractCharacters": [],
+        "mustUseCanonical": ["霜衛隊"],
+        "mustNotUse": ["霜騎隊"],
+        "allowedVariants": [],
+        "notes": "文本已明講錯誤別名，不得升格為 alias。"
+      },
+      "sampleKnowledgeOutput": {
+        "enrichmentMode": "incremental",
+        "translationPairs": 2,
+        "characters": 0,
+        "terminology": 1,
+        "styleExamples": 0,
+        "terminologyEntries": [
+          {
+            "term": "Frost Guard",
+            "translation": "霜衛隊",
+            "category": "organization",
+            "confidence": 0.97,
+            "notes": "Explicitly marked as the formal name."
+          }
+        ],
+        "characterEntries": [],
+        "styleProfile": null,
+        "styleExampleEntries": [],
+        "notes": "Rejected 霜騎隊 as a false alias."
+      },
+      "sampleQualityOutput": {
+        "overall": "pass_with_revisions",
+        "score": 0.88,
+        "totalTranslations": 2,
+        "issues": [],
+        "warnings": [],
+        "passedChecks": ["false_alias_rejection"],
+        "failedChecks": [],
+        "usedKnowledgeSources": ["terminologyEntries"],
+        "proposedTranslations": [
+          {
+            "nodeId": "q1",
+            "pageName": "n004.jpg",
+            "original": "The formal name is Frost Guard, not Frost Riders.",
+            "currentTranslation": "正式名稱是霜騎隊，不是霜騎隊。",
+            "revisedTranslation": "正式名稱是霜衛隊，別再誤稱成其他隊名。",
+            "reason": "Restore the explicit canonical organization name without repeating the rejected alias."
+          },
+          {
+            "nodeId": "q2",
+            "pageName": "n004.jpg",
+            "original": "The Frost Guard will take over the north gate tonight.",
+            "currentTranslation": "霜騎隊今晚會接管北門。",
+            "revisedTranslation": "霜衛隊今晚會接管北門。",
+            "reason": "Reject the false alias and keep the formal name stable."
+          }
+        ],
+        "notes": "Wrong alias is explicitly disallowed by the snippet itself."
+      }
+    }
+  ]
+}

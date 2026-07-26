@@ -1,6 +1,6 @@
 const path = require("path");
-const config = require(path.join(__dirname, "../../.opencode/skills/shared/config"));
-const { apiFetch, ENDPOINTS } = require(path.join(__dirname, "../../.opencode/skills/shared/api"));
+const config = require(path.join(__dirname, "../../.opencode/skills/manga-translate-zhtw/lib/config"));
+const { apiFetch, ENDPOINTS } = require(path.join(__dirname, "../../.opencode/skills/manga-translate-zhtw/lib/api"));
 
 const BASE_URL = process.env.KOHARU_BASE_URL || config.DEFAULT_BASE_URL;
 

@@ -8,8 +8,9 @@ module.exports = {
   setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
   testTimeout: 30000,
   collectCoverageFrom: [
-    ".opencode/skills/shared/*.js",
+    "backend/**/*.js",
     ".opencode/skills/*/scripts/*.js",
+    ".opencode/skills/*/lib/*.js",
     "!**/node_modules/**",
   ],
   coverageDirectory: "<rootDir>/tests/coverage",

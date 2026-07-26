@@ -1,87 +1,63 @@
-const path = require("path");
 const fs = require("fs");
-const { execSync } = require("child_process");
+const path = require("path");
 
 const PROJECT_ROOT = path.join(__dirname, "../..");
 const KB_PATH = path.join(PROJECT_ROOT, "knowledge_base/self/my-manga.json");
 const REPORTS_PATH = path.join(PROJECT_ROOT, "knowledge_base/reports/extract_report.json");
 
-describe("knowledge_base.test.js - 知識庫流程端到端測試", () => {
+describe("knowledge_base.test.js", () => {
   beforeAll(async () => {
     const available = await global.checkKoharu();
     if (!available) {
-      console.warn("Koharu 服務未運行，跳過 E2E 知識庫測試");
+      console.warn("Koharu unavailable, skipping E2E knowledge-base assertions.");
     }
   });
 
-  describe("知識庫檔案", () => {
-    test("知識庫目錄應存在", () => {
-      const kbDir = path.join(PROJECT_ROOT, "knowledge_base/self");
-      expect(fs.existsSync(kbDir)).toBe(true);
-    });
-
-    test("報告目錄應存在", () => {
-      const reportsDir = path.join(PROJECT_ROOT, "knowledge_base/reports");
-      expect(fs.existsSync(reportsDir)).toBe(true);
-    });
-
-    test("知識庫檔案格式應正確", () => {
-      if (!fs.existsSync(KB_PATH)) return;
-
-      const kb = JSON.parse(fs.readFileSync(KB_PATH, "utf-8"));
-      expect(kb).toHaveProperty("translation_pairs");
-      expect(Array.isArray(kb.translation_pairs)).toBe(true);
-    });
+  test("knowledge-base directories exist", () => {
+    expect(fs.existsSync(path.join(PROJECT_ROOT, "knowledge_base/self"))).toBe(true);
+    expect(fs.existsSync(path.join(PROJECT_ROOT, "knowledge_base/reports"))).toBe(true);
   });
 
-  describe("配置路徑驗證", () => {
-    test("config.PATHS.KNOWLEDGE_BASE 應指向正確路徑", () => {
-      const config = require(path.join(PROJECT_ROOT, ".opencode/skills/shared/config"));
-      expect(config.PATHS.KNOWLEDGE_BASE).toBe(KB_PATH);
-    });
-
-    test("config.PATHS.REPORTS 應指向正確路徑", () => {
-      const config = require(path.join(PROJECT_ROOT, ".opencode/skills/shared/config"));
-      expect(config.PATHS.REPORTS).toBe(REPORTS_PATH);
-    });
+  test("manga local config resolves knowledge-base paths", () => {
+    const config = require(path.join(
+      PROJECT_ROOT,
+      ".opencode/skills/manga-translate-zhtw/lib/config"
+    ));
+    expect(config.PATHS.KNOWLEDGE_BASE).toBe(KB_PATH);
+    expect(config.PATHS.REPORTS).toBe(REPORTS_PATH);
+    expect(config.PATHS.TODO_LIST).toBe(path.join(PROJECT_ROOT, "TODO_LIST.md"));
   });
 
-  describe("知識庫內容", () => {
-    test("知識庫應有基本結構", () => {
-      if (!fs.existsSync(KB_PATH)) return;
+  test("knowledge-base file shape is valid when present", () => {
+    if (!fs.existsSync(KB_PATH)) return;
 
-      const kb = JSON.parse(fs.readFileSync(KB_PATH, "utf-8"));
+    const kb = JSON.parse(fs.readFileSync(KB_PATH, "utf-8"));
+    if (kb.metadata) {
+      expect(kb.metadata).toHaveProperty("schema_version");
+      expect(kb.metadata).toHaveProperty("project_name");
+      expect(kb.metadata).toHaveProperty("source");
+      expect(kb.metadata).toHaveProperty("created_at");
+      expect(kb.metadata).toHaveProperty("updated_at");
+    } else {
       expect(kb).toHaveProperty("project_name");
       expect(kb).toHaveProperty("source");
       expect(kb).toHaveProperty("created_at");
       expect(kb).toHaveProperty("updated_at");
-    });
+    }
+    expect(Array.isArray(kb.translation_pairs)).toBe(true);
 
-    test("翻譯配對應有正確格式", () => {
-      if (!fs.existsSync(KB_PATH)) return;
-
-      const kb = JSON.parse(fs.readFileSync(KB_PATH, "utf-8"));
-      const pairs = kb.translation_pairs || [];
-
-      if (pairs.length > 0) {
-        const firstPair = pairs[0];
-        expect(firstPair).toHaveProperty("original");
-        expect(firstPair).toHaveProperty("translation");
-        expect(firstPair).toHaveProperty("pageName");
+    if (kb.translation_pairs.length > 0) {
+      expect(kb.translation_pairs[0]).toHaveProperty("original");
+      expect(kb.translation_pairs[0]).toHaveProperty("translation");
+      expect(kb.translation_pairs[0]).toHaveProperty("pageName");
+      if (kb.metadata) {
+        expect(kb.translation_pairs[0]).toHaveProperty("id");
+        expect(kb.translation_pairs[0]).toHaveProperty("sourceReference");
       }
-    });
+    }
   });
 
-  describe("TODO_LIST.md", () => {
-    test("TODO_LIST.md 應存在", () => {
-      const todoPath = path.join(PROJECT_ROOT, "TODO_LIST.md");
-      expect(fs.existsSync(todoPath)).toBe(true);
-    });
-
-    test("config.PATHS.TODO_LIST 應指向 TODO_LIST.md", () => {
-      const config = require(path.join(PROJECT_ROOT, ".opencode/skills/shared/config"));
-      const todoPath = path.join(PROJECT_ROOT, "TODO_LIST.md");
-      expect(config.PATHS.TODO_LIST).toBe(todoPath);
-    });
+  test("TODO_LIST.md exists", () => {
+    expect(fs.existsSync(path.join(PROJECT_ROOT, "TODO_LIST.md"))).toBe(true);
   });
 });

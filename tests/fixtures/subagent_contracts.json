@@ -1,0 +1,39 @@
+{
+  "requiredKeys": ["status", "result", "error", "duration_ms"],
+  "allowedStatuses": ["success", "error"],
+  "agents": {
+    "pipeline-runner": {
+      "mustMention": [
+        "not a skill",
+        "normalize",
+        "listen_events.js",
+        "status",
+        "result",
+        "error",
+        "duration_ms"
+      ]
+    },
+    "quality-checker": {
+      "mustMention": [
+        "not a skill",
+        "normalize",
+        "quality_check.js",
+        "status",
+        "result",
+        "error",
+        "duration_ms"
+      ]
+    },
+    "knowledge-builder": {
+      "mustMention": [
+        "not a skill",
+        "normalize",
+        "extract_references.js",
+        "status",
+        "result",
+        "error",
+        "duration_ms"
+      ]
+    }
+  }
+}
