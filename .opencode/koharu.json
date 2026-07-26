@@ -1,6 +1,6 @@
 {
   "api": {
-    "baseUrl": "http://127.0.0.1:9999"
+    "baseUrl": "http://127.0.0.1:4000"
   },
   "llm": {
     "defaultModel": "gemma-4-e4b-uncensored-hauhaucs-aggressive",
@@ -16,7 +16,6 @@
     "knowledgeBase": "knowledge_base/self/my-manga.json",
     "reports": "knowledge_base/reports/extract_report.json",
     "translated": "translated/",
-    "original": "original/",
     "logs": "logs/",
     "todoList": "TODO_LIST.md"
   },
@@ -24,14 +23,34 @@
     "targetLanguage": "zh-TW",
     "exportFormat": "rendered",
     "tolerance": 10,
-    "autoDeleteProject": true
+    "autoDeleteProject": false
+  },
+  "workflow": {
+    "qualityCheck": {
+      "enabled": true
+    },
+    "knowledgeBuilder": {
+      "enabled": false
+    }
+  },
+  "agent": {
+    "baseUrl": "http://127.0.0.1:32768",
+    "apiKey": null,
+    "model": "opencode/deepseek-v4-flash-free",
+    "agentName": null,
+    "qualityAgentName": "quality-optimizer",
+    "knowledgeAgentName": "knowledge-builder",
+    "startTimeoutMs": 10000,
+    "readyPollIntervalMs": 1000,
+    "readyTimeoutMs": 30000,
+    "messageTimeoutMs": 2400000
   },
   "engines": {
     "detect": "pp-doclayout-v3",
     "fontDetect": "yuzumarker-font-detection",
     "segment": "comic-text-detector-seg",
     "bubbleSegment": "speech-bubble-segmentation",
-    "ocr": "paddle-ocr-vl-1.5",
+    "ocr": "paddle-ocr-vl-1.6",
     "translate": "llm",
     "clean": "aot-inpainting",
     "render": "koharu-renderer"
