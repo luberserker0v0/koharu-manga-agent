@@ -1,176 +1,191 @@
-# MangaTranslationAgent
+# Manga Translation Process Backend
 
-基於 opencode 平台的自動化漫畫翻譯代理系統，透過 Koharu HTTP API 將日文/英文/韓文漫畫圖片翻譯並渲染為繁體中文。
+This repository now centers on a process-trigger backend for Koharu-based manga translation.
 
-## 功能特色
-
-- **完整翻譯管線**：文字偵測 → OCR → 翻譯 → 去字修復 → 文字渲染
-- **三層配置系統**：Shared 預設 → koharu.json → CLI 參數，靈活且易於管理
-- **品質檢查**：LLM 自動評估翻譯品質，支援修正與重新渲染
-- **知識庫管理**：自動提取術語、角色名、翻譯風格，提升翻譯一致性
-- **Subagent 架構**：pipeline-runner、quality-checker、knowledge-builder 分工協作
-
-## 快速開始
-
-### 前置需求
-
-- [Koharu](https://github.com/kanjieater/Koharu) 服務已啟動（預設 `http://127.0.0.1:9999`）
-- **若使用 provider 模式**：請先開啟 Koharu UI 設定 OpenAI-compatible provider URL
-- [opencode](https://opencode.ai) 平台
-- Node.js v20+ 已安裝
-
-### 安裝
+## Main Entry
 
 ```bash
-# 克隆或複製本專案到任意目錄
-cd comics/1
-
-# 安裝測試依賴（可選）
-cd tests && npm install && cd ..
+node backend/server.js
 ```
 
-### 基本使用
+## GUI Startup
+The GUI can now manage backend startup automatically.
 
-在 opencode 中開啟此專案，然後說「翻譯漫畫」即可啟動完整流程。
-
-或手動執行：
+For normal desktop usage:
 
 ```bash
-# 1. 列出專案
-node .opencode/skills/koharu-project-opener/scripts/open-project.js --list
-
-# 2. 開啟專案
-node .opencode/skills/koharu-project-opener/scripts/open-project.js --open "untitled"
-
-# 3. 上傳圖片
-node .opencode/skills/manga-translate-zhtw/scripts/upload_pages.js --paths "original/page1.jpg,original/page2.jpg"
-
-# 4. 載入 LLM 模型
-node .opencode/skills/manga-translate-zhtw/scripts/llm_control.js --load-default
-
-# 5. 啟動翻譯管線
-node .opencode/skills/koharu-pipeline-launcher/scripts/start_pipeline.js \
-  --steps "comic-text-detector,paddle-ocr-vl-1.5,llm,aot-inpainting,koharu-renderer" \
-  --target-language "zh-TW"
-
-# 6. 匯出結果
-node .opencode/skills/manga-translate-zhtw/scripts/export_project.js --format "rendered"
+cd gui
+npm run preview
 ```
 
-## 專案結構
+Startup behavior:
+- if backend is already running on `http://127.0.0.1:4001`, the GUI connects to it as `external`
+- if backend is not running, Electron starts `node backend/server.js` as a managed child process
+- closing the GUI stops only a GUI-managed backend
+- closing the GUI does not stop an externally started backend
 
+Runtime requirement:
+- the backend uses Node built-in `node:sqlite`
+- backend startup must use a real Node runtime
+- if backend is launched with the wrong executable, you may see `no such built-in module sqlite`
+
+## Backend API
+- `POST /jobs/translation`
+- `POST /jobs/reference-extraction`
+- `POST /jobs/reference-ingestion`
+- `GET /jobs/stream`
+- `GET /jobs/:jobId`
+- `GET /jobs/:jobId/stream`
+- `POST /jobs/:jobId/retry`
+- `POST /jobs/:jobId/cancel`
+- `GET /config`
+- `GET /knowledge/:mangaId/glossary`
+- `GET /knowledge/:mangaId/style-profile`
+- `GET /knowledge/:mangaId/story-context`
+
+## Runtime Shape
+- local HTTP backend for future CLI and GUI clients
+- workflow engine inside the process
+- AO API is the only LLM execution boundary for quality and knowledge tasks
+- AO task stages record `import_manifest.json` and `export_manifest.json`
+- AO conversations are created per stage, initialized over HTTP, polled until `ready=true`, then used for task messages
+- each agent stage records `import_manifest.json` and `export_manifest.json`
+- Koharu HTTP API remains the external execution target
+
+AO integration notes:
+- all AO interactions go through the AO HTTP API
+- AO runtime assets live under `backend/ao/`
+- `backend/ao/opencode/opencode.json` is uploaded into each AO workspace before `start`
+- backend polls `GET /api/conversations/:id` until `ready=true` before `POST /api/conversations/:id/message`
+
+## Reference Diagnostic Assets
+Legacy reference diagnostics still use a dedicated `references/` tree:
+
+```text
+references/
+|- other_images/<reference_set_id>/
+|- extracted/<reference_set_id>/
+|- comparisons/<reference_set_id>/
+`- manifests/<reference_set_id>.json
 ```
-comics/1/
-├── AGENTS.md                  # 主 Agent 工作流程定義
-├── TODO_LIST.md               # 待辦事項清單
-├── .gitignore                 # 版本控制忽略規則
-├── docs/                      # 軟體工程文件
-│   ├── SRS.md                 # 軟體需求規格
-│   ├── TDD.md                 # 測試驅動開發指南
-│   ├── ARCHITECTURE.md        # 系統架構文件
-│   ├── API.md                 # API 參考文件
-│   └── WORKFLOW.md            # 工作流程文件
-├── original/                  # 原始漫畫圖片（待翻譯）
-├── translated/                # 翻譯後渲染輸出
-├── knowledge_base/
-│   ├── self/                  # 翻譯知識庫
-│   └── reports/               # OCR 配對報告
-├── logs/                      # Subagent 執行日誌
-├── tests/                     # Jest 測試套件
-│   ├── unit/                  # 單元測試
-│   ├── integration/           # 整合測試
-│   └── e2e/                   # 端到端測試
-└── .opencode/
-    ├── koharu.json            # 專案配置
-    ├── opencode.json          # opencode 配置
-    ├── agents/                # Subagent 定義
-    └── skills/
-        ├── shared/            # 共享配置模組
-        │   ├── config.js      # 三層配置系統
-        │   └── api.js         # API 端點常數
-        ├── manga-translate-zhtw/
-        ├── koharu-pipeline-launcher/
-        ├── koharu-project-opener/
-        ├── koharu-project-lister/
-        └── clean-logs/
+
+The `comparisons/` subtree is transitional diagnostic output only.
+The formal quality-stage result is the read-only `quality_validation_report` artifact written by the backend.
+
+When reference images are ready, place them under:
+
+```text
+references/other_images/<reference_set_id>/
 ```
 
-## 配置
+and add the matching manifest under:
 
-所有可配置項定義於 `.opencode/koharu.json`：
+```text
+references/manifests/<reference_set_id>.json
+```
 
-```jsonc
+Then extract the reference set through the backend:
+
+```http
+POST /jobs/reference-extraction
+Content-Type: application/json
+
 {
-  "api": { "baseUrl": "http://127.0.0.1:9999" },
-  "llm": {
-    "defaultModel": "gemma-4-e4b-uncensored-hauhaucs-aggressive",
-    "defaultProvider": "openai-compatible"
-  },
-  "timeouts": { "sseListen": 600, "llmRetry": 3 },
-  "paths": {
-    "knowledgeBase": "knowledge_base/self/my-manga.json",
-    "translated": "translated/",
-    "original": "original/"
-  },
-  "defaults": { "targetLanguage": "zh-TW", "exportFormat": "rendered", "tolerance": 10 },
-  "engines": {
-    "detect": "comic-text-detector",
-    "ocr": "paddle-ocr-vl-1.5",
-    "translate": "llm",
-    "clean": "aot-inpainting",
-    "render": "koharu-renderer"
-  }
+  "referenceSetId": "ref_001"
 }
 ```
 
-配置優先級：**CLI 參數 > koharu.json > Shared 預設值**
-
-## 測試
+If the provided images are actually AVIF files with misleading extensions, convert them first:
 
 ```bash
-# 全部測試
+node backend/scripts/convert_reference_images.js --reference-set-id ref_001
+```
+
+## Knowledge Base Design
+Knowledge artifacts live under:
+- `knowledge_base/self/my-manga.json`
+- `knowledge_base/reports/extract_report.json`
+- `knowledge_base/index.json`
+
+Planned v2 references:
+- `knowledge_base/self/my-manga.schema.example.json`
+- `knowledge_base/reports/migration_plan_v2.md`
+
+For manga-scoped knowledge storage, translation jobs may provide:
+- `translationMode` (required)
+- `mangaId`
+- `mangaLabel`
+- `translatorId`
+- `chapterId`
+- `sourceChapterId`
+- `glossaryMode`
+
+Translation jobs never run Reference Ingestion. Reference and learning modes compose completed
+Reference assets and self-learning data into an immutable Translation Memory snapshot. Local and
+learning modes schedule Knowledge as a non-blocking child after the corrected final snapshot is exported.
+
+Reference ingestion promotes extracted reference text into reusable manga-scoped assets:
+- `knowledge_base/self/<mangaId>/canonical_glossary.json`
+- `knowledge_base/self/<mangaId>/story_context.json`
+- `knowledge_base/self/<mangaId>/style_profile.json`
+
+## AO Runtime Assets
+- `backend/ao/AGENTS.md`
+- `backend/ao/agents/*`
+- `backend/ao/skills/*`
+- `backend/ao/opencode/opencode.json`
+
+These are uploaded into each AO conversation workspace at runtime.
+
+## Important Config
+Config file: `.opencode/koharu.json`
+
+Important fields:
+- `api.baseUrl`
+- `llm.defaultModel`
+- `timeouts.*`
+- `paths.*`
+- `defaults.targetLanguage`
+- `defaults.exportFormat`
+- `engines.*`
+
+## Tests
+```bash
 npm test --prefix tests
-
-# 單元測試
 npm run test:unit --prefix tests
-
-# 整合測試
 npm run test:integration --prefix tests
-
-# 端到端測試（需 Koharu 服務）
 npm run test:e2e --prefix tests
-
-# 覆蓋率報告
 npm run test:coverage --prefix tests
 ```
 
-測試結果：**136 個測試全部通過**，覆蓋率 **96.87%**。
+AO-runtime specific coverage now includes:
+- AO HTTP client polling and message dispatch
+- AO asset zip packaging and upload preparation
+- quality optimization and knowledge enrichment result validation
 
-## 常用腳本
+## Design Docs
+- `docs/ARCHITECTURE.md`
+- `docs/API.md`
+- `docs/WORKFLOW.md`
+- `docs/SRS.md`
+- `docs/STD.md`
+- `docs/AGENT_INTEGRATION.md`
+- `docs/GUI_SPEC.md`
+- `docs/GUI_IA_UX.md`
+- `docs/JOB_DETAIL_SPEC.md`
+- `docs/E2E_MATRIX.md`
+- `docs/GUI_SCAFFOLD_PLAN.md`
+- `docs/GUI_SMOKE_CHECKLIST.md`
+- `docs/QUALITY_KNOWLEDGE_REFERENCE_SPEC.md`
 
-| 用途 | 腳本 |
-|------|------|
-| 專案操作 | `open-project.js` |
-| 頁面上傳 | `upload_pages.js` |
-| LLM 控制 | `llm_control.js` |
-| 引擎選擇 | `select_engines.js` |
-| 管線啟動 | `start_pipeline.js` |
-| 事件監聽 | `listen_events.js` |
-| 品質檢查 | `quality_check.js` |
-| 套用修正 | `apply_fixes.js` |
-| 專案匯出 | `export_project.js` |
-| 知識庫管理 | `extract_references.js`, `build_knowledge_base.js`, `update_knowledge_base.js` |
-
-## 文件
-
-| 文件 | 說明 |
-|------|------|
-| [SRS.md](docs/SRS.md) | 軟體需求規格 |
-| [TDD.md](docs/TDD.md) | 測試驅動開發指南 |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 系統架構文件 |
-| [API.md](docs/API.md) | Koharu HTTP API 參考 |
-| [WORKFLOW.md](docs/WORKFLOW.md) | 工作流程文件 |
-
-## License
-
-MIT
+GUI design notes:
+- `docs/GUI_SPEC.md` captures the formal v1 screen and state requirements
+- `docs/GUI_IA_UX.md` captures the user-first page, pane, tab, and scroll strategy
+- `docs/JOB_DETAIL_SPEC.md` captures the selected-job workspace and progress presentation model
+- `docs/E2E_MATRIX.md` captures the mixed local-environment e2e inventory, gate levels, and automated/manual/hybrid coverage split
+- `docs/QUALITY_KNOWLEDGE_REFERENCE_SPEC.md` captures the new target responsibility split between upstream reference assets, long-term knowledge accumulation, and read-only quality validation
+- the current GUI direction treats artifacts as job-scoped detail tabs inside `Job List`
+- the current `Job List` workspace includes terminal-job delete-to-trash, restore/undo protection, permanent delete from Trash, checkbox batch actions, filtering, keyword search, sorting controls, and a collapsible/resizable list pane
+- trashed jobs are automatically cleaned after the configured retention window (default: 30 days)
+- `Job List` now uses `GET /jobs` for initial hydrate and `GET /jobs/stream` as the primary live sync channel, with fallback polling only when SSE is unavailable
+- the `Job List` header shows a live-sync badge so users can tell whether list updates are flowing live, reconnecting, or falling back to polling

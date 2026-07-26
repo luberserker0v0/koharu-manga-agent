@@ -1,313 +1,496 @@
-# API 參考文件 - Koharu HTTP API
+# MangaTranslationAgent API Notes
 
-> **注意**：所有 API 端點已集中管理於 `.opencode/skills/shared/api.js` 的 `ENDPOINTS` 物件。
-> 腳本應使用 `apiFetch(ENDPOINTS.XXX)` 而非硬編碼路徑。
+This document now covers two API layers:
+- the local backend API exposed by `backend/server.js`
+- the upstream Koharu HTTP API consumed by the backend
 
-## 1. 基礎資訊
-- **Base URL**: `http://127.0.0.1:9999/api/v1`
-- **Content-Type**: `application/json`
-- **認證**: 無（本地服務）
+## Local Backend API
 
-## 2. 專案管理
+### Base Convention
+- Host: `127.0.0.1`
+- Default port: `4001`
+- Content type: `application/json`
+- Job event stream uses `text/event-stream`
 
-### 2.1 列出所有專案
-```http
-GET /projects
-```
-**回應**:
+AO-facing agent communication is documented separately:
+- `docs/AGENT_INTEGRATION.md`
+
+Current AO runtime config lives under:
+- `.opencode/koharu.json -> agent`
+
+Example runtime config:
 ```json
 {
-  "projects": [
-    {
-      "id": "untitled",
-      "name": "我是星際國家的惡德領主",
-      "path": "C:\\Users\\...\\untitled.khrproj",
-      "updatedAtMs": 1778956213239
-    }
-  ]
-}
-```
-
-### 2.2 開啟專案
-```http
-PUT /projects/current
-Content-Type: application/json
-
-{
-  "id": "untitled"
-}
-```
-
-### 2.3 關閉專案
-```http
-DELETE /projects/current
-```
-
-### 2.4 創建專案
-```http
-POST /projects
-Content-Type: application/json
-
-{
-  "name": "新專案名稱"
-}
-```
-
-## 3. 頁面上傳
-
-### 3.1 從路徑上傳（快速通道）
-```http
-POST /pages/from-paths
-Content-Type: application/json
-
-{
-  "paths": ["C:\\path\\to\\page1.jpg", "C:\\path\\to\\page2.png"],
-  "replace": false
-}
-```
-
-### 3.2 Multipart 上傳
-```http
-POST /pages
-Content-Type: multipart/form-data; boundary=----FormBoundary...
-
-------FormBoundary...
-Content-Disposition: form-data; name="files"; filename="page1.jpg"
-Content-Type: application/octet-stream
-
-<binary data>
-------FormBoundary...--
-```
-
-## 4. LLM 模型控制
-
-### 4.1 查看當前狀態
-```http
-GET /llm/current
-```
-**回應**:
-```json
-{
-  "status": "ready",
-  "target": {
-    "kind": "provider",
-    "modelId": "gemma-4-e4b-uncensored-hauhaucs-aggressive",
-    "providerId": "openai-compatible"
-  },
-  "error": null
-}
-```
-
-### 4.2 載入模型
-```http
-PUT /llm/current
-Content-Type: application/json
-
-{
-  "target": {
-    "kind": "provider",
-    "modelId": "gemma-4-e4b-uncensored-hauhaucs-aggressive",
-    "providerId": "openai-compatible"
+  "agent": {
+    "baseUrl": "http://127.0.0.1:32768",
+    "apiKey": null,
+    "model": null,
+    "agentName": null,
+    "qualityAgentName": "quality-optimizer",
+    "knowledgeAgentName": "knowledge-builder",
+    "startTimeoutMs": 10000,
+    "readyPollIntervalMs": 1000,
+    "readyTimeoutMs": 30000,
+    "messageTimeoutMs": 300000
   }
 }
 ```
 
-或使用 local 模式：
+AO conversation rules:
+- backend only talks to AO through HTTP API
+- backend must call `POST /api/conversations/:id/start`
+- backend must poll `GET /api/conversations/:id` until `ready=true`
+- backend must not call `POST /api/conversations/:id/message` before ready
+
+### Create translation job
 ```http
-PUT /llm/current
+POST /jobs/translation
 Content-Type: application/json
-
-{
-  "target": {
-    "kind": "local",
-    "modelId": "qwen3.6-27b",
-    "providerId": null
-  }
-}
 ```
 
-### 4.3 卸載模型
-```http
-DELETE /llm/current
-```
-
-### 4.4 列出可用模型
-```http
-GET /llm/catalog
-```
-**回應**:
+Request body:
 ```json
 {
-  "localModels": [
-    {
-      "target": { "kind": "local", "modelId": "qwen3.6-27b", "providerId": null },
-      "name": "qwen3.6-27b",
-      "languages": ["zh-CN", "en-US", "zh-TW", ...]
-    }
-  ],
-  "providers": [...]
+  "translationMode": "learning_style",
+  "targetLanguage": "zh-TW",
+  "baseUrl": "http://127.0.0.1:9999",
+  "qualityCheck": true,
+  "exportFormat": "rendered",
+  "mangaId": "phantom_fantasy",
+  "mangaLabel": "Phantom Fantasy",
+  "translatorId": "translator_team_a_learning_clone",
+  "referenceTranslatorId": "translator_team_a",
+  "chapterId": "ch_001",
+  "sourceChapterId": "source_ch_001",
+  "glossaryMode": "canonical"
 }
 ```
 
-## 5. 管線控制
+`translationMode` is required and must be `quick`, `reference_style`, `local_style`, or `learning_style`.
+`qualityCheck` only controls the optional Quality stage for `reference_style` and `local_style`;
+`quick` always skips it and `learning_style` always runs it. Translation jobs never execute
+Reference Ingestion. Reference modes consume only completed Reference assets.
 
-### 5.1 啟動管線
+For Reference-backed modes, `referenceTranslatorId` identifies the read-only translator
+Reference that supplies canonical terminology and style evidence. `translatorId` identifies the
+output profile. In `learning_style`, that output profile must be a persisted learning clone whose
+`styleSourceTranslatorId` equals `referenceTranslatorId`; output chapters, publications, and Local
+Knowledge are written only under the clone. The Reference translator is never updated by learning.
+
+Create a learning clone with:
+
 ```http
-POST /pipelines
+POST /manga/{mangaId}/translators
 Content-Type: application/json
 
 {
-  "steps": ["comic-text-detector", "speech-bubble-segmentation", "paddle-ocr-vl-1.5", "llm", "aot-inpainting", "koharu-renderer"],
+  "label": "Team A Learning Clone",
+  "language": "zh-TW",
+  "styleSourceTranslatorId": "translator_team_a"
+}
+```
+
+The returned profile has `profileKind: "learning_clone"` and preserves its
+`styleSourceTranslatorId` lineage. Chapters for learning translations must be created under this
+clone profile.
+
+`sourceChapterId` optionally overrides automatic source-chapter matching. Without it, the backend
+matches chapter numbers first, then chapter sort order, and falls back to global memory with a warning.
+The obsolete translation flags `referenceSetId`, `ingestReference`, and `knowledgeBuilder` are rejected.
+
+Successful managed translations publish one active revision per manga, translator, and chapter. Older
+Job artifacts remain immutable history, but their publication status becomes `superseded`. A failed
+translation never replaces the current active revision.
+
+### Inspect published translation revisions
+
+```http
+GET /translation-publications/{mangaId}?translatorId={translatorId}
+GET /translation-publications/{mangaId}?translatorId={translatorId}&chapterId={chapterId}
+```
+
+The chapter response includes `activeRevisionId`, immutable revision history, snapshot and export
+locations, plus the Knowledge child status. Knowledge commits from superseded revisions are skipped.
+
+### Inspect translation memory
+```http
+POST /translation/memory/inspect
+```
+
+Uses the translation payload context without starting Koharu or AO. It returns readiness, mode policy,
+chapter mapping, memory usage, warnings, and the immutable memory fingerprint.
+
+### Preview translation quality and learning
+```http
+POST /translation/preview
+```
+
+Accepts the same mode/context fields plus `translations[]`. It composes the production memory snapshot,
+runs Quality when required, applies proposed revisions, and computes a Knowledge dry-run. It never writes
+formal glossary, style memory, or Knowledge assets.
+
+Standard Quality uses authoritative `sourceLanguage` and `targetLanguage` metadata to select missing,
+source-identical, and structurally mismatched target text before representative sampling. AO receives only
+the bounded suspicious windows. Every completeness candidate must be revised or explicitly accepted with
+a reason; unresolved candidates add `translation_completeness` to `failedChecks` and block Export.
+
+### Translation Deep Audit
+
+```http
+POST /jobs/{translationJobId}/deep-audit
+```
+
+Requires a succeeded Translation Job with a final snapshot. Creates a non-blocking
+`translation_deep_audit` Job that resumes compatible window checkpoints.
+
+### Create reference extraction job
+```http
+POST /jobs/reference-extraction
+Content-Type: application/json
+```
+
+Request body:
+```json
+{
+  "referenceSetId": "ref_001",
+  "baseUrl": "http://127.0.0.1:9999",
   "targetLanguage": "zh-TW"
 }
 ```
-**回應**:
+
+Required fields:
+- `referenceSetId`
+
+Optional fields:
+- `baseUrl`
+- `targetLanguage`
+
+This job reads `references/other_images/<referenceSetId>/`, runs a Koharu extraction pipeline,
+and writes:
+- `references/extracted/<referenceSetId>/scene.json`
+- `references/extracted/<referenceSetId>/texts.json`
+
+### Create reference ingestion job
+```http
+POST /jobs/reference-ingestion
+Content-Type: application/json
+```
+
+Request body:
 ```json
 {
-  "operationId": "a8db1072-b0c8-4d21-ae2c-228542251227"
+  "referenceSetId": "ref_001",
+  "mangaId": "phantom_fantasy",
+  "chapterId": "ch_001",
+  "glossaryMode": "canonical"
 }
 ```
 
-### 5.2 查看運行中操作
+This job promotes extracted reference text into:
+- `knowledge_base/self/<mangaId>/canonical_glossary.json`
+- `knowledge_base/self/<mangaId>/story_context.json`
+- `knowledge_base/self/<mangaId>/style_profile.json`
+- `knowledge_base/self/<mangaId>/translation_context.json`
+
+### Read job
 ```http
-GET /operations
+GET /jobs/{jobId}
 ```
 
-### 5.3 取消操作
+Returns:
+- current status
+- current stage
+- original payload
+- final result or error
+- persisted events
+- persisted artifacts
+
+### List jobs
 ```http
+GET /jobs
+```
+
+Returns:
+- current and recent jobs
+- each job with payload, result, error, events, and artifacts
+
+### Stream job list updates
+```http
+GET /jobs/stream
+Accept: text/event-stream
+```
+
+Purpose:
+- hydrate the GUI job list with an initial `jobs.snapshot`
+- push job-summary updates without waiting for periodic polling
+- keep `Job List` in an SSE-first sync mode
+
+Current stream event categories:
+- `jobs.snapshot`
+- `job.created`
+- `job.stage`
+- `job.completed`
+- `job.failed`
+- `job.deleted`
+- `job.restored`
+- `job.purged`
+- `job.batch_deleted`
+- `job.batch_restored`
+- `job.batch_purged`
+- `job.trash_cleanup`
+
+Notes:
+- this stream carries job-summary level updates, not full persisted job event history
+- `GET /jobs/{jobId}/stream` remains the selected-job detail stream
+- GUI should use `GET /jobs` as initial hydrate and `/jobs/stream` as the live-first update channel
+
+### Read persisted job events
+```http
+GET /jobs/{jobId}/events
+```
+
+Returns:
+- ordered persisted event history for the job
+
+### Read persisted job artifacts
+```http
+GET /jobs/{jobId}/artifacts
+```
+
+Returns:
+- artifact list
+- artifact metadata
+
+### Stream job events
+```http
+GET /jobs/{jobId}/stream
+Accept: text/event-stream
+```
+
+Event categories currently emitted:
+- `job.created`
+- `job.stage`
+- `reference_extraction.completed`
+- `setup.completed`
+- `pipeline.progress`
+- `pipeline.completed`
+- `quality.completed`
+- `knowledge.completed`
+- `export.completed`
+- `project.closed`
+- `job.completed`
+- `job.failed`
+- `job.cancel_requested`
+
+### Retry job
+```http
+POST /jobs/{jobId}/retry
+```
+
+Creates a new job using the previous payload.
+
+### Cancel job
+```http
+POST /jobs/{jobId}/cancel
+```
+
+Cancellation is cooperative and handled by the workflow engine.
+
+### Read resolved config
+```http
+GET /config
+```
+
+### Health check
+```http
+GET /health
+```
+
+### Runtime status
+```http
+GET /runtime/status
+```
+
+Returns:
+- backend status
+- Koharu configured base URL
+- AO configured base URL and agent selection
+- quality runtime summary
+- translation runtime summary
+
+### Read manga glossary
+```http
+GET /knowledge/{mangaId}/glossary
+```
+
+### Read manga style profile
+```http
+GET /knowledge/{mangaId}/style-profile
+```
+
+### Read manga story context
+```http
+GET /knowledge/{mangaId}/story-context
+```
+
+## AO Conversation Interface
+This is an internal backend-facing integration boundary, not a public backend API.
+
+The backend initializes AO in this order:
+- `POST /api/conversations`
+- config upload to `workspace/.opencode/opencode.json`
+- `PUT /api/conversations/:id/agent/config`
+- `PUT /api/conversations/:id/agents`
+- `POST /api/conversations/:id/skills/upload`
+- `POST /api/conversations/:id/start`
+- ready polling through `GET /api/conversations/:id`
+- `POST /api/conversations/:id/message`
+- `DELETE /api/conversations/:id`
+
+## Upstream Koharu API
+
+### Base Convention
+- Base URL default: `http://127.0.0.1:9999/api/v1`
+- Default content type: `application/json`
+
+### Projects
+```http
+GET /projects
+POST /projects
+PUT /projects/current
+DELETE /projects/current
+```
+
+### Pages
+```http
+POST /pages/from-paths
+POST /pages
+```
+
+### LLM
+```http
+GET /llm/current
+PUT /llm/current
+DELETE /llm/current
+GET /llm/catalog
+```
+
+### Engines
+```http
+GET /engines
+```
+
+### Pipelines and Operations
+```http
+POST /pipelines
+GET /operations
 DELETE /operations/{id}
 ```
 
-## 6. 場景與歷史
-
-### 6.1 場景快照
+### Scene and History
 ```http
 GET /scene.json
-```
-
-### 6.2 套用操作
-```http
 POST /history/apply
-Content-Type: application/json
-
-{
-  "batch": {
-    "ops": [
-      {
-        "updateNode": {
-          "page": "page-uuid",
-          "id": "node-uuid",
-          "patch": {
-            "data": {
-              "text": {
-                "translation": "新翻譯內容"
-              }
-            }
-          }
-        }
-      }
-    ],
-    "label": "quality_check_fixes"
-  }
-}
-```
-**回應**:
-```json
-{
-  "epoch": 167
-}
-```
-
-### 6.3 撤銷/重做
-```http
 POST /history/undo
 POST /history/redo
 ```
 
-## 7. 引擎管理
-
-### 7.1 列出可用引擎
-```http
-GET /engines
-```
-**回應**:
-```json
-{
-  "detectors": [{ "id": "comic-text-detector", "name": "Comic Text Detector", ... }],
-  "ocr": [{ "id": "paddle-ocr-vl-1.5", "name": "PaddleOCR-VL", ... }],
-  "translators": [{ "id": "llm", "name": "LLM", ... }],
-  "inpainters": [{ "id": "aot-inpainting", "name": "AOT Inpainting", ... }],
-  "renderers": [{ "id": "koharu-renderer", "name": "Koharu Renderer", ... }]
-}
-```
-
-## 8. 匯出
-
-### 8.1 匯出專案
+### Export
 ```http
 POST /projects/current/export
-Content-Type: application/json
-
-{
-  "format": "rendered"
-}
 ```
-**支援格式**: `rendered`, `psd`, `khr`, `inpainted`
 
-## 9. 事件串流 (SSE)
+Formats:
+- `rendered`
+- `psd`
+- `khr`
+- `inpainted`
 
-### 9.1 訂閱事件
+### Events
 ```http
 GET /events
 Accept: text/event-stream
 ```
-**事件類型**:
-- `jobStarted`: 工作開始
-- `jobProgress`: 進度更新
-- `jobFinished`: 工作完成
-- `jobWarning`: 警告訊息
-- `snapshot`: 初始快照
 
-**進度事件格式**:
-```json
-{
-  "event": "jobProgress",
-  "step": "ocr",
-  "overallPercent": 50,
-  "currentPage": 1,
-  "totalPages": 3
-}
-```
+Known upstream event types:
+- `jobStarted`
+- `jobProgress`
+- `jobWarning`
+- `jobFinished`
+- `snapshot`
 
-## 10. 錯誤處理
+## Backend Module Mapping
+- `backend/src/modules/project_setup.js`
+- `backend/src/modules/pipeline_monitor.js`
+- `backend/src/modules/quality.js`
+- `backend/src/modules/knowledge.js`
+- `backend/src/modules/export.js`
+- `backend/src/modules/project_lifecycle.js`
+- `backend/src/modules/reference_sets.js`
+- `backend/src/koharu_client.js`
 
-### 10.1 常見錯誤碼
-| 狀態碼 | 描述 | 處理方式 |
-|--------|------|---------|
-| 400 | 請求格式錯誤 | 檢查 payload 格式 |
-| 404 | 資源不存在 | 確認 ID 正確 |
-| 405 | 方法不允許 | 檢查 HTTP 方法 |
-| 422 | 驗證失敗 | 檢查欄位格式 |
-| 500 | 伺服器錯誤 | 重試或檢查日誌 |
+## Reference Observation API
 
-### 10.2 錯誤回應格式
-```json
-{
-  "status": 422,
-  "message": "Failed to deserialize the JSON body into the target type: ..."
-}
-```
+- `GET /references/:id/observation`
+- `POST /references/:id/observation/rebuild`
+- `POST /references/:id/deep-review`
+- `GET /knowledge/:mangaId/bilingual-evidence?translatorId=...`
+- `POST /knowledge/:mangaId/bilingual-enrichment?translatorId=...`
+- `PUT /knowledge/:mangaId/bilingual-evidence/links/:linkId`
 
-## 11. 腳本對應表
+The link update action is `accept`, `unbind`, or `bind`. Manual binding requires valid
+`sourceNodeKeys` and `targetNodeKeys` from current Observations.
 
-| 腳本 | API 端點 | 功能 |
-|------|---------|------|
-| `open-project.js` | `GET/PUT/DELETE /projects` | 專案管理 |
-| `upload_pages.js` | `POST /pages` | 頁面上傳 |
-| `llm_control.js` | `GET/PUT/DELETE /llm` | 模型控制 |
-| `select_engines.js` | `GET /engines` | 引擎選擇 |
-| `start_pipeline.js` | `POST /pipelines` | 管線啟動 |
-| `listen_events.js` | `GET /events` | 事件監聽 |
-| `quality_check.js` | `GET /scene.json` | 品質檢查 |
-| `apply_fixes.js` | `POST /history/apply` | 套用修正 |
-| `export_project.js` | `POST /projects/current/export` | 專案匯出 |
+## Reference Asset Files
+Reference processing uses these backend-owned file conventions:
+- `references/manifests/<reference_set_id>.json`
+- `references/extracted/<reference_set_id>/texts.json`
+- `references/extracted/<reference_set_id>/chapter_observation.json`
+- `references/extracted/<reference_set_id>/observations/<cache_key>.json`
+- `references/extracted/<reference_set_id>/deep_reviews/<revision_id>.json`
+- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence.json`
+- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence_ledger.json`
+- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_ledger_revisions/`
+- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_runs/checkpoints/`
+
+`reference_stream.json`, `dialogue_alignment.json`, and persisted TextRole evidence are not runtime
+contracts.
+
+## Quality Validation Report
+Standard Quality writes backend-owned artifacts:
+- `quality_context_projection`
+- `quality_window_checkpoint`
+- `quality_validation_report`
+- `learning_evidence_snapshot`
+- `translation_deep_audit_report` for manual full audits
+
+Typical paths are under `cache/workspaces/<jobId>/standard_quality/` and the Translation workspace.
+
+This report is the formal quality-stage output.
+Legacy comparison artifacts should be treated as transitional diagnostics, not the main quality result.
+
+Current report shape includes:
+- `overall`
+- `score`
+- `issues`
+- `warnings`
+- `passedChecks`
+- `failedChecks`
+- `usedKnowledgeSources`
+- `coverage`, `candidateReasonCounts`, `windowCount`, `inputBytes`, `elapsedMs`
+
+## Lifecycle Policy
+- `DELETE /projects/current` means close, not delete
+- close clears the current-open state only
+- default workflow never deletes the stored project
+# Translation Quality Review
+
+The translation workflow performs a full-chapter lightweight Quality Observation before specialist repair. Standard Quality is autonomous: unresolved terminology, meaning, story, style, and fluency findings are published as provisional warnings and are excluded from Knowledge learning. Later chapter evidence may increase their coverage and confidence. Empty translations, sequence shifts, and locked-term violations remain structural blockers; if automatic repair cannot resolve them, the job fails instead of requesting user labeling.
+
+- `GET /jobs/:id/quality-review` returns the page-grouped review package.
+- `POST /jobs/:id/quality-review/confirm` accepts `decisions[]` and creates a `translation_quality_finalize` job.
+- `POST /jobs/:id/quality-repair` creates a revalidation job from an existing Koharu project and Translation Memory snapshot without rerunning OCR or initial translation.
+
+The page-grouped review and decision APIs are used by manually requested Deep Audit jobs. Decision actions are `accept_proposal`, `manual_edit`, `confirm_current`, and `ignore_and_publish`. Ignored evidence is published only by explicit user override and is never eligible for Knowledge learning.
+
+Publication records include `qualityStatus`, `qualityReportPath`, `qualityObservationFingerprint`, `verifiedAt`, and `manualOverrideCount`. Legacy publications are migrated to `pending_revalidation` and excluded from Local Memory until superseded by a verified publication.

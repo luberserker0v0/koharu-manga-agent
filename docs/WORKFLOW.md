@@ -1,323 +1,158 @@
-# 工作流程文件 - MangaTranslationAgent
+# MangaTranslationAgent Workflow
 
-## 1. 主要工作流程
+## Translation Model
+- `reference` builds upstream story, terminology, bilingual, and translator-style evidence.
+- `translation memory` creates one immutable, mode-filtered snapshot for Koharu and AO Quality.
+- `quality` projects high-risk evidence into bounded AO windows before revising the Koharu scene.
+- `knowledge` learns only from a lightweight Learning Evidence snapshot in an independent non-blocking child Job.
+- `translation_deep_audit` is a manual, non-blocking complete review with resumable window checkpoints.
 
-### 1.1 一鍵翻譯流程 (推薦)
-```
-開始
-  │
-  ├─ Agent 執行: node one_click_translate.js --target "zh-TW"
-  │
-  ├─ 1. 初始化檢查
-  │     ├─ 檢查 original/ 資料夾是否存在
-  │     └─ 過濾有效圖片檔 (.jpg, .png, .webp)
-  │
-  ├─ 2. 自動建立與開啟專案
-  │     ├─ 生成帶時間戳的唯一名稱 (translate_YYYYMMDD_HHMMSS)
-  │     └─ 開啟新專案
-  │
-  ├─ 3. 智慧上傳圖片
-  │     ├─ 掃描目錄並自動過濾圖片
-  │     └─ 批次上傳至 Koharu API
-  │
-  ├─ 4. 環境配置
-  │     ├─ 載入預設 LLM 模型 (--load-default)
-  │     └─ 套用快取引擎配置 (.default-engines)
-  │
-  ├─ 5. 啟動翻譯管線
-  │     ├─ POST /pipelines
-  │     └─ 取得 operationId
-  │
-  ├─ 6. 腳本結束並回傳 operationId
-  │     └─ 輸出 JSON: { success: true, operationId, nextStep: "..." }
-  │
-  ├─ 7. Agent 啟動 pipeline-runner Subagent
-  │     ├─ 傳入 operationId
-  │     ├─ Subagent 執行 listen_events.js
-  │     └─ 阻塞等待 SSE 事件 (JobFinished/JobWarning)
-  │
-  ├─ 8. 匯出結果
-  │     ├─ POST /projects/current/export (format: rendered)
-  │     └─ 儲存至 translated/
-  │
-  └─ 9. 清理資源
-        └─ 關閉/刪除臨時專案
-```
+## Official Flow
+1. Start the backend with `node backend/server.js`
+2. Create a translation job with `POST /jobs/translation`
+3. The backend validates the local source folder and builds a staged source-image set
+4. The user may confirm or adjust source-image order before translation proceeds
+5. The backend composes and persists `translation_memory_snapshot`
+6. The backend injects that exact snapshot into the Koharu pipeline system prompt
+7. The backend runs project setup and starts the Koharu pipeline
+8. The backend monitors pipeline completion
+9. Mode policy builds `quality_context_projection`, runs bounded AO Quality windows, and applies validated revisions
+10. The backend persists `final_translation_snapshot`, `learning_evidence_snapshot`, and the Post Edit document
+11. The backend exports the corrected project and closes Koharu
+12. Local/learning modes schedule an independent Knowledge child Job from Learning Evidence
 
-### 1.2 完整手動流程 (舊版/除錯用)
-```
-開始
-  │
-  ├─ 0. 檢查 TODO_LIST.md
-  │     └─ 若有未完成事項，提醒使用者
-  │
-  ├─ 1. 列出 Koharu 專案
-  │     └─ 使用者選擇目標專案
-  │
-  ├─ 2. 開啟專案
-  │     └─ PUT /projects/current
-  │
-  ├─ 3. 上傳圖片（如需）
-  │     ├─ 檢查 original/ 資料夾
-  │     ├─ 比對現有頁面名稱（避免重複）
-  │     └─ 上傳新圖片
-  │
-  ├─ 4. 載入 LLM 模型
-  │     ├─ 檢查 .default-model
-  │     ├─ 嘗試載入預設模型
-  │     └─ 若失敗，列出本地模型讓使用者選擇
-  │
-  ├─ 5. 選擇管線引擎
-  │     ├─ 檢查 .default-engines 快取
-  │     ├─ 若缺少，讓使用者為每個步驟挑選
-  │     └─ 儲存選擇至快取
-  │
-  ├─ 6. 啟動翻譯管線
-  │     ├─ POST /pipelines
-  │     ├─ 取得 operationId
-  │     └─ 呼叫 pipeline-runner subagent
-  │          └─ 監聽 SSE 事件 → 等待完成 → 回傳摘要
-  │
-  ├─ 7. 品質檢查（預設執行）
-  │     ├─ 詢問使用者是否跳過
-  │     ├─ 若執行，呼叫 quality-checker subagent
-  │     │    ├─ 載入 knowledge_base/self/*.json
-  │     │    ├─ 取得場景翻譯
-  │     │    ├─ LLM 評估品質
-  │     │    ├─ 套用修正（apply_fixes.js）
-  │     │    └─ 重新渲染
-  │     └─ 回傳品質報告
-  │
-  ├─ 8. 匯出結果
-  │     ├─ POST /projects/current/export
-  │     └─ 儲存至 translated/
-  │
-  ├─ 9. 更新知識庫（詢問或累積 3 次後提醒）
-  │     └─ 呼叫 knowledge-builder subagent
-  │          ├─ 提取參考資料
-  │          ├─ 建立知識庫
-  │          ├─ 更新知識庫
-  │          └─ 更新 TODO_LIST.md
-  │
-  └─ 10. 關閉專案
-        └─ DELETE /projects/current
-```
+## Stage Ownership
+- `backend/src/workflow_engine.js` owns workflow routing
+- source preflight and ordering belong to the translation entry workflow before project setup
+- `backend/src/modules/project_setup.js` owns pre-pipeline setup
+- `backend/src/modules/pipeline_monitor.js` owns pipeline completion detection
+- `backend/src/modules/quality.js` owns optional quality review
+- `backend/src/modules/knowledge.js` owns optional knowledge-base updates
+- `backend/src/modules/export.js` owns export
+- `backend/src/modules/project_lifecycle.js` owns close behavior
 
-## 2. Subagent 工作流程
+## User-Facing Translation Modes
+| Mode | Reference memory | Local memory | Quality | Knowledge update |
+| --- | --- | --- | --- | --- |
+| `quick` | no | no | no | no |
+| `reference_style` | yes | no | optional | no |
+| `local_style` | no | yes | optional | yes |
+| `learning_style` | yes | yes | required | yes |
 
-### 2.1 pipeline-runner
-```
-輸入: operationId, baseUrl
-  │
-  ├─ 執行 listen_events.js
-  │     └─ 連線至 SSE 串流
-  │
-  ├─ 監聽事件
-  │     ├─ jobStarted → 記錄開始
-  │     ├─ jobProgress → 顯示進度
-  │     ├─ jobWarning → 記錄警告
-  │     └─ jobFinished → 記錄完成
-  │
-  ├─ 等待完成或超時
-  │     └─ 超時: 600 秒
-  │
-  └─ 回傳摘要
-        └─ JSON 格式: { status, summary, error }
-```
+`translationMode` is required. `referenceSetId`, `ingestReference`, and `knowledgeBuilder` are not
+translation payload controls and are rejected. Reference Ingestion must be completed independently.
 
-### 2.2 quality-checker
-```
-輸入: baseUrl, skipFlag
-  │
-  ├─ 載入知識庫
-  │     └─ 讀取 knowledge_base/self/*.json
-  │
-  ├─ 取得場景翻譯
-  │     └─ GET /scene.json
-  │
-  ├─ 注入知識庫至提示詞
-  │     ├─ 角色名稱對照表
-  │     ├─ 專有名詞對照表
-  │     └─ 風格指南
-  │
-  ├─ LLM 評估品質
-  │     ├─ 語言正確性檢查
-  │     └─ 風格一致性檢查
-  │
-  ├─ 套用修正
-  │     ├─ 產生 fixes.json
-  │     ├─ 執行 apply_fixes.js
-  │     └─ 觸發重新渲染
-  │
-  └─ 回傳報告
-        └─ JSON 格式: { status, consistencyRate, fixed, error }
-```
+Recommended running text:
+- `快速翻譯中...`
+- `參考 {referenceLabel} 風格翻譯中...`
+- `使用本地風格翻譯中...`
+- `學習 {referenceLabel} 風格翻譯中...`
 
-### 2.3 knowledge-builder
-```
-輸入: baseUrl, projectName
-  │
-  ├─ 提取參考資料
-  │     └─ 執行 extract_references.js
-  │
-  ├─ 建立知識庫
-  │     └─ 執行 build_knowledge_base.js
-  │
-  ├─ 更新知識庫
-  │     └─ 執行 update_knowledge_base.js
-  │
-  ├─ 更新 TODO_LIST.md
-  │     └─ 記錄更新時間
-  │
-  └─ 回傳報告
-        └─ JSON 格式: { status, characters, terminology, error }
-```
+## Source Preflight Flow
+1. The GUI collects a per-job `sourceFolder`
+2. The backend validates that the folder is readable
+3. The system scans local files and separates:
+   - accepted image files
+   - convertible image files
+   - rejected files
+4. Convertible files are normalized into supported staged source images
+5. The GUI presents the final source image list with preview and manual ordering
+6. If the final order differs from the detected order, the staged images are renamed in ordered form
+7. The staged source images become the upload input for project setup
 
-## 3. 錯誤處理流程
+Rules:
+- the original source folder is read-only from the workflow perspective
+- ordering should not rename source files in place
+- when the user keeps the detected order, rename work should be skipped
+- if source-folder read access fails or output-folder write access fails, translation must not start until the user fixes the issue
 
-### 3.1 管線失敗
-```
-管線啟動
-  │
-  ├─ 成功取得 operationId
-  │     └─ 繼續監聽
-  │
-  └─ 失敗
-        ├─ API 回傳錯誤 → 顯示 QQ
-        ├─ 超時 → 顯示 QQ
-        └─ SSE 連線失敗 → 顯示 QQ
-```
+## Reference Style Flow
+1. Put other-translation images into `references/other_images/<reference_set_id>/`
+2. Add `references/manifests/<reference_set_id>.json`
+3. Run `POST /jobs/reference-extraction` with `referenceSetId`
+4. Optionally run `POST /jobs/reference-ingestion` with `referenceSetId + mangaId (+ chapterId)`
+5. The backend extracts reference text into `references/extracted/<reference_set_id>/texts.json`
+   and stores the raw scene in `references/extracted/<reference_set_id>/scene.json`
+6. The backend promotes the extracted reference into:
+   - `knowledge_base/self/<manga_id>/canonical_glossary.json`
+   - `knowledge_base/self/<manga_id>/story_context.json`
+   - `knowledge_base/self/<manga_id>/style_profile.json`
+7. Run a `reference_style` or `learning_style` translation for the bound manga and translator
+8. The backend writes:
+  - legacy diagnostic outputs may still exist under `references/comparisons/<reference_set_id>/`
 
-### 3.2 品質檢查失敗
-```
-品質檢查
-  │
-  ├─ 成功
-  │     └─ 繼續匯出
-  │
-  └─ 失敗
-        ├─ LLM 評估失敗 → 跳過修正，繼續匯出
-        ├─ apply_fixes 失敗 → 記錄錯誤，繼續匯出
-        └─ 重新渲染失敗 → 記錄錯誤，繼續匯出
-```
+Current implementation note:
+- these comparison artifacts still exist today
+- they should be treated as transitional diagnostic outputs rather than required quality-stage outputs
 
-### 3.3 知識庫更新失敗
-```
-知識庫更新
-  │
-  ├─ 成功
-  │     └─ 更新 TODO_LIST.md
-  │
-  └─ 失敗
-        ├─ 提取失敗 → 跳過更新
-        ├─ 分析失敗 → 跳過更新
-        └─ 寫入失敗 → 跳過更新
-```
+## Knowledge Base Artifacts
+Current runtime outputs:
+- `knowledge_base/self/my-manga.json`
+- `knowledge_base/reports/extract_report.json`
+- `knowledge_base/index.json`
 
-## 4. 智慧提醒機制
+Planned v2 design references:
+- `knowledge_base/self/my-manga.schema.example.json`
+- `knowledge_base/reports/migration_plan_v2.md`
 
-### 4.1 觸發時機
-- 每次新對話開始時
-- 檢查 `TODO_LIST.md` 是否有未完成事項
+When `mangaId` is provided, the backend resolves manga-scoped paths:
+- `knowledge_base/self/<manga_id>/knowledge.json`
+- `knowledge_base/reports/<manga_id>/extract_report.json`
+- `knowledge_base/self/<manga_id>/canonical_glossary.json`
+- `knowledge_base/self/<manga_id>/story_context.json`
+- `knowledge_base/self/<manga_id>/style_profile.json`
 
-### 4.2 提醒內容
-```
-📋 待辦事項提醒：
-- [ ] 提取 `專案名稱` 參考資料
-- [ ] 建立知識庫
-- [ ] 檢查翻譯風格一致性
+When `chapterId` is provided:
+- the knowledge base still stays under the same `mangaId`
+- `metadata.chapter_ids` records known chapters
+- each translation pair may carry `chapterId` provenance
+- heuristic terminology and character enrichment is still aggregated into the same manga-scoped knowledge base
 
-是否繼續處理待辦事項？(y/N)
-```
+## Responsibility Model
+- `reference`
+  - builds upstream style/context assets from external translated material
+- `knowledge`
+  - accumulates self-derived translation memory for the manga
+- `quality`
+  - validates the current translation against project knowledge assets
+  - should be treated as a read-only validation stage from the user point of view
 
-### 4.3 使用者回應處理
-- `y` 或 `是` → 引導至對應流程
-- `N` 或 `否` 或 `繼續` 或 `跳過` → 本次對話不再提醒
-- 翻譯過程中不打斷
+## Job Status Model
+Backend job states:
+- `queued`
+- `running`
+- `waiting_pipeline`
+- `quality_review`
+- `knowledge_build`
+- `exporting`
+- `closing`
+- `succeeded`
+- `failed`
+- `canceled`
 
-## 5. 知識庫更新追蹤
+## Failure Policy
+- pipeline-monitor failure: stop, no export, no close
+- quality failure: stop, no export, no close
+- knowledge child failure: keep the completed Export and final snapshot; retry only the child
+- export failure: stop, no close
+- invalid agent result schema: treat the current stage as failed and stop downstream stages
 
-### 5.1 計數機制
-- 每次翻譯完成後，計數器 +1
-- 達到 3 次時，提醒使用者更新知識庫
-- 更新後重置計數器
+## Close and Delete Rules
+- `close project` means `DELETE /projects/current`
+- close after successful Export; Knowledge no longer requires a live Koharu scene
+- default workflow never deletes the stored project
+- `defaults.autoDeleteProject` remains compatibility-only and is not the main workflow switch
 
-### 5.2 TODO_LIST.md 格式
-```markdown
-## 知識庫更新追蹤
-- 最近翻譯次數：1/3
-```
+## Legacy Note
+`.opencode/agents/*`, `.opencode/opencode.json`, and `SKILL.md` files are no longer official workflow control planes.
+They remain only as migration references while backend modules absorb their logic.
 
-## 6. 日誌管理
+## Agent Workspace Audit
+When `quality_review` or `knowledge_enrichment` runs through the agent provider layer,
+the backend records:
+- `artifacts/import_manifest.json`
+- `artifacts/export_manifest.json`
 
-### 6.1 日誌結構
-```
-logs/
-├── pipeline-runner/
-│   └── {operationId}_{timestamp}.json
-├── quality-checker/
-│   └── {jobId}_{timestamp}.json
-└── knowledge-builder/
-    └── {jobId}_{timestamp}.json
-```
-
-### 6.2 日誌格式
-```json
-{
-  "jobId": "uuid",
-  "timestamp": "ISO 時間",
-  "subagent": "subagent 名稱",
-  "status": "success|error",
-  "duration_ms": 執行時間,
-  "input": { ... },
-  "result": { ... },
-  "error": null 或錯誤訊息
-}
-```
-
-### 6.3 清理指令
-```bash
-# 列出日誌統計
-node .opencode/skills/clean-logs/scripts/clean_logs.js --list
-
-# 清理 7 天前的日誌
-node .opencode/skills/clean-logs/scripts/clean_logs.js --older-than 7d
-
-# 清理所有日誌
-node .opencode/skills/clean-logs/scripts/clean_logs.js --all
-```
-
-
-## 7. 測試工作流程
-
-### 7.1 測試執行時機
-| 時機 | 測試類型 | 指令 |
-|------|---------|------|
-| 開發中 | 單元測試 | `npm run test:unit` |
-| 提交前 | 單元 + 整合 | `npm run test:unit && npm run test:integration` |
-| 發布前 | 全部測試 | `npm test` |
-| 定期 | 覆蓋率報告 | `npm run test:coverage` |
-
-### 7.2 CI/CD 整合
-```yaml
-# 建議的 CI 流程
-steps:
-  - npm install
-  - npm run test:unit
-  - npm run test:integration
-  - npm run test:coverage
-  - npm run test:e2e  # 需 Koharu 服務
-```
-
-### 7.3 測試失敗處理
-| 失敗類型 | 處理方式 |
-|---------|---------|
-| 單元測試失敗 | 修正 config.js 或 api.js |
-| 整合測試失敗 | 檢查腳本 require 路徑 |
-| E2E 測試失敗 | 確認 Koharu 服務運行 |
-| 覆蓋率下降 | 新增測試案例 |
-
-### 7.4 測試資料管理
-- 測試使用實際 koharu.json 配置
-- E2E 測試不修改專案狀態
-- 知識庫測試驗證現有檔案格式
+These manifests belong to:
+- `cache/workspaces/<jobId>/quality_review/`
+- `cache/workspaces/<jobId>/knowledge_enrichment/`
