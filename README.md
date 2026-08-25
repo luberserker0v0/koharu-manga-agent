@@ -42,14 +42,7 @@ the matching page capture when screenshots are ready.
 | Manga Management | Manage manga records, translator profiles, chapters, chapter titles, chapter ordering, and cascade deletion of manga, translators, or chapters with related Reference, Knowledge, Post Edit, and job data. | ![Manga Management page screenshot placeholder](docs/images/gui-manga-management.png) |
 | Reference | Import translated manga folders as Reference material, bind folders to manga/translator/chapter usage, run Extraction or Ingestion, inspect Reference jobs, review Extraction results, compare bilingual evidence, read Ingestion reports, and edit Reference artifacts. | ![Reference page screenshot placeholder](docs/images/gui-reference.png) |
 | Post Edit | Select translated jobs with post-edit documents, browse page order and bubble/node order, preview pages when available, edit original/translated text pairs, save edits, reset translations, and export corrected results. | ![Post Edit page screenshot placeholder](docs/images/gui-post-edit.png) |
-| Job List | Monitor current and trashed jobs with live SSE sync and polling fallback, filter/search/sort work, inspect workflow stages, retry/cancel/delete/restore/purge jobs, and open the selected job detail workspace. | ![Job List page screenshot placeholder](docs/images/gui-job-list.png) |
-
-Embedded workspaces inside Job List:
-
-| Workspace | Function Description | Screenshot Placeholder |
-| --- | --- | --- |
-| Job Detail | Shows selected job summary, translation memory usage, quality and knowledge results, Deep Audit actions, workflow progress, pipeline engine state, page progress, warnings, timeline events, and result paths. | ![Job Detail workspace screenshot placeholder](docs/images/gui-job-detail.png) |
-| Artifacts | Shows selected job artifacts, quality reports, workspace manifests, other generated artifacts, JSON previews, manga-scoped glossary, story context, and style profile summaries. | ![Artifacts workspace screenshot placeholder](docs/images/gui-artifacts.png) |
+| Job List | Monitor current and trashed jobs with live SSE sync and polling fallback, filter/search/sort work, inspect selected-job details and workflow stages, retry/cancel/delete/restore/purge jobs, and review progress, warnings, timeline events, and result paths. | ![Job List page screenshot placeholder](docs/images/gui-job-list.png) |
 
 ## Backend API
 - `POST /jobs/translation`
