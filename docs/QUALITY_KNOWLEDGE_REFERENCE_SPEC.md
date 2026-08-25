@@ -319,8 +319,8 @@ The target model is considered achieved when:
 
 ## Implementation Notes
 Current implementation still contains transitional behavior, especially in:
-- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\quality.js](C:/Users/berserker/Desktop/comics/1/backend/src/modules/quality.js)
-- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\knowledge.js](C:/Users/berserker/Desktop/comics/1/backend/src/modules/knowledge.js)
-- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\reference_ingestion.js](C:/Users/berserker/Desktop/comics/1/backend/src/modules/reference_ingestion.js)
+- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\quality.js](C:/Users/berserker/Desktop/comics/1/backend/src/domains/translation/quality/quality.js)
+- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\knowledge.js](C:/Users/berserker/Desktop/comics/1/backend/src/domains/knowledge/learning/knowledge.js)
+- [C:\Users\berserker\Desktop\comics\1\backend\src\modules\reference_ingestion.js](C:/Users/berserker/Desktop/comics/1/backend/src/domains/reference/ingestion/reference_ingestion.js)
 
 This spec should be treated as the target contract for future cleanup and stage refactoring.

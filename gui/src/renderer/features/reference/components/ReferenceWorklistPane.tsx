@@ -30,6 +30,8 @@ type Props = {
   ingestionBlockedReason: string | null;
   removeWorklistEntry: (referenceSetId: string) => void;
   deleteReferencePending: boolean;
+  deleteExtractionPending: boolean;
+  confirmDeleteExtraction: (set: ReferenceSetSummary) => Promise<void>;
   confirmDeleteReference: (set: ReferenceSetSummary) => Promise<void>;
   selectReferenceMaterial: (referenceSetId: string, label: string) => void;
   runWorklistExtraction: () => Promise<void>;
@@ -76,6 +78,7 @@ export function ReferenceWorklistPane(props: Props) {
     <SectionCard
       title={t("reference.section.worklist.title")}
       description={t("reference.section.worklist.sequenceDescription")}
+      defaultOpen
     >
       <div className="reference-workspace-header">
         <div className="summary-grid compact-grid">
@@ -90,10 +93,10 @@ export function ReferenceWorklistPane(props: Props) {
             <input
               type="checkbox"
               checked={Boolean(ingestionForm.useForTerminology)}
-              onChange={(event) => setIngestionForm((current) => ({
-                ...current,
-                useForTerminology: event.currentTarget.checked,
-              }))}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setIngestionForm((current) => ({ ...current, useForTerminology: checked }));
+              }}
             />
             <span>{t("reference.worklist.useTerminology")}</span>
           </label>
@@ -102,10 +105,10 @@ export function ReferenceWorklistPane(props: Props) {
               type="checkbox"
               checked={Boolean(ingestionForm.useForStyle)}
               disabled={styleOptionDisabledForWorklist}
-              onChange={(event) => setIngestionForm((current) => ({
-                ...current,
-                useForStyle: event.currentTarget.checked,
-              }))}
+              onChange={(event) => {
+                const checked = event.currentTarget.checked;
+                setIngestionForm((current) => ({ ...current, useForStyle: checked }));
+              }}
             />
             <span>{hasSourceReferenceInWorklist && !hasTranslatorReferenceInWorklist
               ? t("reference.worklist.sourceStyleDisabled")
@@ -213,6 +216,14 @@ export function ReferenceWorklistPane(props: Props) {
                   </button>
                   <button className="secondary-button" type="button" onClick={() => props.removeWorklistEntry(entry.referenceSetId)}>
                     {t("reference.worklist.remove")}
+                  </button>
+                  <button
+                    className="secondary-button danger-button"
+                    type="button"
+                    disabled={props.deleteExtractionPending || !extractionReady || !referenceSet}
+                    onClick={() => referenceSet && void props.confirmDeleteExtraction(referenceSet)}
+                  >
+                    {t("reference.data.deleteExtraction")}
                   </button>
                   <button
                     className="secondary-button danger-button"

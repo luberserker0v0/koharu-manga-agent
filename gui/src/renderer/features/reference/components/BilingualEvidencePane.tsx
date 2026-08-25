@@ -34,6 +34,7 @@ export function BilingualEvidencePane({
     <SectionCard
       title={t("reference.bilingualEvidence.title")}
       description={t("reference.bilingualEvidence.description")}
+      defaultOpen
     >
       <div className="reference-alignment-step-row">
         <span className="pill pill-neutral">{t("reference.bilingualEvidence.optional")}</span>

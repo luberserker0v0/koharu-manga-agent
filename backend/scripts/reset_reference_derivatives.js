@@ -1,12 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const { paths } = require("../src/config");
-const { JobStore } = require("../src/storage/job_store");
+const { JobStore } = require("../src/domains/jobs/persistence/job_store");
 const {
   clearTranslatorIngestionData,
   listKnowledgeSeries,
-} = require("../src/modules/knowledge_paths");
-const { listReferenceSets, referenceSetPaths } = require("../src/modules/reference_sets");
+} = require("../src/domains/knowledge/registry/knowledge_paths");
+const { listReferenceSets, referenceSetPaths } = require("../src/domains/reference/sets/reference_sets");
 
 const DERIVED_JOB_TYPES = new Set([
   "reference_bilingual_enrichment",

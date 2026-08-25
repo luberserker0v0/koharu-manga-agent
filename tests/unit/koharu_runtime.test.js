@@ -9,7 +9,7 @@ const {
   WINDOWS_X64_ASSET,
   readConfiguredDataRoot,
   selectReleaseAsset,
-} = require("../../backend/src/modules/koharu_runtime");
+} = require("../../backend/src/integrations/koharu/runtime/koharu_runtime");
 
 function tempInstallRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "koharu-runtime-test-"));

@@ -24,7 +24,7 @@ describe("knowledge path post-edit cleanup", () => {
     const deleteByBinding = jest.fn().mockReturnValue([{ jobId: "job-001" }]);
 
     jest.doMock("../../backend/src/config", () => buildTempConfig(rootDir));
-    jest.doMock("../../backend/src/modules/post_edit_workspace", () => ({
+    jest.doMock("../../backend/src/domains/post_edit/workspace/post_edit_workspace", () => ({
       PostEditWorkspaceModule: jest.fn().mockImplementation(() => ({
         deleteByBinding,
       })),
@@ -33,7 +33,7 @@ describe("knowledge path post-edit cleanup", () => {
     const {
       syncMangaManagementBinding,
       deleteTranslatorProfile,
-    } = require("../../backend/src/modules/knowledge_paths");
+    } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
     syncMangaManagementBinding({
       mangaId: "phantom_fantasy",
@@ -61,7 +61,7 @@ describe("knowledge path post-edit cleanup", () => {
     const deleteByBinding = jest.fn().mockReturnValue([{ jobId: "job-002" }]);
 
     jest.doMock("../../backend/src/config", () => buildTempConfig(rootDir));
-    jest.doMock("../../backend/src/modules/post_edit_workspace", () => ({
+    jest.doMock("../../backend/src/domains/post_edit/workspace/post_edit_workspace", () => ({
       PostEditWorkspaceModule: jest.fn().mockImplementation(() => ({
         deleteByBinding,
       })),
@@ -70,7 +70,7 @@ describe("knowledge path post-edit cleanup", () => {
     const {
       syncMangaManagementBinding,
       deleteMangaRecord,
-    } = require("../../backend/src/modules/knowledge_paths");
+    } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
     syncMangaManagementBinding({
       mangaId: "phantom_fantasy",

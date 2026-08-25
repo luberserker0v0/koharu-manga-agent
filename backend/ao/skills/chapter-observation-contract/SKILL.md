@@ -14,6 +14,8 @@ Optional grounded evidence records:
 
 `NOTES|free text`
 
+The final non-empty line must be exactly `OBSERVATION_DONE`.
+
 Confidence fields are decimal numbers from `0` through `1`, inclusive. Always emit a numeric
 literal such as `0`, `0.35`, `0.80`, or `1`. Never emit qualitative labels such as `high`,
 `medium`, `low`, `none`, `unknown`, or percentages such as `80%`.

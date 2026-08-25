@@ -7,7 +7,7 @@ const {
   normalizeSceneTexts,
   referenceSetPaths,
   validateReferenceManifest,
-} = require("../../backend/src/modules/reference_sets");
+} = require("../../backend/src/domains/reference/sets/reference_sets");
 const backendConfig = require("../../backend/src/config");
 
 const fixtureReferenceId = `ref_test_${Date.now().toString(36)}`;

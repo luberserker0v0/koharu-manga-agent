@@ -34,7 +34,7 @@ describe("reference chapter observation", () => {
         referenceManifests: manifestsDir,
       },
     }));
-    jest.doMock("../../backend/src/modules/knowledge_paths", () => ({
+    jest.doMock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
       listKnowledgeSeries: () => [],
     }));
     const runChapterObservation = jest.fn(async (input) => ({
@@ -65,7 +65,7 @@ describe("reference chapter observation", () => {
       coverage: { expected: 1, observed: 1, uncertain: 0, invalid: 0 },
     }));
     const runner = { settings: { model: "test/model" }, runChapterObservation };
-    const { ensureChapterObservation } = require("../../backend/src/modules/reference_observation");
+    const { ensureChapterObservation } = require("../../backend/src/domains/reference/observation/reference_observation");
     const first = await ensureChapterObservation({
       aoTaskRunner: runner,
       referenceSetId: "ref_1",
@@ -84,6 +84,6 @@ describe("reference chapter observation", () => {
     expect(runChapterObservation).toHaveBeenCalledTimes(1);
     expect(second.observation.mentions[0].surfaceForm).toBe("天城");
     jest.dontMock("../../backend/src/config");
-    jest.dontMock("../../backend/src/modules/knowledge_paths");
+    jest.dontMock("../../backend/src/domains/knowledge/registry/knowledge_paths");
   });
 });

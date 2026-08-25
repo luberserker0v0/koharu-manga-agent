@@ -6,12 +6,12 @@ const mockLoadStoryContext = jest.fn();
 const mockLoadStyleEvidence = jest.fn();
 const mockLoadStyleProfile = jest.fn();
 
-jest.mock("../../backend/src/modules/knowledge_paths", () => ({
+jest.mock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
   listKnowledgeSeries: mockListKnowledgeSeries,
   resolveKnowledgeAssetPaths: mockResolveKnowledgeAssetPaths,
 }));
 
-jest.mock("../../backend/src/modules/knowledge_assets", () => ({
+jest.mock("../../backend/src/domains/knowledge/assets/knowledge_assets", () => ({
   loadCanonicalGlossary: mockLoadCanonicalGlossary,
   loadKnowledgeBase: mockLoadKnowledgeBase,
   loadStoryContext: mockLoadStoryContext,
@@ -23,7 +23,7 @@ const {
   assertTranslationMemoryReady,
   composeTranslationMemory,
   resolveSourceChapterMapping,
-} = require("../../backend/src/modules/translation_memory");
+} = require("../../backend/src/domains/translation/memory/translation_memory");
 
 const series = {
   mangaId: "manga_1",

@@ -2,9 +2,9 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 
-const { createApiServer } = require("../../backend/src/http/api_server");
-const { JobManager } = require("../../backend/src/job_manager");
-const { JobStore } = require("../../backend/src/storage/job_store");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "koharu-runtime-api-"));

@@ -25,6 +25,7 @@ import type { ReferenceMangaOption, ReferenceTranslatorOption } from "../types";
 import { useLanguageStore } from "../../../stores/language_store";
 
 type IngestionReportPaneProps = {
+  embedded?: boolean;
   mangaSeriesLoading: boolean;
   mangaSeriesError: boolean;
   mangaSeriesOptions: ReferenceMangaOption[];
@@ -155,6 +156,7 @@ function renderStoryEvents(
 }
 
 export function IngestionReportPane({
+  embedded = false,
   mangaSeriesLoading,
   mangaSeriesError,
   mangaSeriesOptions,
@@ -179,19 +181,20 @@ export function IngestionReportPane({
   const t = useLanguageStore((state) => state.t);
   return (
     <SectionCard
-      title="Extraction / Ingestion 資料"
-      description="先選漫畫與譯者，再管理各章 Extraction 與該譯者唯一一份 Ingestion 資料。"
+      title={t("reference.section.report.title")}
+      description={t("reference.section.report.description")}
+      defaultOpen={embedded}
     >
       {mangaSeriesLoading ? <p>載入漫畫列表中...</p> : null}
       {mangaSeriesError ? <p className="error-text">載入漫畫列表失敗。</p> : null}
       {!mangaSeriesLoading && !mangaSeriesError ? (
         mangaSeriesOptions.length > 0 ? (
           <div className="reference-selector-list">
-            {mangaSeriesOptions.map((manga) => {
+            {mangaSeriesOptions.filter((manga) => !embedded || manga.mangaId === selectedReportMangaId).map((manga) => {
               const isSelected = selectedReportMangaId === manga.mangaId;
               return (
                 <div key={manga.mangaId} className="reference-tree-item">
-                  <button
+                  {!embedded ? <button
                     className={isSelected ? "reference-selector-item selected" : "reference-selector-item"}
                     type="button"
                     onClick={() => {
@@ -206,12 +209,12 @@ export function IngestionReportPane({
                   >
                     <strong>{manga.label}</strong>
                     <span className="job-subtext">{`譯者數 ${manga.translators.length}`}</span>
-                  </button>
+                  </button> : null}
                   {isSelected ? (
                     <div className="reference-child-list">
                       {manga.translators.length > 0 ? (
                         <div className="reference-selector-list">
-                          {manga.translators.map((translator: ReferenceTranslatorOption) => {
+                          {manga.translators.filter((translator) => !embedded || translator.translatorId === selectedReportTranslatorId).map((translator: ReferenceTranslatorOption) => {
                             const translatorSelected =
                               selectedReportTranslatorId === translator.translatorId;
                             const extractionEntries = referenceSets
@@ -233,7 +236,7 @@ export function IngestionReportPane({
                             );
                             return (
                               <div key={translator.translatorId} className="reference-tree-item">
-                                <button
+                                {!embedded ? <button
                                   className={
                                     translatorSelected
                                       ? "reference-selector-item selected"
@@ -251,10 +254,10 @@ export function IngestionReportPane({
                                 >
                                   <strong>{translator.label}</strong>
                                   <span className="job-subtext">{`章節數 ${translator.chapterCount}`}</span>
-                                </button>
+                                </button> : null}
                                 {translatorSelected ? (
                                   <div className="reference-inline-summary">
-                                    <article className="card">
+                                    {!embedded ? <article className="card">
                                       <h4>{t("reference.data.extractionList")}</h4>
                                       {extractionEntries.length > 0 ? (
                                         <div className="button-row">
@@ -316,7 +319,7 @@ export function IngestionReportPane({
                                       ) : (
                                         <p className="muted-text">{t("reference.data.noExtractions")}</p>
                                       )}
-                                    </article>
+                                    </article> : null}
                                     {ingestionReportLoading ? <p>載入 Ingestion 報告中...</p> : null}
                                     {ingestionReportError ? (
                                       <p className="error-text">載入 Ingestion 報告失敗。</p>

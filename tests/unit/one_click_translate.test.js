@@ -14,7 +14,7 @@ const API_MODULE_PATH = path.join(
 );
 const PREFLIGHT_MODULE_PATH = path.join(
   __dirname,
-  "../../backend/src/modules/reference_image_conversion.js"
+  "../../backend/src/domains/reference/extraction/reference_image_conversion.js"
 );
 
 function loadScript({

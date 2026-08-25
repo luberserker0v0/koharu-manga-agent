@@ -268,10 +268,10 @@ Mode-specific translation requirements:
 
 | Mode | Goal | Required fields | Conditional fields | Running text |
 | --- | --- | --- | --- | --- |
-| `quick` / `快速翻譯` | complete this translation only, without reference-style input and without local-style updates | `sourceFolder`, `mangaLabel` | optional `chapterLabel` | `快速翻譯中...` |
-| `reference_style` / `參考風格翻譯` | translate using completed Reference style and terminology without updating local memory | `sourceFolder`, manga/translator binding | optional `chapterLabel`, `sourceChapterId`, `glossaryMode`, optional Quality | `參考風格翻譯中...` |
-| `local_style` / `本地風格翻譯` | translate using accumulated local style memory and write the new result back into local style memory | `sourceFolder`, `mangaLabel` | optional `chapterLabel`, optional quality validation | `使用本地風格翻譯中...` |
-| `learning_style` / `學習風格翻譯` | use completed Reference and local memory, force Quality, then learn from the exported final snapshot | `sourceFolder`, manga/translator binding | optional `chapterLabel`, `sourceChapterId`, `glossaryMode` | `學習風格翻譯中...` |
+| `quick` / `快速翻譯` | complete this translation only, without reference-style input and without local-style updates | `sourceFolder`, manga/output translator/chapter binding | none | `快速翻譯中...` |
+| `reference_style` / `參考風格翻譯` | translate using completed Reference style and terminology without updating local memory | `sourceFolder`, manga/output clone/chapter binding | `sourceChapterId`, `glossaryMode`, optional Quality | `參考風格翻譯中...` |
+| `local_style` / `本地風格翻譯` | translate using a clone's accumulated local memory and replace that chapter's learned evidence | `sourceFolder`, manga/clone/chapter binding | optional quality validation | `使用本地風格翻譯中...` |
+| `learning_style` / `學習風格翻譯` | use completed Reference and clone memory, force Quality, then replace that chapter's learned evidence | `sourceFolder`, manga/reference translator/output clone/chapter binding | `sourceChapterId`, `glossaryMode` | `學習風格翻譯中...` |
 
 Recommended secondary stage text:
 - `更新本地風格中...`

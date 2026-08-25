@@ -1,4 +1,4 @@
-const { buildObservationTaskInput } = require("../../backend/src/modules/reference_observation");
+const { buildObservationTaskInput } = require("../../backend/src/domains/reference/observation/reference_observation");
 
 describe("chapter observation input", () => {
   test("uses translated text for translator references even when source text is absent", () => {

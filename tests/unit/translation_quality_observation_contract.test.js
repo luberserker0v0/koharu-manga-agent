@@ -1,4 +1,4 @@
-const { parseTranslationQualityObservationOutput } = require("../../backend/src/translation_quality_observation_contract");
+const { parseTranslationQualityObservationOutput } = require("../../backend/src/integrations/ao/contracts/translation_quality_observation_contract");
 
 describe("translation quality observation contract", () => {
   const input = {
@@ -22,24 +22,39 @@ describe("translation quality observation contract", () => {
     expect(result.sequenceRisks[0].nodeIds).toEqual(["n1", "n2"]);
   });
 
-  test("rejects omitted nodes", () => {
-    expect(() => parseTranslationQualityObservationOutput([
+  test("fills omitted nodes as unobserved", () => {
+    const result = parseTranslationQualityObservationOutput([
       "NODE|quality_observation_001|n1|clean|none|0.9|ok",
       "WINDOW_DONE|quality_observation_001",
-    ].join("\n"), input)).toThrow(/omitted 2 node/);
+    ].join("\n"), input);
+    expect(result.nodes.filter((entry) => entry.disposition === "unobserved")).toHaveLength(2);
+    expect(result.semanticResult.outcome).toBe("warnings");
   });
 
-  test("rejects unknown IDs and duplicate dispositions", () => {
-    expect(() => parseTranslationQualityObservationOutput([
+  test("quarantines unknown IDs and duplicate dispositions", () => {
+    const unknown = parseTranslationQualityObservationOutput([
       "NODE|quality_observation_001|unknown|clean|none|0.9|ok",
       "WINDOW_DONE|quality_observation_001",
-    ].join("\n"), input)).toThrow(/unknown node/);
-    expect(() => parseTranslationQualityObservationOutput([
+    ].join("\n"), input);
+    expect(unknown.semanticResult.quarantinedRecordCount).toBe(1);
+    const duplicate = parseTranslationQualityObservationOutput([
       "NODE|quality_observation_001|n1|clean|none|0.9|ok",
       "NODE|quality_observation_001|n1|clean|none|0.9|ok",
       "NODE|quality_observation_001|n2|clean|none|0.9|ok",
       "NODE|quality_observation_001|n3|clean|none|0.9|ok",
       "WINDOW_DONE|quality_observation_001",
-    ].join("\n"), input)).toThrow(/Duplicate NODE/);
+    ].join("\n"), input);
+    expect(duplicate.semanticResult.quarantinedRecordCount).toBe(1);
+  });
+
+  test("rejects legacy risk aliases instead of silently rewriting them", () => {
+    const result = parseTranslationQualityObservationOutput([
+      "NODE|quality_observation_001|n1|suspect|mistranslation|0.9|legacy enum",
+      "NODE|quality_observation_001|n2|clean|none|0.9|ok",
+      "NODE|quality_observation_001|n3|clean|none|0.9|ok",
+      "WINDOW_DONE|quality_observation_001",
+    ].join("\n"), input);
+    expect(result.nodes.find((entry) => entry.nodeId === "n1").disposition).toBe("unobserved");
+    expect(result.semanticResult.quarantinedRecordCount).toBe(1);
   });
 });

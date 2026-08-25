@@ -7,7 +7,7 @@
 
 ## Unit Tests
 
-### `backend/src/workflow_engine.js`
+### `backend/src/domains/jobs/workflows/workflow_engine.js`
 Covered scenarios:
 - quality runs when enabled
 - knowledge is skipped when disabled
@@ -15,23 +15,23 @@ Covered scenarios:
 - close runs only after export
 - `quality` runs as a read-only validation stage
 
-### `backend/src/modules/reference_sets.js`
+### `backend/src/domains/reference/sets/reference_sets.js`
 - manifest validation
 - reference path resolution
 - scene normalization for extracted reference text output
 
-### `backend/src/modules/quality.js`
+### `backend/src/domains/translation/quality/quality.js`
 - review output is a read-only validation report
 - quality report includes issues, warnings, and knowledge-source usage
 - invalid agent result schema fails the stage before import
 
-### `backend/src/job_manager.js`
+### `backend/src/domains/jobs/job_manager.js`
 - job creation
 - persisted success result
 - artifact persistence
 - retry and cancellation boundaries
 
-### `backend/src/modules/pipeline_monitor.js`
+### `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
 - normal operation polling
 - late-attach recovery
 - timeout recovery

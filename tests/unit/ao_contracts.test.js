@@ -1,4 +1,4 @@
-const { validateKnowledgeEnrichmentResult } = require("../../backend/src/ao_contracts");
+const { validateKnowledgeEnrichmentResult } = require("../../backend/src/integrations/ao/contracts/ao_contracts");
 
 describe("ao contracts", () => {
   test("accepts knowledge enrichment payloads with character speech evidence", () => {

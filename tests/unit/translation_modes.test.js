@@ -1,6 +1,6 @@
 const {
   resolveTranslationModePolicy,
-} = require("../../backend/src/modules/translation_modes");
+} = require("../../backend/src/domains/translation/modes/translation_modes");
 
 describe("translation mode policies", () => {
   test.each([

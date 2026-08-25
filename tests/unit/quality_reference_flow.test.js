@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { QualityModule, applyProposalsToTranslations } = require("../../backend/src/modules/quality");
+const { QualityModule, applyProposalsToTranslations, selectVerificationTranslations } = require("../../backend/src/domains/translation/quality/quality");
 
 function memory() {
   return {
@@ -12,6 +12,26 @@ function memory() {
     },
   };
 }
+
+test("verification selects local neighbors and expands only sequence-risk pages", () => {
+  const translations = [
+    ...Array.from({ length: 5 }, (_, index) => ({ id: `p1_${index + 1}`, pageName: "1.jpg" })),
+    ...Array.from({ length: 4 }, (_, index) => ({ id: `p2_${index + 1}`, pageName: "2.jpg" })),
+  ];
+  const selected = selectVerificationTranslations({
+    translations,
+    qualityObservation: {
+      nodes: [{ nodeId: "p1_3", pageName: "1.jpg", disposition: "suspect" }],
+      sequenceRisks: [{ pageName: "2.jpg", startNodeId: "p2_2", endNodeId: "p2_3" }],
+    },
+    proposedTranslations: [{ nodeId: "p1_1" }],
+  });
+
+  expect(selected.map((entry) => entry.id)).toEqual([
+    "p1_1", "p1_2", "p1_3", "p1_4",
+    "p2_1", "p2_2", "p2_3", "p2_4",
+  ]);
+});
 
 function observeWindow(input) {
   return Promise.resolve({
@@ -77,7 +97,7 @@ describe("standard quality flow", () => {
     expect(revised.map((entry) => entry.translation)).toEqual(["new", "keep"]);
   });
 
-  test("keeps unresolved completeness issues as a blocking failed check", async () => {
+  test("publishes unresolved completeness issues with an incomplete warning", async () => {
     const scene = { scene: { pages: { p1: { name: "1.jpg", nodes: {
       n1: { kind: { text: { text: "領主は元気だ", translation: "領主は元気だ" } } },
     } } } } };
@@ -104,8 +124,11 @@ describe("standard quality flow", () => {
       targetLanguage: "zh-TW",
     });
 
-    expect(result.overall).toBe("fail");
-    expect(result.status).toBe("failed");
+    expect(result.overall).toBe("pass");
+    expect(result.status).toBe("passed");
+    expect(result.completenessStatus).toBe("incomplete");
+    expect(result.semanticResult.outcome).toBe("warnings");
+    expect(result.learningExcludedNodeIds).toContain("n1");
     expect(result.failedChecks).toContain("translation_completeness");
     expect(result.completeness.unresolvedCount).toBe(1);
   });
@@ -161,9 +184,10 @@ describe("standard quality flow", () => {
     expect(result.blockingIssues).toHaveLength(0);
     expect(result.finalVerification.warnings).toHaveLength(1);
     expect(result.finalVerification.nodes[0].finalDisposition).toBe("unresolved");
+    expect(result).not.toHaveProperty("reviewPackagePath");
   });
 
-  test("stops before specialist quality when observer coverage shows a model outage", async () => {
+  test("keeps a missing observer output as partial quality instead of failing the chapter", async () => {
     const scene = { scene: { pages: { p1: { name: "1.jpg", nodes: {
       n1: { kind: { text: { text: "こんにちは", translation: "你好" } } },
     } } } } };
@@ -172,7 +196,16 @@ describe("standard quality flow", () => {
       error.code = "AO_OUTPUT_MISSING";
       throw error;
     });
-    const specialist = jest.fn();
+    const specialist = jest.fn().mockResolvedValue({
+      windowId: "quality_001",
+      issues: [],
+      warnings: [],
+      revisions: [],
+      passedChecks: [],
+      failedChecks: [],
+      notes: [],
+      dispositions: { n1: "keep" },
+    });
     const module = new QualityModule({
       getScene: jest.fn().mockResolvedValue(scene),
       applyHistoryBatch: jest.fn(),
@@ -181,12 +214,16 @@ describe("standard quality flow", () => {
       runQualityReviewAndOptimization: specialist,
     });
 
-    await expect(module.run({
+    const result = await module.run({
       baseUrl: "http://koharu",
       jobId: `quality_model_outage_${Date.now()}`,
       translationMemory: memory(),
-    })).rejects.toThrow(/configured AO model is unavailable or stalled/);
-    expect(specialist).not.toHaveBeenCalled();
+    });
+    expect(result.status).toBe("passed");
+    expect(result.completenessStatus).toBe("incomplete");
+    expect(result.semanticResult.outcome).toBe("partial");
+    expect(result.qualityObservation.coverage.unobserved).toBe(1);
+    expect(result.learningExcludedNodeIds).toContain("n1");
   });
 
   test("retries a transient stopped AO window once with a new task identity", async () => {

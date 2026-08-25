@@ -66,31 +66,25 @@ export function ReferenceImportPane({
       description={t("reference.section.import.description")}
       defaultOpen
     >
-      <p className="muted-text">
-        Load one or many translated chapter folders first, then review their display names before importing.
-      </p>
       <div className="form-grid">
         <label>
-          <span>Reference folder</span>
+          <span>{t("reference.import.folderLabel")}</span>
           <div className="inline-field-row">
             <input
               readOnly
               value={importForm.sourceFolder}
-              placeholder="Choose one or more folders"
+              placeholder={t("reference.import.folderPlaceholder")}
             />
             <button className="secondary-button" type="button" onClick={() => void pickSingleFolder()}>
-              Add folder
+              {t("reference.import.addFolder")}
             </button>
             <button className="secondary-button" type="button" onClick={() => void pickMultipleFolders()}>
-              Add multiple folders
+              {t("reference.import.addFolders")}
             </button>
           </div>
-          <small className="muted-text">
-            Load one or many translated chapter folders first, then review their display names before importing.
-          </small>
         </label>
         <label>
-          <span>Language</span>
+          <span>{t("reference.import.languageLabel")}</span>
           <select
             value={normalizeReferenceLanguage(importForm.language || DEFAULT_REFERENCE_LANGUAGE)}
             onChange={(event) => {
@@ -107,12 +101,10 @@ export function ReferenceImportPane({
               </option>
             ))}
           </select>
-          <small className="muted-text">
-            This language is written into the imported reference metadata for downstream processing.
-          </small>
+          <small className="muted-text">{t("reference.import.languageHelp")}</small>
         </label>
         <label>
-          <span>Reference type</span>
+          <span>{t("reference.import.kindLabel")}</span>
           <select
             value={importForm.referenceKind}
             onChange={(event) => {
@@ -131,8 +123,8 @@ export function ReferenceImportPane({
           <small className="muted-text">{t("reference.import.referenceType.help")}</small>
         </label>
         <MangaSelector
-          label="Manga"
-          helpText="Optional. Bind imported folders to a manga; each folder becomes a chapter under that manga."
+          label={t("reference.worklist.manga")}
+          helpText={t("reference.import.mangaHelp")}
           selectedValue={importForm.mangaSelection}
           newMangaLabel={importForm.newMangaLabel}
           options={mangaSeriesOptions}
@@ -155,25 +147,25 @@ export function ReferenceImportPane({
         />
         {isSourceReferenceKind(importForm.referenceKind) ? (
           <label>
-            <span>Translator</span>
+            <span>{t("reference.worklist.translator")}</span>
             <small className="muted-text">{t("reference.import.originalTranslator.help")}</small>
             <input value={sourceReferenceTranslatorLabel} readOnly />
           </label>
         ) : (
           <TranslatorSelector
-            label="Translator"
-            helpText="After choosing a manga, select or create a translator. Chapter bindings will be created from folder names automatically."
+            label={t("reference.worklist.translator")}
+            helpText={t("reference.import.translatorHelp")}
             selectedValue={importForm.translatorSelection}
             newTranslatorLabel={importForm.newTranslatorLabel}
             options={availableImportTranslators}
             loading={mangaSeriesLoading}
             failed={mangaSeriesFailed}
             disabled={!importForm.mangaSelection}
-            emptyLabel={importForm.mangaSelection ? "Select translator" : "Choose manga first"}
-            loadingLabel="Loading translators..."
-            failedLabel="Failed to load translators"
-            createLabel="Create new translator"
-            inputPlaceholder="Enter translator name"
+            emptyLabel={t(importForm.mangaSelection ? "reference.import.selectTranslator" : "reference.import.chooseMangaFirst")}
+            loadingLabel={t("reference.import.loadingTranslators")}
+            failedLabel={t("reference.import.failedTranslators")}
+            createLabel={t("reference.import.createTranslator")}
+            inputPlaceholder={t("reference.import.translatorPlaceholder")}
             onSelectionChange={(value) =>
               setImportForm((current) => ({
                 ...current,
@@ -191,9 +183,9 @@ export function ReferenceImportPane({
       </div>
       {hasSourceReferenceInWorklist ? (
         <p className="muted-text">
-          {"\u539F\u6587 Reference \u53EA\u6703\u7D2F\u7A4D\u6558\u4E8B / \u5C0D\u8A71 / \u65C1\u767D\u8B49\u64DA\u8207\u5C08\u6709\u540D\u8A5E\uFF0C\u4E0D\u6703\u5EFA\u7ACB\u7FFB\u8B6F\u98A8\u683C\u3002"}
+          {t("reference.import.sourceNotice")}
           {hasTranslatorReferenceInWorklist
-            ? " \u82E5\u6E05\u55AE\u6DF7\u6709\u8B6F\u8005 reference\uFF0C\u7FFB\u8B6F\u98A8\u683C\u53EA\u6703\u5957\u7528\u5728\u8B6F\u8005\u8CC7\u6599\u3002"
+            ? ` ${t("reference.import.mixedNotice")}`
             : ""}
         </p>
       ) : null}
@@ -204,7 +196,7 @@ export function ReferenceImportPane({
           disabled={Boolean(importBlockedReason)}
           onClick={() => void importQueuedReferenceFolders()}
         >
-          {"\u532F\u5165\u5DF2\u8F09\u5165\u8CC7\u6599\u593E"}
+          {t("reference.import.submit")}
         </button>
         <button
           className="secondary-button"
@@ -212,9 +204,9 @@ export function ReferenceImportPane({
           disabled={importQueue.length === 0}
           onClick={clearQueuedReferenceFolders}
         >
-          {"\u6E05\u7A7A\u8F09\u5165\u6E05\u55AE"}
+          {t("reference.import.clear")}
         </button>
-        <span className="muted-text">{`\u5171 ${importQueue.length} \u7B46`}</span>
+        <span className="muted-text">{t("reference.workspace.chapterCount", { count: importQueue.length })}</span>
       </div>
       {importBlockedReason ? <p className="muted-text">{importBlockedReason}</p> : null}
       {importQueue.length > 0 ? (
@@ -236,14 +228,14 @@ export function ReferenceImportPane({
                   type="button"
                   onClick={() => removeQueuedReferenceFolder(entry.id)}
                 >
-                  {"\u79FB\u9664"}
+                  {t("reference.import.remove")}
                 </button>
               </div>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="muted-text">{"\u5C1A\u672A\u8F09\u5165\u4EFB\u4F55\u8CC7\u6599\u593E\u3002"}</p>
+        <p className="muted-text">{t("reference.import.empty")}</p>
       )}
     </SectionCard>
   );

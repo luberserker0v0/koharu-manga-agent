@@ -31,14 +31,14 @@ That means style learning must support:
 ### What exists today
 Style is currently derived mainly from:
 
-- `backend/src/modules/reference_ingestion.js`
+- `backend/src/domains/reference/ingestion/reference_ingestion.js`
   - `deriveStyleProfile()`
-- `backend/src/modules/knowledge_assets.js`
+- `backend/src/domains/knowledge/assets/knowledge_assets.js`
   - `defaultStyleProfile()`
   - `mergeStyleProfile()`
   - `buildTranslationContext()`
   - `formatTranslationSystemPrompt()`
-- `backend/src/modules/quality.js`
+- `backend/src/domains/translation/quality/quality.js`
   - simple style compliance checks
 
 ### What the current logic actually learns
@@ -346,15 +346,15 @@ The UI should help users answer:
 ## File impact
 
 ### Backend files to change first
-- `backend/src/modules/reference_ingestion.js`
-- `backend/src/modules/knowledge_assets.js`
-- `backend/src/ao_tasks.js`
-- `backend/src/ao_contracts.js`
+- `backend/src/domains/reference/ingestion/reference_ingestion.js`
+- `backend/src/domains/knowledge/assets/knowledge_assets.js`
+- `backend/src/integrations/ao/tasks/ao_tasks.js`
+- `backend/src/integrations/ao/contracts/ao_contracts.js`
 
 ### Backend files to change after schema stabilizes
-- `backend/src/modules/quality.js`
-- `backend/src/modules/knowledge.js`
-- `backend/src/http/api_server.js`
+- `backend/src/domains/translation/quality/quality.js`
+- `backend/src/domains/knowledge/learning/knowledge.js`
+- `backend/src/http/server/api_server.js`
 
 ### GUI files to update later
 - `gui/src/renderer/pages/ReferencePage.tsx`

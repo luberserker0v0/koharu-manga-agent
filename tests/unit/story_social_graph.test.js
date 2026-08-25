@@ -1,7 +1,7 @@
 const {
   createStoryGraphFromContext,
   deriveSocialGraphFromStoryGraph,
-} = require("../../backend/src/modules/knowledge_assets");
+} = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
 
 describe("story and social graph derivation", () => {
   test("creates a social edge from explicit relationship endpoints with multiple evidences", () => {
@@ -49,7 +49,7 @@ describe("story and social graph derivation", () => {
     ]);
   });
 
-  test("resolves a single-character OCR difference to one known identity", () => {
+  test("does not merge a one-character OCR difference without explicit identity evidence", () => {
     const storyGraph = createStoryGraphFromContext({
       mangaId: "manga-1",
       chapterId: "chapter-1",
@@ -75,7 +75,15 @@ describe("story and social graph derivation", () => {
       },
     });
 
-    expect(storyGraph.nodes.filter((node) => node.node_type === "character")).toHaveLength(2);
+    const characterNodes = storyGraph.nodes.filter((node) => node.node_type === "character");
+    expect(characterNodes).toHaveLength(3);
+    expect(characterNodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ canonical_name: "リアム・セラ・バンフィールド" }),
+      expect.objectContaining({
+        canonical_name: "リアム・セラ・パンフィールド",
+        attributes: expect.objectContaining({ identity_status: "provisional" }),
+      }),
+    ]));
     expect(storyGraph.edges.find((edge) => edge.relation_type === "serves")).toBeDefined();
   });
 });

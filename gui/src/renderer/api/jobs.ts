@@ -1,10 +1,75 @@
 import { apiFetch, buildApiUrl } from "./client";
 import type { SourcePreflightResult } from "../types/settings";
 
+export type GuiAtomicJobType =
+  | "translation"
+  | "reference_extraction"
+  | "reference_observation"
+  | "reference_deep_review"
+  | "reference_story_update"
+  | "reference_knowledge_commit"
+  | "reference_style_commit"
+  | "reference_bilingual_evidence_window"
+  | "reference_bilingual_commit"
+  | "post_edit_export"
+  | "translation_knowledge_commit"
+  | "translation_deep_audit"
+  | "translation_deep_audit_apply"
+  | "translation_quality_repair";
+
+export type GuiWorkflowJobType =
+  | "reference_ingestion"
+  | "reference_bilingual_enrichment";
+
+export type GuiJobType = GuiAtomicJobType | GuiWorkflowJobType;
+
+export type GuiJobStatus =
+  | "queued"
+  | "waiting_dependency"
+  | "running"
+  | "cancel_requested"
+  | "succeeded"
+  | "failed"
+  | "canceled"
+  | "blocked";
+
+export type GuiJobOutcome = "clean" | "warnings" | "partial";
+
+export type GuiJobDiagnostics = {
+  warningCount?: number;
+  acceptedRecordCount?: number;
+  quarantinedRecordCount?: number;
+  degradedStages?: string[];
+  warnings?: string[];
+  resourceFailureType?: "quota" | "timeout" | "transient_network" | "invalid_output" | "integrity" | "persistence" | "canceled" | "unknown";
+  resumeAvailable?: boolean;
+  failedWindowId?: string | null;
+  recommendation?: string | null;
+  failureSource?: "ao" | "koharu" | "backend" | "storage" | "data" | "unknown";
+  failureStage?: string | null;
+  failureCode?: string | null;
+  recommendedAction?: "restore_quota" | "start_ao_and_retry" | "restart_koharu_and_retry" | "resume_checkpoint" | "retry_after_timeout" | "retry_semantic_stage" | "check_storage" | "inspect_input_artifacts" | "inspect_raw_error";
+};
+
+const GUI_JOB_STATUSES: ReadonlySet<string> = new Set<GuiJobStatus>([
+  "queued",
+  "waiting_dependency",
+  "running",
+  "cancel_requested",
+  "succeeded",
+  "failed",
+  "canceled",
+  "blocked",
+]);
+
+export function isGuiJobStatus(value: unknown): value is GuiJobStatus {
+  return typeof value === "string" && GUI_JOB_STATUSES.has(value);
+}
+
 export type GuiJob = {
   id: string;
-  type: string;
-  status: string;
+  type: GuiJobType;
+  status: GuiJobStatus;
   stage: string;
   payload: Record<string, unknown>;
   result: unknown;
@@ -20,6 +85,14 @@ export type GuiJob = {
   laneKey?: string | null;
   sequenceNumber?: number | null;
   blockedReason?: string | null;
+  outcome?: GuiJobOutcome | null;
+  diagnostics?: GuiJobDiagnostics | null;
+  resumeMetadata?: {
+    resumeAvailable: boolean;
+    checkpointPaths?: string[];
+    failedWindowId?: string | null;
+    resourceFailureType?: string | null;
+  } | null;
   events: Array<{ id: number; type: string; payload: unknown; createdAt: string }>;
   artifacts: Array<{ id: number; kind: string; path: string; metadata: unknown; createdAt: string }>;
   children?: GuiJob[];
@@ -40,7 +113,7 @@ export type GuiArtifact = {
   createdAt: string;
 };
 
-export type QualityReviewItem = {
+export type DeepAuditReviewItem = {
   nodeId: string;
   original: string;
   currentTranslation: string;
@@ -53,20 +126,20 @@ export type QualityReviewItem = {
   allowedDecisions: Array<"accept_proposal" | "manual_edit" | "confirm_current" | "ignore_and_publish">;
 };
 
-export type QualityReviewPackage = {
+export type DeepAuditReviewPackage = {
   schemaVersion: number;
-  status: "waiting_user_review" | "passed" | "failed";
+  status: "awaiting_decisions";
   generatedAt: string;
   pages: Array<{
     pageId: string | null;
     pageName: string;
-    items: QualityReviewItem[];
+    items: DeepAuditReviewItem[];
     sequenceRisks: Array<{ startNodeId: string; endNodeId: string; nodeIds: string[]; reason: string }>;
   }>;
   summary: { blocking: number; warnings: number; pages: number };
 };
 
-export type QualityReviewDecision = {
+export type DeepAuditReviewDecision = {
   nodeId: string;
   action: "accept_proposal" | "manual_edit" | "confirm_current" | "ignore_and_publish";
   translation?: string;
@@ -699,6 +772,30 @@ export type TranslationMemoryInspection = {
   warnings: string[];
 };
 
+export type TranslationPublicationRevision = {
+  revisionId: string;
+  status: "active" | "superseded";
+  chapterId: string;
+  knowledgeStatus: "pending" | "queued" | "committed" | "failed" | "skipped_superseded" | "not_applicable";
+  knowledgeOutcome?: GuiJobOutcome | null;
+  qualityStatus?: "passed" | "unverified" | "not_applicable";
+  qualityOutcome?: GuiJobOutcome | null;
+  completenessStatus?: "complete" | "incomplete";
+  qualityWarningCount?: number;
+  publishedAt: string;
+};
+
+export type TranslationPublicationRegistry = {
+  schemaVersion: number;
+  mangaId: string;
+  translatorId: string;
+  chapters: Record<string, {
+    chapterId: string;
+    activeRevisionId: string;
+    revisions: TranslationPublicationRevision[];
+  }>;
+};
+
 export type ReferenceExtractionPayload = {
   referenceSetId: string;
   baseUrl?: string;
@@ -768,6 +865,15 @@ export function inspectTranslationMemory(
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export function getTranslationPublications(
+  mangaId: string,
+  translatorId: string
+): Promise<TranslationPublicationRegistry> {
+  return apiFetch(
+    `/translation-publications/${encodeURIComponent(mangaId)}?translatorId=${encodeURIComponent(translatorId)}`
+  );
 }
 
 export function createSourcePreflight(payload: {
@@ -860,12 +966,12 @@ export function createPostEditExportJob(payload: PostEditExportPayload): Promise
   });
 }
 
-export function getQualityReview(jobId: string): Promise<QualityReviewPackage> {
-  return apiFetch<QualityReviewPackage>(`/jobs/${encodeURIComponent(jobId)}/quality-review`);
+export function getDeepAuditReview(jobId: string): Promise<DeepAuditReviewPackage> {
+  return apiFetch<DeepAuditReviewPackage>(`/jobs/${encodeURIComponent(jobId)}/deep-audit/review`);
 }
 
-export function confirmQualityReview(jobId: string, decisions: QualityReviewDecision[]): Promise<GuiJob> {
-  return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/quality-review/confirm`, {
+export function applyDeepAuditReview(jobId: string, decisions: DeepAuditReviewDecision[]): Promise<GuiJob> {
+  return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/deep-audit/apply`, {
     method: "POST",
     body: JSON.stringify({ decisions }),
   });
@@ -875,10 +981,18 @@ export function createQualityRepairJob(jobId: string): Promise<GuiJob> {
   return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/quality-repair`, { method: "POST" });
 }
 
+export function createTranslationKnowledgeRetryJob(jobId: string): Promise<GuiJob> {
+  return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/knowledge-retry`, { method: "POST" });
+}
+
 export function retryJob(jobId: string): Promise<GuiJob> {
   return apiFetch(`/jobs/${jobId}/retry`, {
     method: "POST",
   });
+}
+
+export function resumeJob(jobId: string): Promise<GuiJob> {
+  return apiFetch(`/jobs/${jobId}/resume`, { method: "POST" });
 }
 
 export function cancelJob(jobId: string): Promise<GuiJob> {

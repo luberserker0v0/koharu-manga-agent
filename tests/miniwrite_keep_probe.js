@@ -1,4 +1,4 @@
-const { AOClient } = require("../backend/src/ao_client");
+const { AOClient } = require("../backend/src/integrations/ao/client/ao_client");
 const { config } = require("../backend/src/config");
 const opencode = require("../backend/ao/opencode/opencode.json");
 

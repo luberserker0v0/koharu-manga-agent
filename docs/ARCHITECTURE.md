@@ -86,7 +86,7 @@ Current implementation status:
 - each agent stage records import/export manifests for backend-side auditing
 
 ### Koharu Client
-`backend/src/koharu_client.js` is the formal low-level Koharu wrapper.
+`backend/src/integrations/koharu/client/koharu_client.js` is the formal low-level Koharu wrapper.
 
 It owns:
 - Koharu HTTP request helpers
@@ -99,21 +99,21 @@ It owns:
 ## Module Ownership
 
 ### Core Workflow Modules
-- `backend/src/modules/project_setup.js`
+- `backend/src/integrations/koharu/pipeline/project_setup.js`
   - wraps legacy `one_click_translate.js` orchestration for migration
-- `backend/src/modules/pipeline_monitor.js`
+- `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
   - replaces `pipeline-runner`
   - owns late-attach recovery and fast-finish handling
-- `backend/src/modules/quality.js`
+- `backend/src/domains/translation/quality/quality.js`
   - replaces `quality-checker`
   - owns read-only validation of the current translation against project knowledge assets
   - uses Agent SDK only for semantic review
-- `backend/src/modules/knowledge.js`
+- `backend/src/domains/knowledge/learning/knowledge.js`
   - replaces `knowledge-builder`
   - uses Agent SDK only for semantic enrichment
-- `backend/src/modules/export.js`
+- `backend/src/domains/translation/execution/export.js`
   - owns export behavior
-- `backend/src/modules/project_lifecycle.js`
+- `backend/src/integrations/koharu/pipeline/project_lifecycle.js`
   - owns close behavior
 
 Current implementation note:
@@ -122,15 +122,15 @@ Current implementation note:
 - some legacy comparison helpers and historical artifacts still remain in the repository, but they are not part of the primary quality path
 
 ### Non-Workflow Modules
-- `backend/src/modules/admin.js`
+- `backend/src/domains/jobs/lifecycle/admin.js`
   - list projects
   - log maintenance
 
 ### Agent Integration Modules
-- `backend/src/ao_client.js`
-- `backend/src/ao_assets.js`
-- `backend/src/ao_tasks.js`
-- `backend/src/ao_contracts.js`
+- `backend/src/integrations/ao/client/ao_client.js`
+- `backend/src/integrations/ao/assets/ao_assets.js`
+- `backend/src/integrations/ao/tasks/ao_tasks.js`
+- `backend/src/integrations/ao/contracts/ao_contracts.js`
 
 These now form the AO-only integration layer. The backend no longer keeps a
 generic provider registry, SDK-loaded runtime adapter, or `agent_sdk`

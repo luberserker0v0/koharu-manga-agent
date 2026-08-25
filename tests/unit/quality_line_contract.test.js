@@ -1,4 +1,4 @@
-const { parseQualityWindowOutput } = require("../../backend/src/quality_line_contract");
+const { parseQualityWindowOutput } = require("../../backend/src/integrations/ao/contracts/quality_line_contract");
 
 const input = { windowId: "quality_001", candidates: [{ nodeId: "n1", pageName: "1.jpg", original: "月晶", currentTranslation: "舊譯", reasons: [{ type: "locked_term", evidence: { canonicalTranslation: "月之水晶" } }] }] };
 
@@ -29,22 +29,28 @@ describe("quality line contract", () => {
     )).toThrow(/WINDOW windowId does not match/);
   });
 
-  test("rejects conflicting keep and revision dispositions", () => {
-    expect(() => parseQualityWindowOutput(
+  test("quarantines conflicting keep and revision dispositions", () => {
+    const result = parseQualityWindowOutput(
       "WARNING|n1|translation_accuracy|medium|0.7|keep current text|keep\nREVISION|n1|translation_accuracy|0.8|月之水晶|revise it\nWINDOW_DONE|quality_001",
       input
-    )).toThrow(/conflicts with existing keep disposition/);
+    );
+    expect(result.revisions).toEqual([]);
+    expect(result.semanticResult.quarantinedRecordCount).toBe(1);
   });
 
-  test("rejects unsupported unicode escape text instead of corrupting it", () => {
-    expect(() => parseQualityWindowOutput(
+  test("quarantines unsupported unicode escape text instead of corrupting it", () => {
+    const result = parseQualityWindowOutput(
       "WARNING|n1|translation_accuracy|medium|0.7|literal \\u201c escape|keep\nWINDOW_DONE|quality_001",
       input
-    )).toThrow(/Unknown line-contract escape/);
+    );
+    expect(result.warnings).toEqual([]);
+    expect(result.semanticResult.quarantinedRecordCount).toBe(1);
   });
-  test("rejects unknown nodes and locked-term rewrites", () => {
-    expect(() => parseQualityWindowOutput("REVISION|bad|translation_accuracy|0.9|x|x\nWINDOW_DONE|quality_001", input)).toThrow(/unknown node/);
-    expect(() => parseQualityWindowOutput("REVISION|n1|translation_accuracy|0.9|別名|x\nWINDOW_DONE|quality_001", input)).toThrow(/breaks locked term/);
+  test("quarantines unknown nodes and locked-term rewrites", () => {
+    const unknown = parseQualityWindowOutput("REVISION|bad|translation_accuracy|0.9|x|x\nWINDOW_DONE|quality_001", input);
+    const locked = parseQualityWindowOutput("REVISION|n1|translation_accuracy|0.9|別名|x\nWINDOW_DONE|quality_001", input);
+    expect(unknown.semanticResult.quarantinedRecordCount).toBe(1);
+    expect(locked.semanticResult.quarantinedRecordCount).toBe(1);
   });
 
   test("requires an explicit outcome for completeness candidates", () => {
@@ -64,12 +70,13 @@ describe("quality line contract", () => {
     );
     expect(accepted.acceptedNodeIds).toEqual(["n2"]);
     expect(accepted.acceptances[0].reason).toContain("creator name");
-    expect(() => parseQualityWindowOutput("WINDOW_DONE|quality_001", completenessInput)).toThrow(
-      /requires REVISION or ACCEPT/
-    );
-    expect(() => parseQualityWindowOutput(
+    const unresolved = parseQualityWindowOutput("WINDOW_DONE|quality_001", completenessInput);
+    expect(unresolved.unresolvedNodeIds).toEqual(["n2"]);
+    expect(unresolved.semanticResult.outcome).toBe("partial");
+    const invalidAccept = parseQualityWindowOutput(
       "ACCEPT|n1|translation_completeness|looks fine\nWINDOW_DONE|quality_001",
       input
-    )).toThrow(/non-completeness candidate/);
+    );
+    expect(invalidAccept.semanticResult.quarantinedRecordCount).toBe(1);
   });
 });

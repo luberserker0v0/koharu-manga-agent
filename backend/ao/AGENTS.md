@@ -37,9 +37,6 @@ Read the specialist file that matches the current task before producing output.
   - `workspace/.opencode/skills/reference-locale-projection-contract/SKILL.md`
 - Long-term knowledge extraction from optimized translations:
   - `workspace/.opencode/agents/knowledge-builder.md`
-- Terminology extraction from reference material:
-  - `workspace/.opencode/agents/terminology-extractor.md`
-  - `workspace/.opencode/docs/reference-story-evidence-contract.md`
 - Terminology consistency, alias handling, and canonical-form reasoning:
   - `workspace/.opencode/agents/terminology-normalizer.md`
 - Style inference for dialogue, narration, register, punctuation, or reusable voice rules:
@@ -67,3 +64,7 @@ Read the specialist file that matches the current task before producing output.
 - Use arrays and objects exactly where the schema expects them.
 - If information is missing, still return the closest valid schema and record uncertainty in `notes` when that field exists.
 - Prefer omission or uncertainty over confident invention.
+- For file-output tasks, the result file is the only authoritative result.
+- Never repeat the result, summarize it, or explain it in the message response.
+- After successfully writing the complete result file, reply with exactly `DONE` and stop.
+- A message response never substitutes for a missing or invalid result file.

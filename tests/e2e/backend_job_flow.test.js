@@ -2,17 +2,23 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { JobStore } = require("../../backend/src/storage/job_store");
-const { WorkflowEngine } = require("../../backend/src/workflow_engine");
-const { JobManager } = require("../../backend/src/job_manager");
-const { createApiServer } = require("../../backend/src/http/api_server");
-const { SourcePreflightModule } = require("../../backend/src/modules/source_preflight");
-const { resolveTranslationModePolicy } = require("../../backend/src/modules/translation_modes");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
+const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
+const { resolveTranslationModePolicy } = require("../../backend/src/domains/translation/modes/translation_modes");
 
 const MINIMAL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7Z0L0AAAAASUVORK5CYII=",
   "base64"
 );
+
+const TEST_OUTPUT_BINDING = Object.freeze({
+  mangaId: "e2e_series",
+  translatorId: "e2e_output",
+  chapterId: "e2e_chapter",
+});
 
 const FETCH_FORBIDDEN_PORTS = new Set([
   1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
@@ -209,7 +215,7 @@ describe("backend job flow e2e", () => {
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -280,6 +286,7 @@ describe("backend job flow e2e", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...TEST_OUTPUT_BINDING,
         translationMode: "local_style",
         targetLanguage: "zh-TW",
         qualityCheck: false,
@@ -307,7 +314,7 @@ describe("backend job flow e2e", () => {
       baseUrl: null,
       mangaId: "phantom_fantasy",
       mangaLabel: "Phantom Fantasy",
-      translatorId: null,
+      translatorId: TEST_OUTPUT_BINDING.translatorId,
       translatorLabel: null,
       chapterId: "ch_001",
       chapterTitle: null,
@@ -385,6 +392,7 @@ describe("backend job flow e2e", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...TEST_OUTPUT_BINDING,
         translationMode: "reference_style",
         referenceTranslatorId: "translator_reference",
         qualityCheck: true,
@@ -444,6 +452,7 @@ describe("backend job flow e2e", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...TEST_OUTPUT_BINDING,
         translationMode: "local_style",
         qualityCheck: false,
         targetLanguage: "zh-TW",
@@ -519,7 +528,7 @@ describe("backend job flow e2e", () => {
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -570,7 +579,7 @@ describe("backend job flow e2e", () => {
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -581,9 +590,9 @@ describe("backend job flow e2e", () => {
     expect(projectLifecycle.closeCurrentProject).not.toHaveBeenCalled();
   });
 
-  test("unresolved translation completeness blocks export", async () => {
-    const exportModule = { run: jest.fn() };
-    const projectLifecycle = { closeCurrentProject: jest.fn() };
+  test("unresolved translation completeness exports with warnings", async () => {
+    const exportModule = { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\incomplete.zip", size: 1, format: "rendered" }) };
+    const projectLifecycle = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
     ({ api, baseUrl } = await createBackend({
       modules: {
         projectSetup: { run: jest.fn().mockResolvedValue({
@@ -605,6 +614,9 @@ describe("backend job flow e2e", () => {
           passedChecks: ["translations_present"],
           failedChecks: ["translation_completeness"],
           completeness: { unresolvedCount: 1 },
+          completenessStatus: "incomplete",
+          learningExcludedNodeIds: ["n1"],
+          status: "passed",
         }) },
         knowledgeModule: { run: jest.fn() },
         exportModule,
@@ -617,6 +629,7 @@ describe("backend job flow e2e", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        ...TEST_OUTPUT_BINDING,
         translationMode: "reference_style",
         referenceTranslatorId: "translator_reference",
         qualityCheck: true,
@@ -628,10 +641,9 @@ describe("backend job flow e2e", () => {
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
 
-    expect(job.status).toBe("failed");
-    expect(job.error).toContain("Quality blocked export");
-    expect(exportModule.run).not.toHaveBeenCalled();
-    expect(projectLifecycle.closeCurrentProject).not.toHaveBeenCalled();
+    expect(job.status).toBe("succeeded");
+    expect(exportModule.run).toHaveBeenCalled();
+    expect(projectLifecycle.closeCurrentProject).toHaveBeenCalled();
   });
 
   test("cancel request turns a running job into canceled", async () => {
@@ -665,7 +677,7 @@ describe("backend job flow e2e", () => {
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
     });
     const created = await createRes.json();
 
@@ -728,7 +740,7 @@ describe("backend job flow e2e", () => {
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
     });
     const created = await createRes.json();
 

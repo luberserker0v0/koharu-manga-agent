@@ -22,8 +22,12 @@ export type RuntimeStatus = {
   };
   agent: {
     status: string;
-    provider: string | null;
-    runtime: unknown;
+    baseUrl?: string | null;
+    model?: string | null;
+    agentName?: string | null;
+    lastError?: string | null;
+    provider?: string | null;
+    runtime?: unknown;
   };
   quality: {
     enabled: boolean;
@@ -52,27 +56,16 @@ export type BackendConfig = {
       enabled?: boolean;
     };
   };
-  translation?: {
-    modelId?: string;
-    serverUrl?: string;
-    providerId?: string;
-  };
-  quality?: {
-    modelId?: string;
-    serverUrl?: string;
-  };
   agent?: {
-    provider?: string;
-    opencode?: {
-      moduleName?: string;
-      exportName?: string | null;
-      runtime?: {
-        mode?: "managed" | "external";
-        baseUrl?: string | null;
-        commandDir?: string;
-        timeoutMs?: number;
-      };
-    };
+    baseUrl?: string;
+    apiKey?: string | null;
+    model?: string;
+    agentName?: string | null;
+    startTimeoutMs?: number;
+    readyPollIntervalMs?: number;
+    readyTimeoutMs?: number;
+    messageTimeoutMs?: number;
+    modelSilenceTimeoutMs?: number;
   };
   engines?: Record<string, string> | null;
   koharuRuntime?: {
@@ -89,6 +82,21 @@ export type KoharuEngineOption = {
   id: string;
   name?: string;
   produces?: string[];
+};
+
+export type AOModelOption = {
+  id: string;
+  providerId: string;
+  providerName: string;
+  modelId: string;
+  name: string;
+};
+
+export type AOProviderCatalog = {
+  baseUrl: string;
+  models: AOModelOption[];
+  providers: Array<{ id: string; name: string }>;
+  defaults: Record<string, string>;
 };
 
 export type KoharuEngineCatalog = {
@@ -129,6 +137,22 @@ export function getRuntimeStatus(): Promise<RuntimeStatus> {
 
 export function getBackendConfig(): Promise<BackendConfig> {
   return apiFetch("/config");
+}
+
+export function updateBackendConfig(config: BackendConfig): Promise<BackendConfig> {
+  return apiFetch("/config", { method: "PATCH", body: JSON.stringify(config) });
+}
+
+export function resetBackendConfig(): Promise<BackendConfig> {
+  return apiFetch("/config/reset", { method: "POST" });
+}
+
+export function testAOConnection(baseUrl: string, apiKey: string | null): Promise<{ available: boolean; baseUrl: string }> {
+  return apiFetch("/runtime/ao/connect", { method: "POST", body: JSON.stringify({ baseUrl, apiKey }), timeoutMs: 10000 });
+}
+
+export function getAOProviderCatalog(baseUrl: string, apiKey: string | null): Promise<AOProviderCatalog> {
+  return apiFetch("/runtime/ao/providers", { method: "POST", body: JSON.stringify({ baseUrl, apiKey }), timeoutMs: 60000 });
 }
 
 export function getKoharuEngineCatalog(): Promise<{ engines: KoharuEngineCatalog }> {

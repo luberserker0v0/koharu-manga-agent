@@ -13,6 +13,9 @@ Write only these records:
 - `OPEN_THREAD|nodeId,nodeId|confidence|participants=name,name|summary|translationImpact`
 - `NO_UPDATE|reason`
 - `NOTES|text`
+- `STORY_DELTA_DONE`
+
+`STORY_DELTA_DONE` appears exactly once as the final non-empty line.
 
 Use one to six evidence anchors. A single narrowly stated fact may use one anchor. A summary joining multiple claims, causes, states, or relationship changes must cite every supporting anchor or be split/narrowed. Never place `|` inside a field.
 

@@ -145,12 +145,12 @@ For live Reference work, also verify:
 
 ## Key Paths
 - `backend/server.js`: backend entrypoint
-- `backend/src/ao_client.js`: AO HTTP client
-- `backend/src/ao_assets.js`: AO runtime asset packaging
-- `backend/src/modules/reference_observation.js`: reusable chapter observation
-- `backend/src/modules/reference_ingestion.js`: Reference workflow orchestration
-- `backend/src/modules/reference_ingestion_story.js`: source story update
-- `backend/src/modules/reference_bilingual_enrichment.js`: source-target evidence enrichment
+- `backend/src/integrations/ao/client/ao_client.js`: AO HTTP client
+- `backend/src/integrations/ao/assets/ao_assets.js`: AO runtime asset packaging
+- `backend/src/domains/reference/observation/reference_observation.js`: reusable chapter observation
+- `backend/src/domains/reference/ingestion/reference_ingestion.js`: Reference workflow orchestration
+- `backend/src/domains/reference/ingestion/reference_ingestion_story.js`: source story update
+- `backend/src/domains/reference/bilingual/reference_bilingual_enrichment.js`: source-target evidence enrichment
 - `backend/ao/`: AO runtime assets
 - `gui/src/renderer/features/`: maintainable GUI feature modules
 - `references/`: Reference manifests, Extraction, Observation, and evidence artifacts

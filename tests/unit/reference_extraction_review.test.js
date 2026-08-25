@@ -7,8 +7,8 @@ const {
   initializeExtractionReview,
   saveOrderDraft,
   syncDraftFromScene,
-} = require("../../backend/src/modules/reference_extraction_review");
-const { referenceSetPaths } = require("../../backend/src/modules/reference_sets");
+} = require("../../backend/src/domains/reference/review/reference_extraction_review");
+const { referenceSetPaths } = require("../../backend/src/domains/reference/sets/reference_sets");
 
 function textNode(text, x = 0, y = 0) {
   return {

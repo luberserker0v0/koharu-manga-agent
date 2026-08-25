@@ -3,7 +3,7 @@
 const {
   convertReferenceSet,
   createConvertedReferenceSetId,
-} = require("../src/modules/reference_image_conversion");
+} = require("../src/domains/reference/extraction/reference_image_conversion");
 
 function parseArgs(argv = process.argv.slice(2)) {
   const args = {

@@ -2,12 +2,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-jest.mock("../../backend/src/modules/reference_extraction_review", () => ({
+jest.mock("../../backend/src/domains/reference/review/reference_extraction_review", () => ({
   ensureLegacyReviewMetadata: () => ({ status: "reviewed", currentFingerprint: "test-fingerprint" }),
 }));
 
-const { JobManager } = require("../../backend/src/job_manager");
-const { JobStore } = require("../../backend/src/storage/job_store");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
 
 function nextTurn() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -81,7 +81,7 @@ describe("JobManager cancellation", () => {
   });
 
   test("cancels a queued job before the engine starts", async () => {
-    const engine = { runReferenceIngestionJob: jest.fn() };
+    const engine = { runReferenceIngestionAnalysisJob: jest.fn() };
     const { manager } = createManager(engine);
     const job = manager.createReferenceIngestionJob({ referenceSetId: "ref-1" });
 
@@ -90,7 +90,7 @@ describe("JobManager cancellation", () => {
 
     expect(canceled.status).toBe("canceled");
     expect(manager.getJob(job.id).stage).toBe("canceled");
-    expect(engine.runReferenceIngestionJob).not.toHaveBeenCalled();
+    expect(engine.runReferenceIngestionAnalysisJob).not.toHaveBeenCalled();
   });
 
   test("marks a running job cancel_requested and finishes it as canceled", async () => {

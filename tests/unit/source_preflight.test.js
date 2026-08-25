@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { SourcePreflightModule } = require("../../backend/src/modules/source_preflight");
+const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
 
 const PNG_1X1_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+XnYQAAAAASUVORK5CYII=";

@@ -3,6 +3,34 @@ const os = require("os");
 const path = require("path");
 
 describe("knowledge revisions", () => {
+  test("deletes only the requested translator chapter revisions", () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-revision-delete-"));
+    const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+    const store = new JobStore(path.join(tempRoot, "jobs.sqlite"));
+    const createRevision = (id, translatorId, chapterId) => store.createKnowledgeRevision({
+      id,
+      mangaId: "series",
+      translatorId,
+      chapterId,
+      workflowId: `workflow_${id}`,
+      beforeSnapshotPath: `${id}_before.json`,
+      afterSnapshotPath: `${id}_after.json`,
+      payload: {},
+    });
+    createRevision("target", "translator_a", "chapter_1");
+    createRevision("other_chapter", "translator_a", "chapter_2");
+    createRevision("other_translator", "translator_b", "chapter_1");
+
+    expect(store.deleteKnowledgeRevisions({
+      mangaId: "series",
+      translatorId: "translator_a",
+      chapterId: "chapter_1",
+    })).toBe(1);
+    expect(store.getKnowledgeRevision("target")).toBeNull();
+    expect(store.getKnowledgeRevision("other_chapter")).not.toBeNull();
+    expect(store.getKnowledgeRevision("other_translator")).not.toBeNull();
+  });
+
   test("restores the prior baseline and marks later revisions stale", () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "knowledge-revisions-"));
     const knowledgeRoot = path.join(tempRoot, "knowledge_base");
@@ -15,12 +43,12 @@ describe("knowledge revisions", () => {
       },
     }));
 
-    const { JobStore } = require("../../backend/src/storage/job_store");
+    const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
     const {
       finalizeKnowledgeRevision,
       prepareKnowledgeRevision,
       revisionTargets,
-    } = require("../../backend/src/modules/knowledge_revisions");
+    } = require("../../backend/src/domains/knowledge/revisions/knowledge_revisions");
     const store = new JobStore(path.join(tempRoot, "jobs.sqlite"));
     const scope = { mangaId: "series", translatorId: "source" };
     const storyPath = revisionTargets(scope).storyContext;
@@ -92,8 +120,8 @@ describe("knowledge revisions", () => {
       },
     }));
 
-    const { JobStore } = require("../../backend/src/storage/job_store");
-    const { prepareKnowledgeRevision } = require("../../backend/src/modules/knowledge_revisions");
+    const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+    const { prepareKnowledgeRevision } = require("../../backend/src/domains/knowledge/revisions/knowledge_revisions");
     const store = new JobStore(path.join(tempRoot, "jobs.sqlite"));
     store.createKnowledgeRevision({
       id: "orphan_revision",

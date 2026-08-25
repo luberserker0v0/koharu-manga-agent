@@ -12,7 +12,7 @@ const config = require("../lib/config");
 const { apiFetch, buildUrl, ENDPOINTS } = require("../lib/api");
 const {
   preflightImagesForKoharuUpload,
-} = require("../../../../backend/src/modules/reference_image_conversion");
+} = require("../../../../backend/src/domains/reference/extraction/reference_image_conversion");
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 const ENGINE_ORDER = [
@@ -344,14 +344,14 @@ function matchesRequestedTarget(current, modelId, providerId) {
   return target.kind === "local" && (target.providerId === null || target.providerId === undefined);
 }
 
-async function loadDefaultLlm(baseUrl) {
-  const modelId = getDefaultModelId();
+async function loadDefaultLlm(baseUrl, configuredModelId = null, configuredProviderId = null) {
+  const modelId = configuredModelId || config.LLM.defaultModel || getDefaultModelId();
   if (!modelId) {
     throw new Error("Default model file is missing or empty");
   }
 
   try {
-    return await loadModelTarget(modelId, baseUrl, config.LLM.defaultProvider || "openai-compatible");
+    return await loadModelTarget(modelId, baseUrl, configuredProviderId || config.LLM.defaultProvider || "openai-compatible");
   } catch (providerError) {
     const catalog = await fetchLlmCatalog(baseUrl).catch(() => null);
     if (!catalogHasLocalModel(catalog, modelId)) {
@@ -404,10 +404,11 @@ function catalogHasEngine(engineKey, engineId, catalog) {
   });
 }
 
-async function resolveEngines(baseUrl) {
-  const preferred = config.ENGINES && typeof config.ENGINES === "object" ? { ...config.ENGINES } : {};
-  const saved = getSavedEngines();
-  const merged = { ...saved, ...preferred };
+async function resolveEngines(baseUrl, configuredEngines = null) {
+  const preferred = configuredEngines && typeof configuredEngines === "object"
+    ? { ...configuredEngines }
+    : config.ENGINES && typeof config.ENGINES === "object" ? { ...config.ENGINES } : {};
+  const merged = { ...preferred };
   const missingRequired = ENGINE_ORDER.filter((entry) => entry.required && !merged[entry.key]);
   const missingOptional = ENGINE_ORDER.filter((entry) => !entry.required && !merged[entry.key]);
 
@@ -505,8 +506,8 @@ async function orchestrate(options = {}) {
 
   await openProject(projectId, opts.baseUrl);
   const uploadResult = await uploadPages(imagePaths, opts.baseUrl);
-  const llmResult = await loadDefaultLlm(opts.baseUrl);
-  const engines = await resolveEngines(opts.baseUrl);
+  const llmResult = await loadDefaultLlm(opts.baseUrl, opts.modelId, opts.providerId);
+  const engines = await resolveEngines(opts.baseUrl, opts.engines);
   const steps = buildPipelineSteps(engines);
   const pipelineResult = await startPipeline(
     steps,

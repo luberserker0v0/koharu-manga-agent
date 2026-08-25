@@ -1,4 +1,4 @@
-const { createApiServer } = require("../../backend/src/http/api_server");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
 
 describe("Extraction review API", () => {
   let api;

@@ -16,10 +16,10 @@ runtime adapters.
 - backend validates AO outputs against task-specific schemas before mutating state
 
 ## Implemented Backend Modules
-- `backend/src/ao_client.js`
-- `backend/src/ao_assets.js`
-- `backend/src/ao_tasks.js`
-- `backend/src/ao_contracts.js`
+- `backend/src/integrations/ao/client/ao_client.js`
+- `backend/src/integrations/ao/assets/ao_assets.js`
+- `backend/src/integrations/ao/tasks/ao_tasks.js`
+- `backend/src/integrations/ao/contracts/ao_contracts.js`
 
 Responsibilities:
 - `ao_client`

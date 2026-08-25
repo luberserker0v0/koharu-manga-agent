@@ -67,6 +67,8 @@ Request body:
 ```
 
 `translationMode` is required and must be `quick`, `reference_style`, `local_style`, or `learning_style`.
+Translation jobs also require `mangaId`, `translatorId`, and `chapterId`. These fields identify the
+single output publication; chapter numbers do not need to be contiguous.
 `qualityCheck` only controls the optional Quality stage for `reference_style` and `local_style`;
 `quick` always skips it and `learning_style` always runs it. Translation jobs never execute
 Reference Ingestion. Reference modes consume only completed Reference assets.
@@ -289,6 +291,15 @@ POST /jobs/{jobId}/retry
 
 Creates a new job using the previous payload.
 
+### Resume job
+```http
+POST /jobs/{jobId}/resume
+```
+
+Creates a new attempt that reuses compatible AO window checkpoints. This endpoint only accepts a failed job whose `resumeMetadata.resumeAvailable` is true. Quota failures are never retried automatically; transient network and 5xx failures are retried at most once before the job becomes resumable.
+
+Job responses include `outcome` (`clean`, `warnings`, or `partial`), `diagnostics`, and `resumeMetadata`. A semantic `partial` result still uses lifecycle status `succeeded`; deterministic integrity, persistence, Koharu, Export, and AO resource failures use `failed`.
+
 ### Cancel job
 ```http
 POST /jobs/{jobId}/cancel
@@ -420,14 +431,14 @@ Known upstream event types:
 - `snapshot`
 
 ## Backend Module Mapping
-- `backend/src/modules/project_setup.js`
-- `backend/src/modules/pipeline_monitor.js`
-- `backend/src/modules/quality.js`
-- `backend/src/modules/knowledge.js`
-- `backend/src/modules/export.js`
-- `backend/src/modules/project_lifecycle.js`
-- `backend/src/modules/reference_sets.js`
-- `backend/src/koharu_client.js`
+- `backend/src/integrations/koharu/pipeline/project_setup.js`
+- `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
+- `backend/src/domains/translation/quality/quality.js`
+- `backend/src/domains/knowledge/learning/knowledge.js`
+- `backend/src/domains/translation/execution/export.js`
+- `backend/src/integrations/koharu/pipeline/project_lifecycle.js`
+- `backend/src/domains/reference/sets/reference_sets.js`
+- `backend/src/integrations/koharu/client/koharu_client.js`
 
 ## Reference Observation API
 
@@ -483,14 +494,22 @@ Current report shape includes:
 - `DELETE /projects/current` means close, not delete
 - close clears the current-open state only
 - default workflow never deletes the stored project
-# Translation Quality Review
+# Translation Quality And Deep Audit
 
-The translation workflow performs a full-chapter lightweight Quality Observation before specialist repair. Standard Quality is autonomous: unresolved terminology, meaning, story, style, and fluency findings are published as provisional warnings and are excluded from Knowledge learning. Later chapter evidence may increase their coverage and confidence. Empty translations, sequence shifts, and locked-term violations remain structural blockers; if automatic repair cannot resolve them, the job fails instead of requesting user labeling.
+The translation workflow performs a full-chapter lightweight Quality Observation before specialist repair. Standard Quality is autonomous: unresolved terminology, meaning, story, style, fluency, empty translation, sequence, and locked-term findings are published as warnings and excluded from Knowledge learning. They no longer block Export. Publication records expose `completenessStatus`, warning counts, and excluded node IDs so incomplete output is visible without contaminating learned evidence.
 
-- `GET /jobs/:id/quality-review` returns the page-grouped review package.
-- `POST /jobs/:id/quality-review/confirm` accepts `decisions[]` and creates a `translation_quality_finalize` job.
+- `GET /jobs/:id/deep-audit/review` returns the page-grouped review package for a completed Deep Audit job.
+- `POST /jobs/:id/deep-audit/apply` accepts `decisions[]` and creates a `translation_deep_audit_apply` job.
 - `POST /jobs/:id/quality-repair` creates a revalidation job from an existing Koharu project and Translation Memory snapshot without rerunning OCR or initial translation.
 
 The page-grouped review and decision APIs are used by manually requested Deep Audit jobs. Decision actions are `accept_proposal`, `manual_edit`, `confirm_current`, and `ignore_and_publish`. Ignored evidence is published only by explicit user override and is never eligible for Knowledge learning.
 
-Publication records include `qualityStatus`, `qualityReportPath`, `qualityObservationFingerprint`, `verifiedAt`, and `manualOverrideCount`. Legacy publications are migrated to `pending_revalidation` and excluded from Local Memory until superseded by a verified publication.
+Publication records use schema version 2 and include `qualityStatus`, `qualityReportPath`, `qualityObservationFingerprint`, `verifiedAt`, and `manualOverrideCount`. Runtime loading validates this schema strictly and never rewrites legacy publication data.
+
+Publication Quality status is `passed`, `not_applicable`, or `unverified`. New publications may only use `passed` or `not_applicable`; `unverified` preserves historical revisions and blocks Local Memory while active. The one-time `backend/scripts/migrate_translation_publications_v2.js` command creates a backup before replacing the retired `pending_revalidation` value.
+
+`POST /jobs/:id/knowledge-retry` creates only a missing Knowledge child for an active, Quality-passed publication with persisted learning evidence. It does not rerun Koharu translation or Quality and rejects committed or superseded revisions. An incomplete publication may still learn from its verified subset; excluded nodes never enter the Learning Evidence snapshot.
+
+Job execution types are owned by `backend/src/domains/jobs/contracts/job_contracts.js`. Workflow-only types cannot enter the atomic worker, and unknown types are rejected before persistence rather than falling back to translation.
+
+Knowledge enrichment uses the v3 fixed-line contract. Terminology records require an allowed durable category and source/target evidence node IDs. Character records carry original and target identities, while style records select a verified evidence node and let the backend copy role, channel, speaker, and confidence metadata. Unsupported legacy categories are not interpreted at runtime; `backend/scripts/migrate_knowledge_contract_v3.js` backs up the Knowledge file and quarantines ambiguous entries before migration.

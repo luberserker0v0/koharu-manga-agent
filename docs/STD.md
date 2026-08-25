@@ -88,17 +88,17 @@ Purpose:
 
 Primary unit targets:
 - `backend/src/config.js`
-- `backend/src/workflow_engine.js`
-- `backend/src/modules/reference_sets.js`
-- `backend/src/modules/reference_ingestion.js`
-- `backend/src/modules/quality.js`
-- `backend/src/modules/knowledge.js`
-- `backend/src/modules/knowledge_paths.js`
-- `backend/src/modules/knowledge_assets.js`
-- `backend/src/ao_client.js`
-- `backend/src/ao_assets.js`
-- `backend/src/ao_tasks.js`
-- `backend/src/ao_contracts.js`
+- `backend/src/domains/jobs/workflows/workflow_engine.js`
+- `backend/src/domains/reference/sets/reference_sets.js`
+- `backend/src/domains/reference/ingestion/reference_ingestion.js`
+- `backend/src/domains/translation/quality/quality.js`
+- `backend/src/domains/knowledge/learning/knowledge.js`
+- `backend/src/domains/knowledge/registry/knowledge_paths.js`
+- `backend/src/domains/knowledge/assets/knowledge_assets.js`
+- `backend/src/integrations/ao/client/ao_client.js`
+- `backend/src/integrations/ao/assets/ao_assets.js`
+- `backend/src/integrations/ao/tasks/ao_tasks.js`
+- `backend/src/integrations/ao/contracts/ao_contracts.js`
 - legacy migration scripts that still remain under `.opencode/`
 
 ### Integration
@@ -138,13 +138,12 @@ Primary e2e targets:
 
 ### Backend Dependencies
 - `backend/package.json`
-- `@opencode-ai/sdk`
-- `opencode-ai`
 - local SQLite via Node runtime
+- AO and Koharu HTTP integration clients
 
 ### External Dependencies
 - Koharu runtime for live smoke and pipeline-related e2e tests
-- local `opencode` binary in `backend/node_modules/.bin` for managed SDK smoke
+- AO HTTP service for live agent integration tests
 
 ## Test Artifacts
 The test program may create or inspect:

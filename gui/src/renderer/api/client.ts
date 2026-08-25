@@ -36,7 +36,8 @@ export async function apiFetch<T>(pathname: string, init?: ApiFetchInit): Promis
   clearTimeout(timeoutId);
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    const details = await response.json().catch(() => null) as { error?: string; message?: string } | null;
+    throw new Error(details?.error || details?.message || `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 }

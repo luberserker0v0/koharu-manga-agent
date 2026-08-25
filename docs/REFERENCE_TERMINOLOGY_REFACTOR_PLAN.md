@@ -420,17 +420,17 @@ Target precedence:
 ## Runtime file impact
 
 ### Backend modules to change first
-- `backend/src/modules/reference_ingestion.js`
-- `backend/src/modules/knowledge_assets.js`
-- `backend/src/ao_tasks.js`
-- `backend/src/ao_contracts.js`
-- `backend/src/http/api_server.js`
+- `backend/src/domains/reference/ingestion/reference_ingestion.js`
+- `backend/src/domains/knowledge/assets/knowledge_assets.js`
+- `backend/src/integrations/ao/tasks/ao_tasks.js`
+- `backend/src/integrations/ao/contracts/ao_contracts.js`
+- `backend/src/http/server/api_server.js`
 
 ### Backend modules to adjust later
-- `backend/src/modules/reference_sets.js`
-- `backend/src/modules/quality.js`
-- `backend/src/modules/knowledge.js`
-- `backend/src/modules/knowledge_paths.js`
+- `backend/src/domains/reference/sets/reference_sets.js`
+- `backend/src/domains/translation/quality/quality.js`
+- `backend/src/domains/knowledge/learning/knowledge.js`
+- `backend/src/domains/knowledge/registry/knowledge_paths.js`
 
 ### GUI files to update after backend contract stabilizes
 - `gui/src/renderer/api/jobs.ts`

@@ -1,13 +1,13 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-jest.mock("../../backend/src/modules/knowledge_paths", () => ({
-  ...jest.requireActual("../../backend/src/modules/knowledge_paths"),
+jest.mock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
+  ...jest.requireActual("../../backend/src/domains/knowledge/registry/knowledge_paths"),
   upsertKnowledgeIndexEntry: jest.fn((entry) => entry),
 }));
 const {
   KnowledgeModule,
-} = require("../../backend/src/modules/knowledge");
+} = require("../../backend/src/domains/knowledge/learning/knowledge");
 const {
   buildSceneFromTranslationPairs,
   evaluateMergedKnowledge,

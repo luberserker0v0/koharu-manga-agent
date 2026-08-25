@@ -4,9 +4,9 @@ const path = require("path");
 const {
   initializeExtractionReview,
   saveReviewMetadata,
-} = require("../../backend/src/modules/reference_extraction_review");
-const { ReferenceExtractionReviewService } = require("../../backend/src/modules/reference_extraction_review_service");
-const { referenceSetPaths } = require("../../backend/src/modules/reference_sets");
+} = require("../../backend/src/domains/reference/review/reference_extraction_review");
+const { ReferenceExtractionReviewService } = require("../../backend/src/domains/reference/review/reference_extraction_review_service");
+const { referenceSetPaths } = require("../../backend/src/domains/reference/sets/reference_sets");
 
 describe("ReferenceExtractionReviewService", () => {
   const referenceSetId = `ref_review_service_${Date.now().toString(36)}`;

@@ -16,6 +16,7 @@ type ChapterSelectorProps = {
   selectedValue: string;
   chapters: ChapterSummary[];
   newChapterTitle: string;
+  chapterStatusLabels?: Record<string, string>;
   disabled?: boolean;
   onSelectionChange: (value: string) => void;
   onNewChapterTitleChange: (value: string) => void;
@@ -27,6 +28,7 @@ export function ChapterSelector({
   selectedValue,
   chapters,
   newChapterTitle,
+  chapterStatusLabels = {},
   disabled = false,
   onSelectionChange,
   onNewChapterTitleChange,
@@ -48,6 +50,7 @@ export function ChapterSelector({
           {sortedChapters.map((chapter) => (
             <option key={chapter.chapterId} value={chapter.chapterId}>
               {chapter.chapterTitle || chapter.chapterId}
+              {chapterStatusLabels[chapter.chapterId] ? ` - ${chapterStatusLabels[chapter.chapterId]}` : ""}
             </option>
           ))}
           <option value={CREATE_NEW_CHAPTER_VALUE}>{t("selector.chapter.create")}</option>

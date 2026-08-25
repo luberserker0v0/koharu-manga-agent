@@ -6,18 +6,49 @@ const {
   KnowledgeModule,
   removeChapterLearningEvidence,
   mergeCharacterSpeechEvidence,
+  mergeCharacterEntries,
   mergeNarrationEvidence,
   mergeStyleExampleEntries,
+  styleExamplesFromLearningEvidence,
   mergeStyleProfile,
   normalizeExistingKnowledgeBase,
   translationPairsFromList,
-} = require("../../backend/src/modules/knowledge");
-const { knowledgeIndexPath } = require("../../backend/src/modules/knowledge_paths");
+} = require("../../backend/src/domains/knowledge/learning/knowledge");
+const { knowledgeIndexPath } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
 function createTempFilePath(fileName) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-kb-"));
   return path.join(dir, fileName);
 }
+
+test("verified learning style evidence becomes a backend-owned style example", () => {
+  expect(styleExamplesFromLearningEvidence([{
+    nodeId: "n1",
+    original: "source",
+    translation: "target",
+    textRole: "narration",
+    styleChannel: "narrator_voice",
+    speakerRef: "invalid_narrator",
+    roleConfidence: 0.93,
+    confidence: 0.9,
+    pageName: "1.jpg",
+    reasons: ["style_evidence"],
+  }, {
+    nodeId: "n2",
+    original: "source 2",
+    translation: "target 2",
+    confidence: 0.9,
+    reasons: ["quality_revision"],
+  }], "chapter_1")).toEqual([
+    expect.objectContaining({
+      nodeId: "n1",
+      chapterId: "chapter_1",
+      type: "narration",
+      speakerRef: null,
+      reason: "verified_learning_evidence",
+    }),
+  ]);
+});
 
 test("translation pairs retain semantic role metadata", () => {
   expect(translationPairsFromList([{
@@ -35,6 +66,45 @@ test("translation pairs retain semantic role metadata", () => {
     roleConfidence: 0.91,
     speakerConfidence: 0.82,
   }));
+});
+
+test("deleting the final learned chapter clears inferred style while preserving protected knowledge", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "manga-kb-delete-chapter-"));
+  const knowledgePath = path.join(tempRoot, "knowledge.json");
+  const reportPath = path.join(tempRoot, "report.json");
+  fs.writeFileSync(knowledgePath, JSON.stringify({
+    metadata: { chapter_ids: ["chapter_4"], source_projects: ["project_4"] },
+    translation_pairs: [{ original: "a", translation: "b", chapterId: "chapter_4" }],
+    terminology: [{
+      term: "manual",
+      translation: "manual",
+      source: "manual",
+      locked: true,
+      evidence: { chapter_ids: ["chapter_4"] },
+    }],
+    characters: [],
+    style_examples: [{ type: "dialogue", translation: "b", chapterId: "chapter_4" }],
+    style_profile: { tone: "old inferred tone", preferred_patterns: ["old"] },
+  }));
+
+  jest.isolateModules(() => {
+    jest.doMock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
+      ...jest.requireActual("../../backend/src/domains/knowledge/registry/knowledge_paths"),
+      resolveKnowledgePaths: () => ({ knowledgeBasePath: knowledgePath, reportPath }),
+    }));
+    const { deleteChapterLearningData } = require("../../backend/src/domains/knowledge/learning/knowledge");
+    deleteChapterLearningData({ mangaId: "series", translatorId: "translator", chapterId: "chapter_4" });
+  });
+  jest.dontMock("../../backend/src/domains/knowledge/registry/knowledge_paths");
+
+  const cleaned = JSON.parse(fs.readFileSync(knowledgePath, "utf8"));
+  expect(cleaned.metadata.chapter_ids).toEqual([]);
+  expect(cleaned.metadata.source_projects).toEqual([]);
+  expect(cleaned.translation_pairs).toEqual([]);
+  expect(cleaned.style_examples).toEqual([]);
+  expect(cleaned.style_profile.tone).toBeNull();
+  expect(cleaned.terminology).toHaveLength(1);
+  expect(cleaned.terminology[0]).toEqual(expect.objectContaining({ locked: true, source: "manual" }));
 });
 
 function createLearningEvidencePath(chapterId, entries) {
@@ -171,6 +241,12 @@ describe("knowledge module", () => {
       [
         {
           type: "dialogue",
+          textRole: "dialogue",
+          styleChannel: "character_voice",
+          speakerRef: "character_a",
+          roleConfidence: 0.92,
+          speakerConfidence: 0.81,
+          confidence: 0.88,
           pageName: "001.jpg",
           nodeId: "n1",
           chapterId: "ch_001",
@@ -201,7 +277,30 @@ describe("knowledge module", () => {
     expect(merged).toHaveLength(2);
     expect(merged[0].type).toBe("dialogue");
     expect(merged[0].translation).toBe("Please rest assured.");
+    expect(merged[0]).toEqual(expect.objectContaining({
+      textRole: "dialogue",
+      styleChannel: "character_voice",
+      speakerRef: "character_a",
+      roleConfidence: 0.92,
+      speakerConfidence: 0.81,
+      confidence: 0.88,
+    }));
     expect(merged[1].translation).toBe("I will handle it.");
+  });
+
+  test("character merge joins source and target identities without duplicate profiles", () => {
+    const merged = mergeCharacterEntries(
+      [{ name: "リアム", aliases: [], confidence: 0.8, source: "self" }],
+      [{ identity_key: "リアム", name: "里爾姆", aliases: ["リアム"], confidence: 0.9 }],
+      { chapterId: "chapter_5" }
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toEqual(expect.objectContaining({
+      identity_key: "リアム",
+      name: "里爾姆",
+      aliases: expect.arrayContaining(["リアム"]),
+    }));
   });
 
   test("narration evidence merges into narration style memory", () => {

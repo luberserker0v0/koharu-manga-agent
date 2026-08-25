@@ -7,6 +7,7 @@ import {
   createSourcePreflight,
   createTranslationJob,
   getMangaSeries,
+  getTranslationPublications,
   inspectTranslationMemory,
   reorderSourcePreflight,
   type ChapterSummary,
@@ -23,6 +24,7 @@ import {
 } from "../components/TranslatorProfileSelector";
 import { CREATE_NEW_TRANSLATOR_VALUE } from "../components/TranslatorSelector";
 import { ReferenceGlossaryStrategySelector } from "../components/ReferenceGlossaryStrategySelector";
+import { getBackendConfig } from "../api/runtime";
 import { pickDirectory, readSettings, validatePaths, writeSettings } from "../services/desktop_api";
 import {
   type TranslationDraft,
@@ -38,6 +40,7 @@ import type {
   SourcePreflightResult,
 } from "../types/settings";
 import { buildLocalFileUrl } from "../features/shared/formatters/fileUrl";
+import { subscribeToJobsStream } from "../stream/job_stream";
 import {
   DEFAULT_REFERENCE_LANGUAGE,
   normalizeReferenceLanguage,
@@ -308,6 +311,11 @@ function PreflightPreviewCard({
 export function JobsPage() {
   const t = useLanguageStore((state) => state.t);
   const queryClient = useQueryClient();
+  const backendConfigQuery = useQuery({
+    queryKey: ["backend-config"],
+    queryFn: getBackendConfig,
+    retry: false,
+  });
   const mangaSeriesQuery = useQuery({
     queryKey: ["mangaSeries"],
     queryFn: getMangaSeries,
@@ -348,6 +356,27 @@ export function JobsPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    return subscribeToJobsStream({
+      onEvent: (message) => {
+        if (message.kind !== "job" || !message.job || typeof message.job !== "object") {
+          return;
+        }
+        const job = message.job as GuiJob;
+        if (
+          job.type !== "translation_knowledge_commit" ||
+          !["succeeded", "failed", "canceled"].includes(job.status)
+        ) {
+          return;
+        }
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["translationMemoryInspection"] }),
+          queryClient.invalidateQueries({ queryKey: ["mangaSeries"] }),
+        ]);
+      },
+    });
+  }, [queryClient]);
 
   useEffect(() => {
     if (!centerNotice) {
@@ -651,7 +680,46 @@ export function JobsPage() {
       Boolean(provisionalTranslationContext?.mangaId) &&
       Boolean(provisionalTranslationContext?.translatorId),
     retry: false,
+    refetchOnMount: "always",
   });
+  const translationPublicationsQuery = useQuery({
+    queryKey: [
+      "translationPublications",
+      provisionalTranslationContext?.mangaId,
+      provisionalTranslationContext?.translatorId,
+    ],
+    queryFn: () => getTranslationPublications(
+      provisionalTranslationContext!.mangaId,
+      provisionalTranslationContext!.translatorId
+    ),
+    enabled: Boolean(
+      provisionalTranslationContext?.mangaId && provisionalTranslationContext?.translatorId
+    ),
+  });
+  const chapterPublicationStatusLabels = useMemo(() => {
+    const chapters = translationPublicationsQuery.data?.chapters || {};
+    return Object.fromEntries(availableChapters.map((chapter) => {
+      const publication = chapters[chapter.chapterId];
+      const active = publication?.revisions.find(
+        (revision) => revision.revisionId === publication.activeRevisionId
+      );
+      if (!active) return [chapter.chapterId, t("jobs.outputChapter.status.untranslated")];
+      if (["pending", "queued"].includes(active.knowledgeStatus)) {
+        return [chapter.chapterId, t("jobs.outputChapter.status.learning")];
+      }
+      if (
+        active.completenessStatus === "incomplete" ||
+        active.qualityOutcome === "partial" ||
+        active.knowledgeOutcome === "partial"
+      ) {
+        return [chapter.chapterId, t("jobs.outputChapter.status.translatedPartial")];
+      }
+      return [chapter.chapterId, t("jobs.outputChapter.status.translated")];
+    }));
+  }, [availableChapters, t, translationPublicationsQuery.data]);
+  const selectedActivePublication = selectedChapter
+    ? translationPublicationsQuery.data?.chapters[selectedChapter.chapterId] || null
+    : null;
 
   const orderedImages = useMemo(() => {
     if (!preflightResult) {
@@ -967,6 +1035,11 @@ export function JobsPage() {
       setStatus(t("jobs.learning.profile.createMissing"));
       return;
     }
+    if (selectedActivePublication && !window.confirm(t("jobs.outputChapter.retranslateConfirm", {
+      chapter: selectedChapter?.chapterTitle || selectedChapter?.chapterId || "",
+    }))) {
+      return;
+    }
     setCreatingLearningProfile(true);
     try {
       const created = await createTranslatorProfile(selectedManga.mangaId, {
@@ -1228,7 +1301,10 @@ export function JobsPage() {
                       usesSeparateReferenceProfile
                         ? translator.translatorId !== "translator_original" &&
                           translator.profileKind !== "learning_clone"
-                        : translator.profileKind !== "learning_clone"
+                        : translationDraft.translationMode === "local_style"
+                          ? translator.profileKind === "learning_clone"
+                          : translator.translatorId !== "translator_original" &&
+                            translator.profileKind !== "learning_clone"
                     )
                     .map((translator) => (
                       <option key={translator.translatorId} value={translator.translatorId}>
@@ -1325,6 +1401,7 @@ export function JobsPage() {
               selectedValue={translationDraft.chapterSelection}
               chapters={availableChapters}
               newChapterTitle={translationDraft.newChapterTitle}
+              chapterStatusLabels={chapterPublicationStatusLabels}
               disabled={
                 usesSeparateReferenceProfile
                   ? !selectedLearningProfile &&
@@ -1418,18 +1495,18 @@ export function JobsPage() {
 
           {consistencyCheckEnabled && (
             <article className="compact-grid">
-              <h3>品質檢查設定</h3>
+              <h3>{t("settings.ao.qualitySummary")}</h3>
               <div className="summary-grid">
                 <div>
-                  <strong>Model ID</strong>
+                  <strong>{t("settings.ao.model.label")}</strong>
                   <div className="muted-text">
-                    {settingsSnapshot?.quality.modelId || "若要指定模型，請到 Settings 設定。"}
+                    {backendConfigQuery.data?.agent?.model || t("settings.ao.model.unavailable")}
                   </div>
                 </div>
                 <div>
-                  <strong>Server URL</strong>
+                  <strong>{t("settings.ao.baseUrl.label")}</strong>
                   <div className="muted-text">
-                    {settingsSnapshot?.quality.serverUrl || "若模型由遠端服務提供，請到 Settings 設定。"}
+                    {backendConfigQuery.data?.agent?.baseUrl || t("settings.ao.baseUrl.unavailable")}
                   </div>
                 </div>
               </div>

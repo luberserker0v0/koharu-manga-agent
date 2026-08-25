@@ -1,5 +1,5 @@
 export type GuiSettings = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: string;
   locale: "zh-TW" | "en-US";
   sourceFolder: string;
@@ -9,29 +9,6 @@ export type GuiSettings = {
   lastSelectedPage: string;
   lastSelectedJobId: string | null;
   lastSelectedMangaId: string | null;
-  agent: {
-    provider: "opencode";
-    runtimeMode: "managed" | "external";
-    baseUrl: string;
-    commandDir: string;
-    moduleName: string;
-    exportName: string;
-    timeoutMs: number;
-  };
-  quality: {
-    enabled: boolean;
-    modelId: string;
-    serverUrl: string;
-  };
-  translation: {
-    modelId: string;
-    serverUrl: string;
-    providerId: string;
-  };
-  koharu: {
-    baseUrl: string;
-  };
-  engines: Record<string, string>;
 };
 
 export type DesktopInfo = {

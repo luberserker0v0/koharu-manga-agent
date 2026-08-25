@@ -2,7 +2,7 @@ const {
   buildConvertedManifest,
   createConvertedReferenceSetId,
   detectImageFormatFromBuffer,
-} = require("../../backend/src/modules/reference_image_conversion");
+} = require("../../backend/src/domains/reference/extraction/reference_image_conversion");
 
 describe("reference image conversion helper", () => {
   test("detects avif payloads even when extension is misleading", () => {
@@ -95,7 +95,7 @@ describe("reference image conversion helper", () => {
 
     const {
       preflightImagesForKoharuUpload,
-    } = require("../../backend/src/modules/reference_image_conversion");
+    } = require("../../backend/src/domains/reference/extraction/reference_image_conversion");
 
     const result = preflightImagesForKoharuUpload([
       "C:\\images\\page_001.jpg",

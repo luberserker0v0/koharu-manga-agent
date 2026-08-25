@@ -1,6 +1,9 @@
 const {
-  parseLineBasedChapterObservation,
-} = require("../../backend/src/chapter_observation_contract");
+  parseLineBasedChapterObservation: parseRawChapterObservation,
+} = require("../../backend/src/integrations/ao/contracts/chapter_observation_contract");
+
+const parseLineBasedChapterObservation = (content, taskInput) =>
+  parseRawChapterObservation(`${content}\nOBSERVATION_DONE`, taskInput);
 
 const input = {
   chapterId: "chapter_1",
@@ -14,6 +17,12 @@ const input = {
 };
 
 describe("chapter observation line contract", () => {
+  test("requires the final completion record", () => {
+    expect(() => parseRawChapterObservation(
+      "NODE|001.jpg|n1|dialogue|character|天城|character_voice|0.9|0.9|partial",
+      input
+    )).toThrow("missing OBSERVATION_DONE");
+  });
   test("parses complete node, mention, and story cue evidence", () => {
     const result = parseLineBasedChapterObservation([
       "NODE|001.jpg|n1|dialogue|character|天城|character_voice|0.96|0.91|名前を伴う発話",
@@ -28,32 +37,38 @@ describe("chapter observation line contract", () => {
     expect(result.storyCues[0].evidenceNodeKeys).toEqual(["001.jpg::n1", "001.jpg::n2"]);
   });
 
-  test("rejects missing, duplicate, unknown, and invalid records", () => {
-    expect(() => parseLineBasedChapterObservation(
+  test("fills missing nodes and quarantines invalid records", () => {
+    const missing = parseLineBasedChapterObservation(
       "NODE|001.jpg|n1|dialogue|none||character_voice|0.9|0.9|only one",
       input
-    )).toThrow(/incomplete/i);
-    expect(() => parseLineBasedChapterObservation([
+    );
+    expect(missing.nodes.find((entry) => entry.nodeId === "n2").textRole).toBe("uncertain");
+    const invalid = parseLineBasedChapterObservation([
       "NODE|001.jpg|n1|wrong|none||unknown|0.9|0.9|bad",
       "NODE|001.jpg|n2|dialogue|none||character_voice|0.9|0.9|ok",
-    ].join("\n"), input)).toThrow(/unknown textRole/i);
+    ].join("\n"), input);
+    expect(invalid.semanticResult.quarantinedRecordCount).toBe(1);
+    expect(invalid.nodes.find((entry) => entry.nodeId === "n1").textRole).toBe("uncertain");
   });
 
-  test("rejects qualitative and percentage confidence values", () => {
-    expect(() => parseLineBasedChapterObservation([
+  test("quarantines qualitative and percentage confidence values", () => {
+    const qualitative = parseLineBasedChapterObservation([
       "NODE|001.jpg|n1|dialogue|character|天城|character_voice|high|0.9|bad confidence",
       "NODE|001.jpg|n2|dialogue|character|天城|character_voice|0.9|0.9|ok",
-    ].join("\n"), input)).toThrow(/roleConfidence must be a decimal number between 0 and 1/i);
+    ].join("\n"), input);
+    expect(qualitative.semanticResult.quarantinedRecordCount).toBe(1);
 
-    expect(() => parseLineBasedChapterObservation([
+    const percentage = parseLineBasedChapterObservation([
       "NODE|001.jpg|n1|dialogue|character|天城|character_voice|80%|0.9|bad confidence",
       "NODE|001.jpg|n2|dialogue|character|天城|character_voice|0.9|0.9|ok",
-    ].join("\n"), input)).toThrow(/roleConfidence must be a decimal number between 0 and 1/i);
+    ].join("\n"), input);
+    expect(percentage.semanticResult.quarantinedRecordCount).toBe(1);
 
-    expect(() => parseLineBasedChapterObservation([
+    const empty = parseLineBasedChapterObservation([
       "NODE|001.jpg|n1|dialogue|character|天城|character_voice||0.9|empty confidence",
       "NODE|001.jpg|n2|dialogue|character|天城|character_voice|0.9|0.9|ok",
-    ].join("\n"), input)).toThrow(/roleConfidence must be a decimal number between 0 and 1/i);
+    ].join("\n"), input);
+    expect(empty.semanticResult.quarantinedRecordCount).toBe(1);
   });
 
   test("accepts grounded worldbuilding story cues", () => {

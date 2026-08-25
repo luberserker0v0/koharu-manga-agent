@@ -2,14 +2,14 @@
 const os = require("os");
 const path = require("path");
 
-const { WorkflowEngine } = require("../../backend/src/workflow_engine");
-const { JobStore } = require("../../backend/src/storage/job_store");
-jest.mock("../../backend/src/modules/reference_extraction_review", () => ({
+const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+jest.mock("../../backend/src/domains/reference/review/reference_extraction_review", () => ({
   ensureLegacyReviewMetadata: () => ({ status: "reviewed", currentFingerprint: "test-fingerprint" }),
 }));
 
-const { JobManager } = require("../../backend/src/job_manager");
-const { PipelineMonitorModule } = require("../../backend/src/modules/pipeline_monitor");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { PipelineMonitorModule } = require("../../backend/src/integrations/koharu/pipeline/pipeline_monitor");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-process-"));
@@ -243,7 +243,7 @@ describe("process-trigger runtime", () => {
       runReferenceIngestionAnalysisJob: jest.fn().mockResolvedValue({
         phase: "analysis",
       }),
-      runReferenceKnowledgeCommitJob: jest.fn().mockResolvedValue({
+      runReferenceIngestionCommitJob: jest.fn().mockResolvedValue({
         referenceSetId: "ref_001",
         mangaId: "phantom_fantasy",
         glossaryPath: "C:\\knowledge\\canonical_glossary.json",

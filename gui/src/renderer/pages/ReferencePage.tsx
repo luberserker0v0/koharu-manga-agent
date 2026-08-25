@@ -10,7 +10,6 @@ import {
   createReferenceIngestionJobs,
   createTranslatorProfile,
   deleteIngestionKnowledgeReport,
-  deleteJob,
   deleteReferenceExtraction,
   deleteReferenceSet,
   finishExtractionReviewEditor,
@@ -23,7 +22,6 @@ import {
   importReferenceFolder,
   runBilingualEnrichment,
   runReferenceDeepReview,
-  retryJob,
   saveExtractionReviewOrder,
   startExtractionReview,
   syncExtractionReview,
@@ -31,46 +29,33 @@ import {
   type BilingualEvidenceDocument,
   type ExtractionReviewDocument,
   type GuiJob,
-  type IngestionKnowledgeReport,
+  type MangaSeriesSummary,
   type ReferenceSetSummary,
+  type TranslatorProfileSummary,
 } from "../api/jobs";
-import {
-  CREATE_NEW_MANGA_VALUE,
-  MangaSelector,
-} from "../components/MangaSelector";
+import { CREATE_NEW_MANGA_VALUE } from "../components/MangaSelector";
 import {
   CREATE_NEW_TRANSLATOR_VALUE,
   resolveSelectedTranslator,
-  TranslatorSelector,
 } from "../components/TranslatorSelector";
 import {
   closeKoharuEditor,
   confirmDialog,
   onKoharuEditorClosed,
   openKoharuEditor,
-  openDesktopPath,
   pickDirectory,
   pickDirectories,
 } from "../services/desktop_api";
 import {
   DEFAULT_REFERENCE_LANGUAGE,
   normalizeReferenceLanguage,
-  REFERENCE_LANGUAGE_OPTIONS,
 } from "../constants/languages";
-import { ArtifactEditorPane } from "../features/reference/components/ArtifactEditorPane";
 import { IngestionReportPane } from "../features/reference/components/IngestionReportPane";
 import { BilingualEvidencePane } from "../features/reference/components/BilingualEvidencePane";
 import { ExtractionReviewPane } from "../features/reference/components/ExtractionReviewPane";
 import { ReferenceImportPane } from "../features/reference/components/ReferenceImportPane";
-import { ReferenceJobsPane } from "../features/reference/components/ReferenceJobsPane";
+import { ReferenceLibraryPane } from "../features/reference/components/ReferenceLibraryPane";
 import { ReferenceWorklistPane } from "../features/reference/components/ReferenceWorklistPane";
-import {
-  displayJobType,
-  ingestionResultSummary,
-  selectedJobSummary,
-} from "../features/reference/formatters/referenceJobs";
-import { useReferenceArtifacts } from "../features/reference/hooks/useReferenceArtifacts";
-import { useReferenceJobActions } from "../features/reference/hooks/useReferenceJobActions";
 import { useReferenceWorklistActions } from "../features/reference/hooks/useReferenceWorklistActions";
 import { useReferenceWorklistState } from "../features/reference/hooks/useReferenceWorklistState";
 import {
@@ -81,7 +66,6 @@ import {
   type ReferenceIngestionForm,
   type WorklistJobSnapshot,
 } from "../features/reference/types";
-import { PageHeader } from "../features/shared/components/PageHeader";
 import { useLanguageStore } from "../stores/language_store";
 import { useUiStore } from "../stores/ui_store";
 import { subscribeToJobsStream } from "../stream/job_stream";
@@ -214,115 +198,6 @@ function statusLabel(status: string | null | undefined) {
   }
 }
 
-function prettyArtifactKind(kind: string) {
-  switch (kind) {
-    case "reference_scene":
-      return "Reference Scene";
-    case "reference_texts":
-      return "OCR / Text";
-    case "glossary":
-      return "\u5DF2\u78BA\u8A8D\u5C08\u6709\u540D\u8A5E";
-    case "candidate_terms":
-      return "\u5F85\u78BA\u8A8D\u5C08\u6709\u540D\u8A5E";
-    case "story_context":
-      return "\u6545\u4E8B\u8108\u7D61";
-    case "style_profile":
-      return "\u7FFB\u8B6F\u98A8\u683C";
-    case "translation_context":
-      return "\u7FFB\u8B6F\u4E0A\u4E0B\u6587";
-    default:
-      return kind.replaceAll("_", " ");
-  }
-}
-
-function isEditableArtifact(kind: string) {
-  return [
-    "reference_scene",
-    "reference_texts",
-    "glossary",
-    "candidate_terms",
-    "story_context",
-    "style_profile",
-    "translation_context",
-  ].includes(kind);
-}
-
-function ingestionUiWarnings(
-  report: IngestionKnowledgeReport | undefined,
-  translatorLabel: string | null | undefined
-) {
-  const warnings: string[] = [];
-  if (!report) {
-    return warnings;
-  }
-
-  if (translatorLabel === "Original") {
-    warnings.push(
-      "\u76EE\u524D\u6B64 Ingestion \u4F86\u81EA\u539F\u6587 reference\uff0c\u53EA\u6703\u7D2F\u7A4D\u4E0A\u4E0B\u6587\u8207\u5C08\u6709\u540D\u8A5E\uff0C\u4E0D\u6703\u5EFA\u7ACB\u7FFB\u8B6F\u98A8\u683C\u3002"
-    );
-  }
-
-  const candidateEntries = Array.isArray(report.candidateTerms?.entries)
-    ? (report.candidateTerms.entries as Array<Record<string, unknown>>)
-    : [];
-  const rejectedCandidates = candidateEntries.filter((entry) => entry?.status === "rejected").length;
-  if (rejectedCandidates > 0) {
-    warnings.push(
-      `\u76EE\u524D\u6709 ${rejectedCandidates} \u7B46\u5019\u9078\u689D\u76EE\u88AB\u62D2\u7D55\uff0c\u8ACB\u6AA2\u67E5\u662F\u5426\u9700\u8981\u88DC\u5145\u8B49\u64DA\u6216\u8ABF\u6574\u5408\u4F75\u908F\u8F2F\u3002`
-    );
-  }
-
-  const dialogueNarration =
-    report.styleProfile &&
-    typeof report.styleProfile === "object" &&
-    typeof (report.styleProfile as Record<string, unknown>).rules === "object"
-      ? (((report.styleProfile as Record<string, unknown>).rules as Record<string, unknown>)
-          .dialogueNarration as Record<string, unknown> | undefined)
-      : undefined;
-  const dialogueRatio =
-    typeof dialogueNarration?.dialogueRatio === "number" ? dialogueNarration.dialogueRatio : null;
-  const narrationRatio =
-    typeof dialogueNarration?.narrationRatio === "number" ? dialogueNarration.narrationRatio : null;
-  const dialogueSamples =
-    report.styleProfile &&
-    typeof report.styleProfile === "object" &&
-    typeof (report.styleProfile as Record<string, unknown>).samples === "object"
-      ? (((report.styleProfile as Record<string, unknown>).samples as Record<string, unknown>)
-          .dialogue as string[] | undefined) || []
-      : [];
-  const hasNoisyDialogueSample = dialogueSamples.some(
-    (sample) =>
-      typeof sample === "string" &&
-      /(manga\d+\.com|raw|scan|watermark|chapter\s*\d+)/i.test(sample)
-  );
-  if (dialogueRatio === 0 || narrationRatio === 1 || hasNoisyDialogueSample) {
-    warnings.push(
-      "\u98A8\u683C\u8B49\u64DA\u4ECD\u5E36\u6709\u660E\u986F\u96DC\u8A0A\uff0c\u76EE\u524D\u66F4\u50CF OCR \u6216\u539F\u59CB\u64F7\u53D6\u7D50\u679C\uff0c\u98A8\u683C\u6458\u8981\u53EF\u80FD\u4E0D\u5920\u7A69\u5B9A\u3002"
-    );
-  }
-
-  const chapterRecords =
-    report.storyContext &&
-    typeof report.storyContext === "object" &&
-    typeof (report.storyContext as Record<string, unknown>).chapters === "object"
-      ? Object.values((report.storyContext as Record<string, unknown>).chapters as Record<string, unknown>)
-      : [];
-  const hasNoisyKeyLines = chapterRecords.some((chapter) => {
-    const keyLines =
-      chapter && typeof chapter === "object" && Array.isArray((chapter as Record<string, unknown>).keyLines)
-        ? ((chapter as Record<string, unknown>).keyLines as string[])
-        : [];
-    return keyLines.some((line) => /(manga\d+\.com|raw|scan|watermark|chapter\s*\d+)/i.test(line));
-  });
-  if (hasNoisyKeyLines) {
-    warnings.push(
-      "\u6545\u4E8B\u8B49\u64DA\u4E2D\u4ECD\u6709\u96DC\u8A0A\u884C\uff0C\u8ACB\u8996\u60C5\u6CC1\u91CD\u8DD1 Extraction \u6216\u88DC\u5145\u66F4\u4E7E\u6DE8\u7684\u7AE0\u7BC0\u4F86\u6E90\u3002"
-    );
-  }
-
-  return warnings;
-}
-
 export function ReferencePage() {
   const t = useLanguageStore((state) => state.t);
   const queryClient = useQueryClient();
@@ -337,6 +212,8 @@ export function ReferencePage() {
   const [pageStatus, setPageStatus] = useState("\u5C31\u7DD2\u3002");
   const [selectedReportMangaId, setSelectedReportMangaId] = useState<string>("");
   const [selectedReportTranslatorId, setSelectedReportTranslatorId] = useState<string>("");
+  const [importPanelOpen, setImportPanelOpen] = useState(false);
+  const [detailTab, setDetailTab] = useState<"report" | "review" | "bilingual">("report");
   const [activeReviewSessionId, setActiveReviewSessionId] = useState<string | null>(null);
   const [activeReviewReferenceSetId, setActiveReviewReferenceSetId] = useState<string | null>(null);
   const closingReviewSessionRef = useRef<string | null>(null);
@@ -393,6 +270,11 @@ export function ReferencePage() {
             void queryClient.invalidateQueries({ queryKey: ["extraction-review", referenceSetId] });
           }
         }
+        if (incoming.type === "reference_ingestion" && incoming.status === "succeeded") {
+          void queryClient.invalidateQueries({ queryKey: ["ingestion-knowledge-report"] });
+          void queryClient.invalidateQueries({ queryKey: ["referenceSets"] });
+          void queryClient.invalidateQueries({ queryKey: ["bilingual-evidence"] });
+        }
         queryClient.setQueryData<{ jobs: GuiJob[] }>(["jobs"], (current) => {
           const jobs = current?.jobs || [];
           const existing = jobs.find((job) => job.id === incoming.id);
@@ -421,19 +303,6 @@ export function ReferencePage() {
     queryFn: () => getIngestionKnowledgeReport(selectedReportMangaId, selectedReportTranslatorId),
     enabled: Boolean(selectedReportMangaId && selectedReportTranslatorId),
   });
-  const {
-    artifactsQuery,
-    previewArtifact,
-    previewData,
-    editorValue,
-    previewStatus,
-    setEditorValue,
-    loadArtifact,
-    saveEditedArtifact,
-    deleteArtifact,
-    resetPreview,
-  } = useReferenceArtifacts(selectedReferenceJobId);
-
   const referenceSetOptions = useMemo(
     () => referenceSetsQuery.data?.referenceSets || [],
     [referenceSetsQuery.data]
@@ -508,8 +377,6 @@ export function ReferencePage() {
     () => resolveSelectedTranslator(ingestionForm.translatorSelection, availableTranslators),
     [availableTranslators, ingestionForm.translatorSelection]
   );
-  const selectedIngestionManga = selectedManga;
-  const selectedIngestionTranslator = selectedTranslator;
   const selectedImportManga = useMemo(() => {
     return mangaSeriesOptions.find((entry) => entry.mangaId === importForm.mangaSelection) || null;
   }, [importForm.mangaSelection, mangaSeriesOptions]);
@@ -534,21 +401,23 @@ export function ReferencePage() {
     [availableReportTranslators, selectedReportTranslatorId]
   );
   const selectedReportTranslatorIsSource = useMemo(
-    () => /^(原文|original|source)$/i.test(String(selectedReportTranslator?.label || "").trim()),
-    [selectedReportTranslator]
+    () =>
+      selectedReportTranslator?.translatorId === "translator_original" ||
+      /^(original|source)$/i.test(String(selectedReportTranslator?.label || "").trim()) ||
+      referenceSetOptions.some(
+        (referenceSet) =>
+          referenceSet.mangaId === selectedReportMangaId &&
+          referenceSet.translatorId === selectedReportTranslator?.translatorId &&
+          referenceSet.referenceKind === "source"
+      ),
+    [referenceSetOptions, selectedReportMangaId, selectedReportTranslator]
   );
-  const selectedDeletionManga = selectedReportManga || selectedIngestionManga;
-  const selectedDeletionTranslator = selectedReportTranslator || selectedIngestionTranslator;
   const referenceJobs = useMemo(() => {
     const jobs = jobsQuery.data?.jobs || [];
     return jobs
       .filter((job) => job.type === "reference_extraction" || job.type === "reference_ingestion")
       .sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
   }, [jobsQuery.data]);
-  const selectedJob = useMemo(
-    () => referenceJobs.find((job) => job.id === selectedReferenceJobId) || null,
-    [referenceJobs, selectedReferenceJobId]
-  );
   const selectedReferenceExtractionJob = useMemo(
     () =>
       extractionForm.referenceSetId
@@ -581,35 +450,6 @@ export function ReferencePage() {
     () => new Map(referenceSetOptions.map((entry) => [entry.id, entry])),
     [referenceSetOptions]
   );
-  const selectedIngestionSummary = useMemo(
-    () => ingestionResultSummary(selectedJob),
-    [selectedJob]
-  );
-  const referenceJobActions = useReferenceJobActions({
-    selectedJob,
-    selectedReferenceSetSummary,
-    selectedReferenceExtractionJob,
-    selectedReferenceIngestionJob,
-    selectedDeletionManga,
-    selectedDeletionTranslator,
-    retryReferenceJob: (jobId) => retryMutation.mutate(jobId),
-    deleteReferenceJob: (jobId) => deleteJobMutation.mutate(jobId),
-    deleteReferenceExtractionResult: (referenceSetId) =>
-      deleteReferenceExtractionMutation.mutate(referenceSetId),
-    deleteIngestionResult: (mangaId, translatorId) =>
-      deleteIngestionMutation.mutate({ mangaId, translatorId }),
-    selectReferenceJob: setSelectedReferenceJobId,
-    openJobListPage: (job) => {
-      setSelectedJobId(job.id);
-      if (typeof job.payload.mangaId === "string") {
-        setSelectedMangaId(job.payload.mangaId);
-      }
-      if (typeof job.payload.translatorId === "string") {
-        setSelectedTranslatorId(job.payload.translatorId);
-      }
-      setSelectedPage("job-list");
-    },
-  });
   const worklistEntriesMissingExtraction = useMemo(
     () =>
       referenceWorklist.filter((entry) => {
@@ -802,7 +642,6 @@ export function ReferencePage() {
       if (selectedReferenceJobId && deletedJobs.some((job) => job.id === selectedReferenceJobId)) {
         setSelectedReferenceJobId(null);
       }
-      resetPreview();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["referenceSets"] }),
         queryClient.invalidateQueries({ queryKey: ["jobs"] }),
@@ -840,7 +679,6 @@ export function ReferencePage() {
       if (selectedReferenceJobId && selectedReferenceExtractionJob?.payload?.referenceSetId === deletedExtraction.id) {
         setSelectedReferenceJobId(null);
       }
-      resetPreview();
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["referenceSets"] });
     },
@@ -860,7 +698,6 @@ export function ReferencePage() {
       if (selectedReferenceJobId && selectedReferenceIngestionJob?.payload?.translatorId === deletedIngestion.translatorId) {
         setSelectedReferenceJobId(null);
       }
-      resetPreview();
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
       await queryClient.invalidateQueries({ queryKey: ["mangaSeries"] });
       await queryClient.invalidateQueries({ queryKey: ["ingestion-knowledge-report"] });
@@ -1016,26 +853,6 @@ export function ReferencePage() {
       reviewReason: "manual_review",
     }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-    },
-  });
-
-  const retryMutation = useMutation({
-    mutationFn: retryJob,
-    onSuccess: async (job) => {
-      setPageStatus("\u5DF2\u91CD\u8A66 Reference Job\uFF1A" + job.id);
-      setSelectedReferenceJobId(job.id);
-      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
-    },
-  });
-
-  const deleteJobMutation = useMutation({
-    mutationFn: deleteJob,
-    onSuccess: async (result) => {
-      setPageStatus("Moved job " + result.deleted.id + " to Trash.");
-      if (selectedReferenceJobId === result.deleted.id) {
-        setSelectedReferenceJobId(null);
-      }
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
@@ -1296,47 +1113,167 @@ export function ReferencePage() {
     }));
   };
 
+  const confirmDeleteExtraction = async (referenceSet: ReferenceSetSummary) => {
+    const confirmed = await confirmDialog({
+      title: t("reference.workspace.deleteExtractionTitle"),
+      message: t("reference.workspace.deleteExtractionMessage", {
+        label: referenceSet.chapterTitle || referenceSet.label,
+      }),
+      confirmLabel: t("reference.data.deleteExtraction"),
+    });
+    if (confirmed) deleteReferenceExtractionMutation.mutate(referenceSet.id);
+  };
+
+  const selectLibrarySource = (manga: MangaSeriesSummary, translator: TranslatorProfileSummary) => {
+    const sourceSets = referenceSetOptions
+      .filter((entry) => entry.mangaId === manga.mangaId && entry.translatorId === translator.translatorId)
+      .sort((left, right) =>
+        String(left.chapterTitle || left.label).localeCompare(String(right.chapterTitle || right.label), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        })
+      );
+    const isSource =
+      sourceSets.some((entry) => entry.referenceKind === "source") ||
+      translator.translatorId === "translator_original" ||
+      translator.label.toLocaleLowerCase() === "original";
+
+    setSelectedReportMangaId(manga.mangaId);
+    setSelectedReportTranslatorId(translator.translatorId);
+    setImportForm((current) => ({
+      ...current,
+      mangaSelection: manga.mangaId,
+      translatorSelection: translator.translatorId,
+      referenceKind: isSource ? "source" : "translator",
+    }));
+    setIngestionForm((current) => ({
+      ...current,
+      mangaSelection: manga.mangaId,
+      translatorSelection: translator.translatorId,
+      referenceSetId: sourceSets[0]?.id || "",
+      useForStyle: !isSource,
+    }));
+    setExtractionForm((current) => ({ ...current, referenceSetId: sourceSets[0]?.id || "" }));
+    setReferenceWorklist(
+      sourceSets.map((referenceSet) => ({
+        referenceSetId: referenceSet.id,
+        label: referenceSet.label,
+        referenceKind: referenceSet.referenceKind || (isSource ? "source" : "translator"),
+        language: referenceSet.language,
+        mangaId: manga.mangaId,
+        mangaLabel: manga.label,
+        translatorId: translator.translatorId,
+        translatorLabel: translator.label,
+        chapterId: referenceSet.chapterId || undefined,
+        chapterTitle: referenceSet.chapterTitle || undefined,
+      }))
+    );
+    if (isSource && detailTab === "bilingual") setDetailTab("report");
+  };
+
+  const openReferenceJobs = () => {
+    if (selectedReferenceJobId) setSelectedJobId(selectedReferenceJobId);
+    if (selectedReportMangaId) setSelectedMangaId(selectedReportMangaId);
+    if (selectedReportTranslatorId) setSelectedTranslatorId(selectedReportTranslatorId);
+    setSelectedPage("job-list");
+  };
+
   return (
-    <section className="page">
-      <h1>Reference</h1>
-      <div className="card-stack">
-        <PageHeader
-          title={t("reference.page.title")}
-          description={t("reference.page.description")}
-          statusItems={[
-            { label: t("reference.page.status"), value: pageStatus },
-            { label: t("reference.page.queueCount"), value: queuedReferenceFolders.length },
-            { label: t("reference.page.worklistCount"), value: referenceWorklist.length },
-            {
-              label: t("reference.page.selectedReference"),
-              value: selectedReferenceSetSummary?.label || t("shared.state.notSelected"),
-            },
-          ]}
+    <section className="page reference-workspace-page">
+      <header className="reference-workbench-header">
+        <div>
+          <h1>{t("reference.page.title")}</h1>
+          <p className="muted-text">
+            {selectedReportManga && selectedReportTranslator
+              ? `${selectedReportManga.label} / ${selectedReportTranslator.label}`
+              : t("reference.workspace.selectSource")}
+          </p>
+        </div>
+        <div className="reference-workbench-header-actions">
+          <span className="reference-workbench-status">{pageStatus}</span>
+          <button className="secondary-button" type="button" onClick={openReferenceJobs}>
+            {t("reference.workspace.openJobs")}
+          </button>
+        </div>
+      </header>
+
+      <div className="reference-workbench-layout">
+        <ReferenceLibraryPane
+          mangaSeries={mangaSeriesOptions}
+          referenceSets={referenceSetOptions}
+          selectedMangaId={selectedReportMangaId}
+          selectedTranslatorId={selectedReportTranslatorId}
+          loading={mangaSeriesQuery.isLoading}
+          failed={mangaSeriesQuery.isError}
+          onSelectManga={(mangaId) => {
+            if (mangaId !== selectedReportMangaId) {
+              setSelectedReportMangaId(mangaId);
+              setSelectedReportTranslatorId("");
+              setReferenceWorklist([]);
+              setExtractionForm((current) => ({ ...current, referenceSetId: "" }));
+              setIngestionForm((current) => ({
+                ...current,
+                mangaSelection: mangaId,
+                translatorSelection: "",
+                referenceSetId: "",
+              }));
+              setImportForm((current) => ({
+                ...current,
+                mangaSelection: mangaId,
+                translatorSelection: "",
+              }));
+              setDetailTab("report");
+            }
+          }}
+          onSelectSource={selectLibrarySource}
+          onImport={() => setImportPanelOpen((current) => !current)}
         />
 
-        <ReferenceImportPane
-          importForm={importForm}
-          setImportForm={setImportForm}
-          importQueue={queuedReferenceFolders}
-          isWorklistImporting={isWorklistImporting}
-          mangaSeriesOptions={mangaSeriesOptions}
-          mangaSeriesLoading={mangaSeriesQuery.isLoading}
-          mangaSeriesFailed={mangaSeriesQuery.isError}
-          availableImportTranslators={availableImportTranslators}
-          isSourceReferenceKind={isSourceReferenceKind}
-          sourceReferenceTranslatorLabel={SOURCE_REFERENCE_TRANSLATOR_LABEL}
-          hasSourceReferenceInWorklist={hasSourceReferenceInWorklist}
-          hasTranslatorReferenceInWorklist={hasTranslatorReferenceInWorklist}
-          importBlockedReason={importBlockedReason}
-          removeQueuedReferenceFolder={removeQueuedReferenceFolder}
-          updateQueuedReferenceFolderLabel={updateQueuedReferenceFolderLabel}
-          importQueuedReferenceFolders={importQueuedReferenceFolders}
-          pickSingleFolder={pickSingleReferenceFolder}
-          pickMultipleFolders={pickMultipleReferenceFolders}
-          clearQueuedReferenceFolders={clearQueuedReferenceFolders}
-        />
-
-        <ReferenceWorklistPane
+        <main className="reference-center-pane reference-workbench-pane">
+          <div className="reference-pane-heading">
+            <div>
+              <h2>{t("reference.workspace.chapterTitle")}</h2>
+              <p>
+                {selectedReportTranslator
+                  ? t("reference.workspace.chapterCount", { count: referenceWorklist.length })
+                  : t("reference.workspace.selectSource")}
+              </p>
+            </div>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => setImportPanelOpen((current) => !current)}
+            >
+              {t(importPanelOpen ? "reference.workspace.importClose" : "reference.workspace.importAction")}
+            </button>
+          </div>
+          <div className="reference-pane-scroll reference-center-scroll">
+            {importPanelOpen ? (
+              <div className="reference-import-inline">
+                <ReferenceImportPane
+                  importForm={importForm}
+                  setImportForm={setImportForm}
+                  importQueue={queuedReferenceFolders}
+                  isWorklistImporting={isWorklistImporting}
+                  mangaSeriesOptions={mangaSeriesOptions}
+                  mangaSeriesLoading={mangaSeriesQuery.isLoading}
+                  mangaSeriesFailed={mangaSeriesQuery.isError}
+                  availableImportTranslators={availableImportTranslators}
+                  isSourceReferenceKind={isSourceReferenceKind}
+                  sourceReferenceTranslatorLabel={SOURCE_REFERENCE_TRANSLATOR_LABEL}
+                  hasSourceReferenceInWorklist={hasSourceReferenceInWorklist}
+                  hasTranslatorReferenceInWorklist={hasTranslatorReferenceInWorklist}
+                  importBlockedReason={importBlockedReason}
+                  removeQueuedReferenceFolder={removeQueuedReferenceFolder}
+                  updateQueuedReferenceFolderLabel={updateQueuedReferenceFolderLabel}
+                  importQueuedReferenceFolders={importQueuedReferenceFolders}
+                  pickSingleFolder={pickSingleReferenceFolder}
+                  pickMultipleFolders={pickMultipleReferenceFolders}
+                  clearQueuedReferenceFolders={clearQueuedReferenceFolders}
+                />
+              </div>
+            ) : null}
+            <ReferenceWorklistPane
           ingestionForm={ingestionForm}
           setIngestionForm={setIngestionForm}
           styleOptionDisabledForWorklist={styleOptionDisabledForWorklist}
@@ -1361,8 +1298,12 @@ export function ReferencePage() {
           ingestionBlockedReason={ingestionBlockedReason}
           removeWorklistEntry={removeWorklistEntry}
           deleteReferencePending={deleteReferenceSetMutation.isPending}
+          deleteExtractionPending={deleteReferenceExtractionMutation.isPending}
+          confirmDeleteExtraction={confirmDeleteExtraction}
           confirmDeleteReference={confirmDeleteReference}
-          selectReferenceMaterial={selectReferenceMaterial}
+          selectReferenceMaterial={(referenceSetId, label) => {
+            selectReferenceMaterial(referenceSetId, label);
+          }}
           runWorklistExtraction={runWorklistExtraction}
           runWorklistIngestion={runWorklistIngestion}
           runWorklistItemExtraction={runWorklistItemExtraction}
@@ -1370,6 +1311,7 @@ export function ReferencePage() {
           deepReviewPending={deepReviewMutation.isPending}
           runDeepReview={(referenceSet) => deepReviewMutation.mutate(referenceSet.id)}
           reviewExtraction={(referenceSet) => {
+            setDetailTab("review");
             setExtractionForm((current) => ({ ...current, referenceSetId: referenceSet.id }));
             startExtractionReviewMutation.mutate(referenceSet.id);
           }}
@@ -1384,8 +1326,37 @@ export function ReferencePage() {
           }}
           selectedReferenceSetId={extractionForm.referenceSetId}
         />
+          </div>
+        </main>
 
-        <ExtractionReviewPane
+        <aside className="reference-detail-pane reference-workbench-pane">
+          <div className="reference-detail-tabs" role="tablist">
+            <button
+              className={detailTab === "report" ? "reference-detail-tab active" : "reference-detail-tab"}
+              type="button"
+              onClick={() => setDetailTab("report")}
+            >
+              {t("reference.workspace.reportTab")}
+            </button>
+            <button
+              className={detailTab === "review" ? "reference-detail-tab active" : "reference-detail-tab"}
+              type="button"
+              onClick={() => setDetailTab("review")}
+            >
+              {t("reference.workspace.reviewTab")}
+            </button>
+            {selectedReportTranslator && !selectedReportTranslatorIsSource ? (
+              <button
+                className={detailTab === "bilingual" ? "reference-detail-tab active" : "reference-detail-tab"}
+                type="button"
+                onClick={() => setDetailTab("bilingual")}
+              >
+                {t("reference.workspace.bilingualTab")}
+              </button>
+            ) : null}
+          </div>
+          <div className="reference-pane-scroll reference-detail-scroll">
+            {detailTab === "review" ? <ExtractionReviewPane
           referenceSet={selectedReferenceSetSummary}
           review={extractionReviewQuery.data?.review || null}
           loading={extractionReviewQuery.isLoading}
@@ -1445,9 +1416,9 @@ export function ReferencePage() {
               confirmExtractionReviewMutation.mutate(selectedReferenceSetSummary.id);
             }
           }}
-        />
+        /> : null}
 
-        <BilingualEvidencePane
+            {detailTab === "bilingual" ? <BilingualEvidencePane
           visible={selectedAlignmentIsTranslator}
           document={bilingualEvidenceQuery.data || null}
           loading={bilingualEvidenceQuery.isLoading}
@@ -1469,9 +1440,10 @@ export function ReferencePage() {
               action,
             });
           }}
-        />
+        /> : null}
 
-        <IngestionReportPane
+            {detailTab === "report" && selectedReportManga && selectedReportTranslator ? <div className="reference-report-embedded"><IngestionReportPane
+          embedded
           mangaSeriesLoading={mangaSeriesQuery.isLoading}
           mangaSeriesError={mangaSeriesQuery.isError}
           mangaSeriesOptions={mangaSeriesOptions}
@@ -1489,21 +1461,16 @@ export function ReferencePage() {
           worklistReferenceSetIds={referenceWorklist.map((entry) => entry.referenceSetId)}
           addReferenceSetToWorklist={addReferenceSetToWorklist}
           addReferenceSetsToWorklist={addReferenceSetsToWorklist}
-          confirmDeleteExtraction={async (referenceSet) => {
-            const confirmed = await confirmDialog({
-              title: "刪除 Extraction 結果",
-              message: `確定要刪除 ${referenceSet.chapterTitle || referenceSet.label} 的 Extraction 結果與相關工作紀錄嗎？`,
-              confirmLabel: "刪除 Extraction",
-            });
-            if (!confirmed) return;
-            deleteReferenceExtractionMutation.mutate(referenceSet.id);
-          }}
+          confirmDeleteExtraction={confirmDeleteExtraction}
           confirmDeleteReference={confirmDeleteReference}
           confirmDeleteIngestion={async (manga, translator) => {
             const confirmed = await confirmDialog({
-              title: "刪除 Ingestion 結果",
-              message: `確定要刪除 ${manga.label} / ${translator.label} 的 Ingestion 結果與相關工作紀錄嗎？`,
-              confirmLabel: "刪除 Ingestion",
+              title: t("reference.workspace.deleteIngestionTitle"),
+              message: t("reference.workspace.deleteIngestionMessage", {
+                manga: manga.label,
+                translator: translator.label,
+              }),
+              confirmLabel: t("reference.workspace.deleteIngestionTitle"),
             });
             if (!confirmed) {
               return;
@@ -1513,45 +1480,12 @@ export function ReferencePage() {
               translatorId: translator.translatorId,
             });
           }}
-        />
-
-        <ReferenceJobsPane
-          selectedReferenceSetSummary={selectedReferenceSetSummary}
-          selectedReferenceExtractionJob={selectedReferenceExtractionJob}
-          selectedReferenceIngestionJob={selectedReferenceIngestionJob}
-          selectedDeletionManga={selectedDeletionManga}
-          selectedDeletionTranslator={selectedDeletionTranslator}
-          deleteReferenceExtractionPending={deleteReferenceExtractionMutation.isPending}
-          deleteIngestionPending={deleteIngestionMutation.isPending}
-          selectedJob={selectedJob}
-          displayJobType={displayJobType}
-          selectedJobSummary={selectedJobSummary}
-          selectedIngestionSummary={selectedIngestionSummary}
-          retryJob={referenceJobActions.retryJob}
-          openJobList={referenceJobActions.openJobList}
-          deleteJob={referenceJobActions.deleteJob}
-          viewExtraction={referenceJobActions.viewExtraction}
-          viewIngestion={referenceJobActions.viewIngestion}
-          confirmDeleteExtraction={referenceJobActions.confirmDeleteExtraction}
-          confirmDeleteIngestion={referenceJobActions.confirmDeleteIngestion}
-        />
-
-        <ArtifactEditorPane
-          selectedReferenceJobId={selectedReferenceJobId}
-          artifactsLoading={artifactsQuery.isLoading}
-          artifacts={Array.isArray(artifactsQuery.data?.artifacts) ? artifactsQuery.data.artifacts : []}
-          previewArtifact={previewArtifact}
-          previewData={previewData}
-          previewStatus={previewStatus}
-          editorValue={editorValue}
-          setEditorValue={setEditorValue}
-          loadArtifact={loadArtifact}
-          saveEditedArtifact={saveEditedArtifact}
-          deleteArtifact={deleteArtifact}
-          openArtifactPath={openDesktopPath}
-          prettyArtifactKind={prettyArtifactKind}
-          isEditableArtifact={isEditableArtifact}
-        />
+        /></div> : null}
+            {detailTab === "report" && (!selectedReportManga || !selectedReportTranslator) ? (
+              <p className="muted-text reference-detail-empty">{t("reference.workspace.selectSource")}</p>
+            ) : null}
+          </div>
+        </aside>
       </div>
     </section>
   );

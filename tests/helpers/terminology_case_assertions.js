@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   validateKnowledgeEnrichmentResult,
-} = require("../../backend/src/ao_contracts");
+} = require("../../backend/src/integrations/ao/contracts/ao_contracts");
 
 const FIXTURE_PATH = path.join(__dirname, "..", "fixtures", "terminology_cases.json");
 

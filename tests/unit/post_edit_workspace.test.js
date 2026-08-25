@@ -2,7 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { PostEditWorkspaceModule } = require("../../backend/src/modules/post_edit_workspace");
+const { PostEditWorkspaceModule } = require("../../backend/src/domains/post_edit/workspace/post_edit_workspace");
 
 function createScene() {
   return {

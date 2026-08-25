@@ -12,7 +12,7 @@ const {
   resolveKnowledgePaths,
   syncMangaManagementBinding,
   upsertKnowledgeIndexEntry,
-} = require("../../backend/src/modules/knowledge_paths");
+} = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
 describe("knowledge path helpers", () => {
   let originalIndex = null;
@@ -223,7 +223,7 @@ describe("knowledge path helpers", () => {
     const {
       listKnowledgeSeries: recoveredListKnowledgeSeries,
       writeKnowledgeIndex,
-    } = require("../../backend/src/modules/knowledge_paths");
+    } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
     const manifestsDir = path.join(tempRoot, "references", "manifests");
     const translatorDir = path.join(

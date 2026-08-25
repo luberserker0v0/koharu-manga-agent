@@ -2,9 +2,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { JobStore } = require("../../backend/src/storage/job_store");
-const { JobManager } = require("../../backend/src/job_manager");
-const { createApiServer } = require("../../backend/src/http/api_server");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
 const { PROJECT_ROOT, paths } = require("../../backend/src/config");
 const {
   createChapterRecord,
@@ -13,9 +13,9 @@ const {
   knowledgeIndexPath,
   loadKnowledgeIndex,
   writeKnowledgeIndex,
-} = require("../../backend/src/modules/knowledge_paths");
-const { referenceSetPaths } = require("../../backend/src/modules/reference_sets");
-const { SourcePreflightModule } = require("../../backend/src/modules/source_preflight");
+} = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
+const { referenceSetPaths } = require("../../backend/src/domains/reference/sets/reference_sets");
+const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-api-"));
@@ -96,6 +96,67 @@ describe("backend api", () => {
     expect(jobManager.listJobs()).toEqual([]);
   });
 
+  test("POST /jobs/translation requires stable output bindings", async () => {
+    const store = new JobStore(createTempDbPath());
+    const jobManager = new JobManager({
+      store,
+      engine: { runTranslationJob: jest.fn() },
+      runtimeConfig: { host: "127.0.0.1", port: 0 },
+      resolvedConfig: {},
+    });
+    api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
+    await api.listen();
+    const address = api.server.address();
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const response = await fetch(`${baseUrl}/jobs/translation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translationMode: "quick", mangaId: "series" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("translatorId, chapterId");
+    expect(jobManager.listJobs()).toEqual([]);
+  });
+
+  test("POST /jobs/translation rejects a concurrent job for the same output chapter", async () => {
+    const store = new JobStore(createTempDbPath());
+    const jobManager = new JobManager({
+      store,
+      engine: { runTranslationJob: jest.fn() },
+      runtimeConfig: { host: "127.0.0.1", port: 0 },
+      resolvedConfig: {},
+    });
+    const activeJob = jobManager.createJob("translation", {
+      mangaId: "series",
+      translatorId: "clone",
+      chapterId: "chapter_4",
+    }, {
+      status: "running",
+      stage: "translation",
+      enqueue: false,
+    });
+    api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
+    await api.listen();
+    const address = api.server.address();
+    baseUrl = `http://127.0.0.1:${address.port}`;
+
+    const response = await fetch(`${baseUrl}/jobs/translation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        translationMode: "quick",
+        mangaId: "series",
+        translatorId: "clone",
+        chapterId: "chapter_4",
+      }),
+    });
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain(activeJob.id);
+  });
+
   test("POST /jobs/translation creates a job and GET /jobs/:id returns it", async () => {
     const store = new JobStore(createTempDbPath());
     const engine = {
@@ -134,6 +195,7 @@ describe("backend api", () => {
         targetLanguage: "zh-TW",
         mangaId: "phantom_fantasy",
         mangaLabel: "Phantom Fantasy",
+        translatorId: "translator_api",
         chapterId: "ch_001",
         outputDir: "C:\\exports\\api-translation",
       }),
@@ -152,6 +214,7 @@ describe("backend api", () => {
     expect(stored.result.operationId).toBe("op-api");
     expect(stored.payload.mangaId).toBe("phantom_fantasy");
     expect(stored.payload.mangaLabel).toBe("Phantom Fantasy");
+    expect(stored.payload.translatorId).toBe("translator_api");
     expect(stored.payload.chapterId).toBe("ch_001");
   });
 
@@ -184,6 +247,9 @@ describe("backend api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         translationMode: "quick",
+        mangaId: "managed_series",
+        translatorId: "managed_translator",
+        chapterId: "managed_chapter",
         outputDir: "C:\\exports\\managed",
       }),
     });
@@ -224,6 +290,9 @@ describe("backend api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         translationMode: "quick",
+        mangaId: "external_series",
+        translatorId: "external_translator",
+        chapterId: "external_chapter",
         outputDir: "C:\\exports\\external",
         baseUrl: "http://127.0.0.1:4999",
       }),
@@ -590,9 +659,16 @@ describe("backend api", () => {
 
   test("manga management endpoints create translators and chapters with stable ordering", async () => {
     const store = new JobStore(createTempDbPath());
+    const deletePublishedChapter = jest.fn(() => ({
+      deleted: true,
+      revisionCount: 1,
+    }));
     const jobManager = new JobManager({
       store,
-      engine: { runTranslationJob: jest.fn() },
+      engine: {
+        runTranslationJob: jest.fn(),
+        translationPublicationService: { deleteChapter: deletePublishedChapter },
+      },
       runtimeConfig: { host: "127.0.0.1", port: 0 },
       resolvedConfig: { workflow: { qualityCheck: { enabled: true } } },
     });
@@ -663,6 +739,23 @@ describe("backend api", () => {
       chapterOne.chapter.chapterId,
     ]);
 
+    const chapterJobPayload = {
+      mangaId,
+      translatorId,
+      chapterId: chapterOne.chapter.chapterId,
+    };
+    const chapterParentJob = jobManager.createJob("translation", chapterJobPayload, {
+      status: "succeeded",
+      stage: "succeeded",
+      enqueue: false,
+    });
+    const chapterChildJob = jobManager.createJob("translation_knowledge_commit", {}, {
+      status: "succeeded",
+      stage: "succeeded",
+      parentJobId: chapterParentJob.id,
+      enqueue: false,
+    });
+
     const deleteChapterRes = await fetch(
       `${baseUrl}/manga/${mangaId}/translators/${translatorId}/chapters/${chapterOne.chapter.chapterId}`,
       {
@@ -670,6 +763,22 @@ describe("backend api", () => {
       }
     );
     expect(deleteChapterRes.status).toBe(200);
+    const deleteChapterPayload = await deleteChapterRes.json();
+    expect(deletePublishedChapter).toHaveBeenCalledWith(
+      mangaId,
+      translatorId,
+      chapterOne.chapter.chapterId
+    );
+    expect(deleteChapterPayload).toEqual(expect.objectContaining({
+      deletedPublication: expect.objectContaining({ deleted: true }),
+      deletedRevisionCount: 0,
+    }));
+    expect(deleteChapterPayload.deletedJobs.map((job) => job.id)).toEqual(expect.arrayContaining([
+      chapterParentJob.id,
+      chapterChildJob.id,
+    ]));
+    expect(jobManager.getJob(chapterParentJob.id)).toBeNull();
+    expect(jobManager.getJob(chapterChildJob.id)).toBeNull();
 
     const afterDeleteChapterRes = await fetch(`${baseUrl}/manga/${mangaId}/translators/${translatorId}/chapters`);
     const afterDeleteChapterPayload = await afterDeleteChapterRes.json();
@@ -819,6 +928,8 @@ describe("backend api", () => {
         translationMode: "quick",
         targetLanguage: "zh-TW",
         mangaId: "gui_series",
+        translatorId: "gui_translator",
+        chapterId: "gui_chapter",
       }),
     });
     const created = await createRes.json();
@@ -900,7 +1011,12 @@ describe("backend api", () => {
       const response = await fetch(`${baseUrl}/jobs/translation`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translationMode: "quick", mangaId }),
+        body: JSON.stringify({
+          translationMode: "quick",
+          mangaId,
+          translatorId: `translator_${mangaId}`,
+          chapterId: `chapter_${mangaId}`,
+        }),
       });
       return response.json();
     };
@@ -1102,7 +1218,6 @@ describe("backend api", () => {
       runReferenceIngestionPrepareJob: jest.fn().mockResolvedValue({ phase: "prepare" }),
       runReferenceIngestionStoryJob: jest.fn().mockResolvedValue({ phase: "story" }),
       runReferenceIngestionCommitJob: jest.fn().mockResolvedValue({ phase: "commit", ...ingestionResult }),
-      runReferenceIngestionJob: jest.fn().mockResolvedValue(ingestionResult),
       runReferenceExtractionJob: jest.fn(),
       runTranslationJob: jest.fn(),
     };
@@ -1151,7 +1266,7 @@ describe("backend api", () => {
   test("POST /jobs/reference-ingestion rejects requests without chapterId", async () => {
     const store = new JobStore(createTempDbPath());
     const engine = {
-      runReferenceIngestionJob: jest.fn(),
+      runReferenceIngestionAnalysisJob: jest.fn(),
       runReferenceExtractionJob: jest.fn(),
       runTranslationJob: jest.fn(),
     };
@@ -1183,7 +1298,7 @@ describe("backend api", () => {
     expect(createRes.status).toBe(400);
     const payload = await createRes.json();
     expect(payload.error).toBe("chapterId is required for reference ingestion jobs.");
-    expect(engine.runReferenceIngestionJob).not.toHaveBeenCalled();
+    expect(engine.runReferenceIngestionAnalysisJob).not.toHaveBeenCalled();
   });
 
   test("GET /knowledge/:mangaId endpoints expose stored assets and honor translatorId", async () => {
@@ -1221,7 +1336,6 @@ describe("backend api", () => {
     const engine = {
       runTranslationJob: jest.fn(),
       runReferenceExtractionJob: jest.fn(),
-      runReferenceIngestionJob: jest.fn(),
     };
 
     const jobManager = new JobManager({

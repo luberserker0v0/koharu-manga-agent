@@ -1,6 +1,18 @@
-const { AOClient } = require("../../backend/src/ao_client");
+const { AOClient } = require("../../backend/src/integrations/ao/client/ao_client");
 
 describe("AOClient", () => {
+  test("checkAvailability reports a connection failure as AO_UNAVAILABLE", async () => {
+    const client = new AOClient({
+      baseUrl: "http://127.0.0.1:32768",
+      fetchImpl: jest.fn().mockRejectedValue(new TypeError("fetch failed")),
+    });
+
+    await expect(client.checkAvailability({ timeoutMs: 10 })).rejects.toMatchObject({
+      code: "AO_UNAVAILABLE",
+      statusCode: 503,
+    });
+  });
+
   test("waitUntilReady polls conversation status until ready", async () => {
     const responses = [
       { ok: true, status: 200, json: async () => ({ id: "conv-1", status: "running", ready: false }) },
@@ -63,6 +75,23 @@ describe("AOClient", () => {
           agent: "quality-optimizer",
         }),
       })
+    );
+  });
+
+  test("listProviders retrieves the provider catalog for a running conversation", async () => {
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ providers: [{ id: "local", name: "Local", models: ["gemma"] }], default: {} }),
+    });
+    const client = new AOClient({ baseUrl: "http://127.0.0.1:32768", fetchImpl });
+
+    expect(await client.listProviders("conv-1")).toEqual(expect.objectContaining({
+      providers: [expect.objectContaining({ id: "local" })],
+    }));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:32768/api/conversations/conv-1/providers",
+      expect.objectContaining({ method: "GET" })
     );
   });
 

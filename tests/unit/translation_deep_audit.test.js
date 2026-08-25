@@ -1,7 +1,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { TranslationDeepAuditModule } = require("../../backend/src/modules/translation_deep_audit");
+const { TranslationDeepAuditModule } = require("../../backend/src/domains/translation/audit/translation_deep_audit");
 
 describe("translation deep audit", () => {
   test("reuses completed checkpoints for the same final snapshot", async () => {
@@ -17,6 +17,9 @@ describe("translation deep audit", () => {
     const first = await module.run(payload, hooks);
     const second = await module.run(payload, { ...hooks, jobId: "audit2" });
     expect(first.windowCount).toBe(1);
+    expect(first.deepAuditReviewPackagePath).toMatch(/deep_audit_review_package\.json$/);
+    expect(first).not.toHaveProperty("qualityReviewPackagePath");
+    expect(JSON.parse(fs.readFileSync(first.deepAuditReviewPackagePath, "utf8")).status).toBe("awaiting_decisions");
     expect(second.reusedWindows).toBe(1);
     expect(runTranslationDeepAuditWindow).toHaveBeenCalledTimes(1);
   });

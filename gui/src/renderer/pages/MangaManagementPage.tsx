@@ -74,6 +74,8 @@ export function MangaManagementPage() {
       setOrderedChapterIds([]);
       await queryClient.invalidateQueries({ queryKey: ["mangaSeries"] });
       await queryClient.invalidateQueries({ queryKey: ["chapters", selectedMangaId, selectedTranslatorId] });
+      await queryClient.invalidateQueries({ queryKey: ["translationMemoryInspection"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
 

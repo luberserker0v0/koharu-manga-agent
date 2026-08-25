@@ -2,9 +2,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { JobStore } = require("../../backend/src/storage/job_store");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
 const { createRuntime } = require("../../backend/src/runtime");
-const { SourcePreflightModule } = require("../../backend/src/modules/source_preflight");
+const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-live-"));
@@ -104,6 +104,7 @@ describe("live backend smoke", () => {
         outputDir,
         mangaId: "live_smoke_series",
         mangaLabel: "Live Smoke Series",
+        translatorId: "live_smoke_output",
         chapterId: "ch_smoke_001",
         sourcePreflightId: preflightId,
       }),

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const { config, paths } = require("../src/config");
-const { KoharuRuntimeManager } = require("../src/modules/koharu_runtime");
+const { KoharuRuntimeManager } = require("../src/integrations/koharu/runtime/koharu_runtime");
 
 async function main() {
   const manager = new KoharuRuntimeManager({

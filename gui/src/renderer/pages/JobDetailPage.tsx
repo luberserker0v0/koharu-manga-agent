@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createQualityRepairJob, createTranslationDeepAuditJob, getJob, getJobArtifacts, getJobEvents, type GuiJob, type GuiJobEvent } from "../api/jobs";
+import { createQualityRepairJob, createTranslationDeepAuditJob, createTranslationKnowledgeRetryJob, getJob, getJobArtifacts, getJobEvents, resumeJob, type GuiJob, type GuiJobEvent } from "../api/jobs";
 import { ArtifactsContent } from "./ArtifactsPage";
 import { translateLiteral } from "../i18n/messages";
 import { openDesktopPath } from "../services/desktop_api";
@@ -10,7 +10,8 @@ import { useSelectedJobRuntimeStore } from "../stores/selected_job_runtime_store
 import { useUiStore } from "../stores/ui_store";
 import { formatSystemDateTime } from "../features/shared/formatters/date_time";
 import { resolveJobStageLabel } from "../features/jobs/viewmodels/job_list_viewmodel";
-import { QualityReviewPane } from "../features/jobs/components/QualityReviewPane";
+import { DeepAuditReviewPane } from "../features/jobs/components/DeepAuditReviewPane";
+import { JobFailurePanel } from "../features/jobs/components/JobFailurePanel";
 
 function formatValue(value: unknown): string {
   if (value == null) {
@@ -423,7 +424,7 @@ function liveConnectionTone(state: "idle" | "connecting" | "live" | "reconnectin
 }
 
 function isTerminalJobStatus(status: string | null | undefined) {
-  return status === "succeeded" || status === "failed" || status === "canceled" || status === "waiting_user_review";
+  return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
 function collapseEvents(events: GuiJobEvent[]) {
@@ -673,6 +674,14 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
     mutationFn: (jobId: string) => createQualityRepairJob(jobId),
     onSuccess: (job) => setSelectedJobId(job.id),
   });
+  const knowledgeRetryMutation = useMutation({
+    mutationFn: (jobId: string) => createTranslationKnowledgeRetryJob(jobId),
+    onSuccess: (job) => setSelectedJobId(job.id),
+  });
+  const resumeMutation = useMutation({
+    mutationFn: (jobId: string) => resumeJob(jobId),
+    onSuccess: (job) => setSelectedJobId(job.id),
+  });
 
   const timeline = useMemo(() => {
     return projectTimelineEvents(runtimeEvents, t);
@@ -854,10 +863,17 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
     }>;
 
     if (runtimeJob?.error) {
+      const failureSource = runtimeJob.diagnostics?.failureSource || "unknown";
+      const failureType = runtimeJob.diagnostics?.resourceFailureType || "unknown";
+      const failureStage = runtimeJob.diagnostics?.failureStage || runtimeJob.stage;
       next.push({
         level: "error",
         title: t("jobDetail.notice.jobError"),
-        message: runtimeJob.error,
+        message: t("jobDetail.failure.notice", {
+          source: t(`jobDetail.failure.source.${failureSource}`),
+          stage: resolveJobStageLabel(failureStage, t),
+          type: t(`jobList.resourceFailure.${failureType}`),
+        }),
       });
     }
 
@@ -891,7 +907,17 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
     }
 
     return next;
-  }, [runtimeJob?.error, runtimeJob?.payload?.qualityCheck, runtimeJob?.payload?.translationMode, latestPipelineProgress, t]);
+  }, [
+    runtimeJob?.diagnostics?.failureSource,
+    runtimeJob?.diagnostics?.failureStage,
+    runtimeJob?.diagnostics?.resourceFailureType,
+    runtimeJob?.error,
+    runtimeJob?.payload?.qualityCheck,
+    runtimeJob?.payload?.translationMode,
+    runtimeJob?.stage,
+    latestPipelineProgress,
+    t,
+  ]);
 
   useEffect(() => {
     const payloadMangaId = runtimeJob?.payload?.mangaId;
@@ -1049,6 +1075,11 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
   );
   const displayedQualitySummary = qualitySummary || qualityContextSummary;
   const qualitySemanticCoverage = asRecord(displayedQualitySummary?.semanticCoverage);
+  const persistedQuality = asRecord(asRecord(displayJob?.result)?.quality);
+  const qualityNeedsRepair =
+    displayJob?.outcome === "partial" ||
+    persistedQuality?.completenessStatus === "incomplete" ||
+    asRecord(persistedQuality?.semanticResult)?.outcome === "partial";
   const qualityRevisionCount = Array.isArray(qualitySummary?.optimizedTranslations)
     ? qualitySummary.optimizedTranslations.length
     : 0;
@@ -1152,8 +1183,33 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
               ) : (
                 <div><strong>{t("jobDetail.summary.referenceSet")}</strong><span>{formatValue(displayJob.payload.referenceSetId)}</span></div>
               )}
+              {displayJob.outcome ? (
+                <div><strong>{t("jobDetail.outcome.label")}</strong><span>{t(`jobList.outcome.${displayJob.outcome}`)}</span></div>
+              ) : null}
+              {displayJob.diagnostics ? (
+                <>
+                  <div><strong>{t("jobDetail.outcome.accepted")}</strong><span>{displayJob.diagnostics.acceptedRecordCount ?? 0}</span></div>
+                  <div><strong>{t("jobDetail.outcome.quarantined")}</strong><span>{displayJob.diagnostics.quarantinedRecordCount ?? 0}</span></div>
+                  <div><strong>{t("jobDetail.outcome.warnings")}</strong><span>{displayJob.diagnostics.warningCount ?? 0}</span></div>
+                  {displayJob.diagnostics.failedWindowId ? (
+                    <div><strong>{t("jobDetail.outcome.failedWindow")}</strong><span>{displayJob.diagnostics.failedWindowId}</span></div>
+                  ) : null}
+                </>
+              ) : null}
             </div>
-            {displayJob.type === "translation" && ["succeeded", "waiting_user_review"].includes(displayJob.status) ? (
+            {displayJob.status === "failed" && displayJob.resumeMetadata?.resumeAvailable ? (
+              <div className="button-row">
+                <button
+                  className="primary-button"
+                  disabled={resumeMutation.isPending}
+                  onClick={() => resumeMutation.mutate(displayJob.id)}
+                  type="button"
+                >
+                  {resumeMutation.isPending ? t("jobDetail.outcome.resuming") : t("jobDetail.outcome.resume")}
+                </button>
+              </div>
+            ) : null}
+            {displayJob.type === "translation" && displayJob.status === "succeeded" ? (
               <div className="button-row">
                 <button className="secondary-button" type="button" onClick={() => setSelectedPage("post-edit")}>
                   {t("jobDetail.summary.openPostEdit")}
@@ -1162,7 +1218,7 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
             ) : null}
           </article>
 
-          {displayJob.type === "translation" ? (
+          {["translation", "translation_quality_repair", "translation_deep_audit_apply"].includes(displayJob.type) ? (
             <article className="card">
               <h2>{t("jobDetail.translationMemory.title")}</h2>
               <div className="summary-grid">
@@ -1218,6 +1274,12 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
                   <strong>{t("jobDetail.translationMemory.knowledge")}</strong>
                   <span>{knowledgeChild ? translateJobStatus(knowledgeChild.status) : t("jobDetail.translationMemory.notScheduled")}</span>
                 </div>
+                {knowledgeChild?.outcome ? (
+                  <div>
+                    <strong>{t("jobDetail.outcome.label")}</strong>
+                    <span>{t(`jobList.outcome.${knowledgeChild.outcome}`)}</span>
+                  </div>
+                ) : null}
                 <div>
                   <strong>{t("jobDetail.knowledge.evidence")}</strong>
                   <span>{formatValue(learningEvidenceSummary?.total)}</span>
@@ -1227,35 +1289,68 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
                   <span>{formatValue(knowledgeSummary?.confidenceUpdates ?? asRecord(knowledgeChild?.result)?.confidenceUpdates)}</span>
                 </div>
                 <div>
+                  <strong>{t("jobDetail.knowledge.changes")}</strong>
+                  <span>{formatValue(knowledgeSummary?.knowledgeChanges ?? asRecord(knowledgeChild?.result)?.knowledgeChanges)}</span>
+                </div>
+                <div>
                   <strong>{t("jobDetail.knowledge.semanticRoles")}</strong>
                   <span>{formatValue(learningEvidenceSummary?.semanticRoles)}</span>
                 </div>
               </div>
               {displayJob.status === "succeeded" ? (
                 <div className="button-row">
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={deepAuditMutation.isPending}
-                    onClick={() => deepAuditMutation.mutate(displayJob.id)}
-                  >
-                    {deepAuditMutation.isPending ? t("jobDetail.deepAudit.starting") : t("jobDetail.deepAudit.start")}
-                  </button>
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={qualityRepairMutation.isPending}
-                    onClick={() => qualityRepairMutation.mutate(displayJob.id)}
-                  >
-                    {qualityRepairMutation.isPending ? t("jobDetail.qualityRepair.starting") : t("jobDetail.qualityRepair.start")}
-                  </button>
+                  {displayJob.type === "translation" ? (
+                    <>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={deepAuditMutation.isPending}
+                        onClick={() => deepAuditMutation.mutate(displayJob.id)}
+                      >
+                        {deepAuditMutation.isPending ? t("jobDetail.deepAudit.starting") : t("jobDetail.deepAudit.start")}
+                      </button>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={qualityRepairMutation.isPending}
+                        onClick={() => qualityRepairMutation.mutate(displayJob.id)}
+                      >
+                        {qualityRepairMutation.isPending
+                          ? t("jobDetail.qualityRepair.starting")
+                          : t(qualityNeedsRepair
+                            ? "jobDetail.qualityRepair.resumePartial"
+                            : "jobDetail.qualityRepair.start")}
+                      </button>
+                    </>
+                  ) : null}
+                  {!knowledgeChild && asRecord(displayJob.result)?.knowledgePayload ? (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={knowledgeRetryMutation.isPending}
+                      onClick={() => knowledgeRetryMutation.mutate(displayJob.id)}
+                    >
+                      {knowledgeRetryMutation.isPending
+                        ? t("jobDetail.knowledgeRetry.starting")
+                        : t("jobDetail.knowledgeRetry.start")}
+                    </button>
+                  ) : null}
                 </div>
+              ) : null}
+              {knowledgeRetryMutation.error ? (
+                <p className="error-text">
+                  {t("jobDetail.knowledgeRetry.failed", {
+                    message: knowledgeRetryMutation.error instanceof Error
+                      ? knowledgeRetryMutation.error.message
+                      : String(knowledgeRetryMutation.error),
+                  })}
+                </p>
               ) : null}
             </article>
           ) : null}
 
           {["translation", "translation_quality_repair", "translation_deep_audit"].includes(displayJob.type) ? (
-            <QualityReviewPane job={displayJob} onFinalizeCreated={(job) => setSelectedJobId(job.id)} />
+            <DeepAuditReviewPane job={displayJob} onApplyCreated={(job) => setSelectedJobId(job.id)} />
           ) : null}
 
           {displayJob.type === "translation_deep_audit" ? (
@@ -1376,7 +1471,7 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
           <article className="card">
             <h2>{t("jobDetail.result.title")}</h2>
             {displayJob.error ? (
-              <p className="error-text">{displayJob.error}</p>
+              <JobFailurePanel job={displayJob} t={t} />
             ) : (
               <pre>{JSON.stringify(displayJob.result, null, 2)}</pre>
             )}

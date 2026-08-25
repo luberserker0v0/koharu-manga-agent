@@ -4,7 +4,7 @@ import path from "node:path";
 import { shellPaths } from "./shell_paths";
 
 export type GuiSettings = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   updatedAt: string;
   locale: "zh-TW" | "en-US";
   sourceFolder: string;
@@ -14,60 +14,13 @@ export type GuiSettings = {
   lastSelectedPage: string;
   lastSelectedJobId: string | null;
   lastSelectedMangaId: string | null;
-  agent: {
-    provider: "opencode";
-    runtimeMode: "managed" | "external";
-    baseUrl: string;
-    commandDir: string;
-    moduleName: string;
-    exportName: string;
-    timeoutMs: number;
-  };
-  quality: {
-    enabled: boolean;
-    modelId: string;
-    serverUrl: string;
-  };
-  translation: {
-    modelId: string;
-    serverUrl: string;
-    providerId: string;
-  };
-  koharu: {
-    baseUrl: string;
-  };
-  engines: Record<string, string>;
 };
 
 const SETTINGS_FILE_NAME = "gui-settings.json";
 
-function deepMerge<T extends Record<string, any>>(base: T, override: Partial<T> | null | undefined): T {
-  if (!override || typeof override !== "object") {
-    return { ...base };
-  }
-
-  const result: Record<string, any> = { ...base };
-  for (const [key, value] of Object.entries(override)) {
-    if (
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      result[key] &&
-      typeof result[key] === "object" &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = deepMerge(result[key], value as Record<string, any>);
-    } else {
-      result[key] = value;
-    }
-  }
-
-  return result as T;
-}
-
 function createDefaultSettings(): GuiSettings {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     updatedAt: new Date().toISOString(),
     locale: "zh-TW",
     sourceFolder: "",
@@ -77,29 +30,23 @@ function createDefaultSettings(): GuiSettings {
     lastSelectedPage: "job",
     lastSelectedJobId: null,
     lastSelectedMangaId: null,
-    agent: {
-      provider: "opencode",
-      runtimeMode: "managed",
-      baseUrl: "",
-      commandDir: "",
-      moduleName: "@opencode-ai/sdk/client",
-      exportName: "createOpencodeClient",
-      timeoutMs: 10000,
-    },
-    quality: {
-      enabled: true,
-      modelId: "",
-      serverUrl: "",
-    },
-    translation: {
-      modelId: "",
-      serverUrl: "",
-      providerId: "",
-    },
-    koharu: {
-      baseUrl: "http://127.0.0.1:4000",
-    },
-    engines: {},
+  };
+}
+
+function normalizeSettings(value: Partial<GuiSettings> | null | undefined): GuiSettings {
+  const defaults = createDefaultSettings();
+  if (!value || typeof value !== "object") return defaults;
+  return {
+    schemaVersion: 2,
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : defaults.updatedAt,
+    locale: value.locale === "en-US" ? "en-US" : "zh-TW",
+    sourceFolder: typeof value.sourceFolder === "string" ? value.sourceFolder : defaults.sourceFolder,
+    outputFolder: typeof value.outputFolder === "string" ? value.outputFolder : defaults.outputFolder,
+    referenceFolder: typeof value.referenceFolder === "string" ? value.referenceFolder : defaults.referenceFolder,
+    lastPickedSourceFolder: typeof value.lastPickedSourceFolder === "string" ? value.lastPickedSourceFolder : defaults.lastPickedSourceFolder,
+    lastSelectedPage: typeof value.lastSelectedPage === "string" ? value.lastSelectedPage : defaults.lastSelectedPage,
+    lastSelectedJobId: typeof value.lastSelectedJobId === "string" ? value.lastSelectedJobId : null,
+    lastSelectedMangaId: typeof value.lastSelectedMangaId === "string" ? value.lastSelectedMangaId : null,
   };
 }
 
@@ -117,14 +64,15 @@ export class SettingsStore {
   read(): GuiSettings {
     try {
       const raw = fs.readFileSync(this.filePath, "utf-8");
-      return deepMerge(createDefaultSettings(), JSON.parse(raw));
+      return normalizeSettings(JSON.parse(raw));
     } catch {
       return createDefaultSettings();
     }
   }
 
   write(settings: Partial<GuiSettings>): GuiSettings {
-    const nextSettings = deepMerge(this.read(), {
+    const nextSettings = normalizeSettings({
+      ...this.read(),
       ...settings,
       updatedAt: new Date().toISOString(),
     });

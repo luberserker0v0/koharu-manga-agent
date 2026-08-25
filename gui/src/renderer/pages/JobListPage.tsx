@@ -9,6 +9,7 @@ import {
   purgeJobsBatch,
   restoreJob,
   restoreJobsBatch,
+  resumeJob,
   retryJob,
   type GuiJob,
 } from "../api/jobs";
@@ -74,7 +75,7 @@ export function JobListPage() {
   const setSelectedMangaId = useUiStore((state) => state.setSelectedMangaId);
   const setSelectedTranslatorId = useUiStore((state) => state.setSelectedTranslatorId);
   const [jobListCollapsed, setJobListCollapsed] = useState(false);
-  const [jobListWidth, setJobListWidth] = useState(380);
+  const [jobListWidth, setJobListWidth] = useState(440);
   const [checkedJobIds, setCheckedJobIds] = useState<string[]>([]);
   const [filter, setFilter] = useState<"all" | "active" | "completed" | "failed" | "trash">("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -111,6 +112,14 @@ export function JobListPage() {
       if (typeof job.payload.translatorId === "string" && job.payload.translatorId.trim()) {
         setSelectedTranslatorId(job.payload.translatorId);
       }
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: resumeJob,
+    onSuccess: async (job) => {
+      setSelectedJobId(job.id);
       await queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
@@ -259,6 +268,7 @@ export function JobListPage() {
 
   const busy =
     retryMutation.isPending ||
+    resumeMutation.isPending ||
     cancelMutation.isPending ||
     deleteMutation.isPending ||
     batchDeleteMutation.isPending ||
@@ -467,7 +477,7 @@ export function JobListPage() {
       }
 
       const delta = event.clientX - resizeState.current.startX;
-      const nextWidth = Math.min(520, Math.max(260, resizeState.current.startWidth + delta));
+      const nextWidth = Math.min(620, Math.max(320, resizeState.current.startWidth + delta));
       setJobListWidth(nextWidth);
     };
 
@@ -834,10 +844,12 @@ export function JobListPage() {
                   busy={busy}
                   checked={checkedJobIds.includes(workflow.root.id)}
                   collapsed={jobListCollapsed}
+                  selected={selectedJobId === workflow.root.id || workflow.stages.some((stage) => stage.id === selectedJobId)}
                   onCancel={(jobId) => cancelMutation.mutate(jobId)}
                   onDelete={confirmDeleteJob}
                   onPurge={confirmPurgeJob}
                   onRestore={(jobId) => restoreMutation.mutate(jobId)}
+                  onResume={(jobId) => resumeMutation.mutate(jobId)}
                   onRetry={(jobId) => retryMutation.mutate(jobId)}
                   onSelect={selectJobContext}
                   onToggleChecked={toggleCheckedJob}

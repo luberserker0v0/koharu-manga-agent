@@ -1,26 +1,27 @@
 const { config, paths, runtime } = require("./config");
-const { KoharuClient } = require("./koharu_client");
-const { AOClient } = require("./ao_client");
-const { AOTaskRunner } = require("./ao_tasks");
-const { ProjectSetupModule } = require("./modules/project_setup");
-const { PipelineMonitorModule } = require("./modules/pipeline_monitor");
-const { ReferenceExtractionModule } = require("./modules/reference_extraction");
-const { ReferenceIngestionModule } = require("./modules/reference_ingestion");
-const { ReferenceBilingualEnrichmentModule } = require("./modules/reference_bilingual_enrichment");
-const { SourcePreflightModule } = require("./modules/source_preflight");
-const { QualityModule } = require("./modules/quality");
-const { KnowledgeModule } = require("./modules/knowledge");
-const { TranslationDeepAuditModule } = require("./modules/translation_deep_audit");
-const { ExportModule } = require("./modules/export");
-const { ProjectLifecycleModule } = require("./modules/project_lifecycle");
-const { PostEditWorkspaceModule } = require("./modules/post_edit_workspace");
-const { ReferenceExtractionReviewService } = require("./modules/reference_extraction_review_service");
-const { TranslationPublicationService } = require("./modules/translation_publications");
-const { KoharuRuntimeManager } = require("./modules/koharu_runtime");
-const { JobStore } = require("./storage/job_store");
-const { WorkflowEngine } = require("./workflow_engine");
-const { JobManager } = require("./job_manager");
-const { createApiServer } = require("./http/api_server");
+const { ConfigService } = require("./config_service");
+const { KoharuClient } = require("./integrations/koharu/client/koharu_client");
+const { AOClient } = require("./integrations/ao/client/ao_client");
+const { AOTaskRunner } = require("./integrations/ao/tasks/ao_tasks");
+const { ProjectSetupModule } = require("./integrations/koharu/pipeline/project_setup");
+const { PipelineMonitorModule } = require("./integrations/koharu/pipeline/pipeline_monitor");
+const { ReferenceExtractionModule } = require("./domains/reference/extraction/reference_extraction");
+const { ReferenceIngestionModule } = require("./domains/reference/ingestion/reference_ingestion");
+const { ReferenceBilingualEnrichmentModule } = require("./domains/reference/bilingual/reference_bilingual_enrichment");
+const { SourcePreflightModule } = require("./domains/translation/preflight/source_preflight");
+const { QualityModule } = require("./domains/translation/quality/quality");
+const { KnowledgeModule } = require("./domains/knowledge/learning/knowledge");
+const { TranslationDeepAuditModule } = require("./domains/translation/audit/translation_deep_audit");
+const { ExportModule } = require("./domains/translation/execution/export");
+const { ProjectLifecycleModule } = require("./integrations/koharu/pipeline/project_lifecycle");
+const { PostEditWorkspaceModule } = require("./domains/post_edit/workspace/post_edit_workspace");
+const { ReferenceExtractionReviewService } = require("./domains/reference/review/reference_extraction_review_service");
+const { TranslationPublicationService } = require("./domains/translation/publications/translation_publications");
+const { KoharuRuntimeManager } = require("./integrations/koharu/runtime/koharu_runtime");
+const { JobStore } = require("./domains/jobs/persistence/job_store");
+const { WorkflowEngine } = require("./domains/jobs/workflows/workflow_engine");
+const { JobManager } = require("./domains/jobs/job_manager");
+const { createApiServer } = require("./http/server/api_server");
 
 function applyKoharuRuntimeStatus(runtime, status) {
   if (!status?.baseUrl) {
@@ -95,16 +96,32 @@ function createRuntime(overrides = {}) {
     runtimeConfig: { ...runtime, host, port },
     resolvedConfig: config,
     koharuRuntimeManager,
+    aoClient,
   });
   const extractionReviewService =
     overrides.extractionReviewService ||
     new ReferenceExtractionReviewService({ client, jobManager, baseUrl: config.api.baseUrl });
+
+  const configService = overrides.configService || new ConfigService({
+    effectiveConfig: config,
+    onApply(nextConfig) {
+      aoClient.baseUrl = String(nextConfig.agent.baseUrl || "").replace(/\/+$/, "");
+      aoClient.apiKey = nextConfig.agent.apiKey || null;
+      aoClient.readyPollIntervalMs = nextConfig.agent.readyPollIntervalMs;
+      aoClient.readyTimeoutMs = nextConfig.agent.readyTimeoutMs;
+      aoTaskRunner.settings = nextConfig.agent;
+      client.defaultBaseUrl = nextConfig.api.baseUrl;
+      extractionReviewService.baseUrl = nextConfig.api.baseUrl;
+      jobManager.resolvedConfig = nextConfig;
+    },
+  });
 
   const api = createApiServer({
     jobManager,
     sourcePreflightModule,
     postEditWorkspaceModule,
     extractionReviewService,
+    configService,
     translationPublicationService,
     host,
     port,
@@ -131,6 +148,7 @@ function createRuntime(overrides = {}) {
     client,
     aoClient,
     aoTaskRunner,
+    configService,
     koharuRuntimeManager,
     applyKoharuRuntimeStatus(status) {
       return applyKoharuRuntimeStatus(this, status);

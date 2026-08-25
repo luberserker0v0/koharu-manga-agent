@@ -22,14 +22,14 @@
 12. Local/learning modes schedule an independent Knowledge child Job from Learning Evidence
 
 ## Stage Ownership
-- `backend/src/workflow_engine.js` owns workflow routing
+- `backend/src/domains/jobs/workflows/workflow_engine.js` owns workflow routing
 - source preflight and ordering belong to the translation entry workflow before project setup
-- `backend/src/modules/project_setup.js` owns pre-pipeline setup
-- `backend/src/modules/pipeline_monitor.js` owns pipeline completion detection
-- `backend/src/modules/quality.js` owns optional quality review
-- `backend/src/modules/knowledge.js` owns optional knowledge-base updates
-- `backend/src/modules/export.js` owns export
-- `backend/src/modules/project_lifecycle.js` owns close behavior
+- `backend/src/integrations/koharu/pipeline/project_setup.js` owns pre-pipeline setup
+- `backend/src/integrations/koharu/pipeline/pipeline_monitor.js` owns pipeline completion detection
+- `backend/src/domains/translation/quality/quality.js` owns optional quality review
+- `backend/src/domains/knowledge/learning/knowledge.js` owns optional knowledge-base updates
+- `backend/src/domains/translation/execution/export.js` owns export
+- `backend/src/integrations/koharu/pipeline/project_lifecycle.js` owns close behavior
 
 ## User-Facing Translation Modes
 | Mode | Reference memory | Local memory | Quality | Knowledge update |

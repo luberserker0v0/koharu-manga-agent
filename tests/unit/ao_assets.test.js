@@ -6,7 +6,7 @@ const {
   ensureAoAssetFolders,
   listAgentFiles,
   listSkillArchives,
-} = require("../../backend/src/ao_assets");
+} = require("../../backend/src/integrations/ao/assets/ao_assets");
 
 describe("ao assets", () => {
   test("ensureAoAssetFolders creates required directories", () => {

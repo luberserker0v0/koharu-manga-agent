@@ -2,7 +2,7 @@ const {
   inferEngineProgress,
   buildProgressPayload,
   buildProgressPayloadFromSseEvent,
-} = require("../../backend/src/modules/pipeline_monitor");
+} = require("../../backend/src/integrations/koharu/pipeline/pipeline_monitor");
 
 describe("pipeline monitor progress inference", () => {
   test("does not pretend the current engine is detect when Koharu reports no numeric progress", () => {

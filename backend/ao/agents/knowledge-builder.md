@@ -35,6 +35,8 @@ Knowledge policy:
 
 Entry policy:
 - `terminologyEntries[]` should focus on durable translation units.
+- Never classify pronouns, self-reference forms, ordinary dialogue, acknowledgements, or sentence fragments as terminology.
+- Ground each terminology and character identity in the supplied source/target node evidence.
 - `characterEntries[]` should include only characters with actual evidence in the input.
-- `styleExampleEntries[]` should be short, representative, and justified.
+- `styleExampleEntries[]` should select only verified style evidence node IDs; do not recreate its text or metadata.
 - `styleProfile` should be incremental and conservative.

@@ -4,7 +4,7 @@ const path = require("path");
 const {
   buildTranslationContext,
   formatTranslationSystemPrompt,
-} = require("../../backend/src/modules/knowledge_assets");
+} = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
 
 describe("knowledge assets", () => {
   test("buildTranslationContext returns null when no mangaId is provided", () => {
@@ -33,7 +33,7 @@ describe("knowledge assets", () => {
       },
     }));
 
-    const assets = require("../../backend/src/modules/knowledge_assets");
+    const assets = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
     const mangaId = "phantom_fantasy";
 
     const glossary = assets.defaultCanonicalGlossary(mangaId);
@@ -109,7 +109,7 @@ describe("knowledge assets", () => {
   });
 
   test("candidate terms merge accumulates evidence across chapters and sorts by confidence", () => {
-    const assets = require("../../backend/src/modules/knowledge_assets");
+    const assets = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
     const mangaId = "fixture_series";
     const base = assets.defaultCandidateTerms(mangaId);
 
@@ -176,7 +176,7 @@ describe("knowledge assets", () => {
   });
 
   test("style profile aggregates chapter evidence and leaves weak rules unresolved", () => {
-    const assets = require("../../backend/src/modules/knowledge_assets");
+    const assets = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
     const profile = assets.buildStyleProfileFromEvidence("fixture_series", {
       metadata: { source_reference_sets: ["ref_1", "ref_2"], source_chapters: ["ch_1", "ch_2"] },
       chapters: {
@@ -214,7 +214,7 @@ describe("knowledge assets", () => {
   });
 
   test("style profile promotes a rule only after repeated high-confidence support", () => {
-    const assets = require("../../backend/src/modules/knowledge_assets");
+    const assets = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
     const chapter = (sampleSize) => ({
       referenceKind: "translator",
       targetStyleAllowed: true,
@@ -235,7 +235,7 @@ describe("knowledge assets", () => {
   });
 
   test("target-only observations do not fabricate source or canonical translation fields", () => {
-    const assets = require("../../backend/src/modules/knowledge_assets");
+    const assets = require("../../backend/src/domains/knowledge/assets/knowledge_assets");
     const merged = assets.mergeCandidateTerms(
       assets.defaultCandidateTerms("fixture_series"),
       [{

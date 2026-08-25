@@ -1,4 +1,4 @@
-const { runTranslationQualityObservation } = require("../../backend/src/modules/translation_quality_observation");
+const { runTranslationQualityObservation } = require("../../backend/src/domains/translation/quality/translation_quality_observation");
 
 function translations(count) {
   return Array.from({ length: count }, (_, index) => ({
@@ -65,7 +65,7 @@ describe("translation quality observation execution", () => {
     expect(second.observation.coverage.ratio).toBe(1);
   });
 
-  test("proactively splits a missing parent window when resuming prior checkpoints", async () => {
+  test("does not split an unrelated missing window merely because another checkpoint exists", async () => {
     const firstRunner = {
       settings: { model: "provider/model" },
       runTranslationQualityObservationWindow: jest.fn(async (input) => cleanResult(input)),
@@ -94,15 +94,12 @@ describe("translation quality observation execution", () => {
     });
 
     expect(resumedCalls).toEqual([
-      { windowId: "quality_observation_002_a_a", nodeCount: 5 },
-      { windowId: "quality_observation_002_a_b", nodeCount: 5 },
-      { windowId: "quality_observation_002_b_a", nodeCount: 5 },
-      { windowId: "quality_observation_002_b_b", nodeCount: 5 },
+      { windowId: "quality_observation_002", nodeCount: 20 },
     ]);
     expect(resumed.observation.coverage.ratio).toBe(1);
   });
 
-  test("degrades a leaf with no AO output instead of failing the chapter", async () => {
+  test("degrades a missing output file to unobserved nodes and commits a partial checkpoint", async () => {
     const runner = {
       settings: { model: "provider/model" },
       runTranslationQualityObservationWindow: jest.fn(async () => {
@@ -121,8 +118,40 @@ describe("translation quality observation execution", () => {
 
     expect(runner.runTranslationQualityObservationWindow).toHaveBeenCalledTimes(1);
     expect(result.observation.coverage).toEqual({ observed: 0, unobserved: 8, total: 8, ratio: 0 });
-    expect(result.observation.nodes.every((node) => node.disposition === "unobserved")).toBe(true);
-    expect(result.checkpointPaths).toHaveLength(0);
+    expect(result.observation.semanticResult).toEqual(expect.objectContaining({ outcome: "partial" }));
+    expect(result.checkpointPaths).toHaveLength(1);
+  });
+
+  test("reruns a partial unobserved checkpoint instead of treating it as completed", async () => {
+    const missingRunner = {
+      settings: { model: "provider/model" },
+      runTranslationQualityObservationWindow: jest.fn(async () => {
+        const error = new Error("AO completed without a valid output file.");
+        error.code = "AO_OUTPUT_MISSING";
+        throw error;
+      }),
+    };
+    const partial = await runTranslationQualityObservation({
+      aoTaskRunner: missingRunner,
+      translations: translations(8),
+      translationMemory: {},
+      jobId: `quality_partial_checkpoint_${Date.now()}`,
+    });
+    const cleanRunner = {
+      settings: { model: "provider/model" },
+      runTranslationQualityObservationWindow: jest.fn(async (input) => cleanResult(input)),
+    };
+
+    const repaired = await runTranslationQualityObservation({
+      aoTaskRunner: cleanRunner,
+      translations: translations(8),
+      translationMemory: {},
+      jobId: `quality_partial_checkpoint_repair_${Date.now()}`,
+      reusableCheckpointPaths: partial.checkpointPaths,
+    });
+
+    expect(cleanRunner.runTranslationQualityObservationWindow).toHaveBeenCalledTimes(1);
+    expect(repaired.observation.coverage).toEqual({ observed: 8, unobserved: 0, total: 8, ratio: 1 });
   });
 
   test("does not degrade a provider-wide zero-token failure", async () => {
@@ -141,5 +170,29 @@ describe("translation quality observation execution", () => {
       translationMemory: {},
       jobId: `quality_provider_outage_${Date.now()}`,
     })).rejects.toMatchObject({ code: "AO_MODEL_NO_OUTPUT" });
+  });
+
+  test("splits a zero-token timeout window instead of treating it as a semantic failure", async () => {
+    const runner = {
+      settings: { model: "provider/model" },
+      runTranslationQualityObservationWindow: jest.fn(async (input) => {
+        if (input.nodes.length > 10) {
+          const error = new Error("AO model produced no tokens or message parts for 60000ms.");
+          error.code = "AO_MODEL_NO_OUTPUT";
+          throw error;
+        }
+        return cleanResult(input);
+      }),
+    };
+
+    const result = await runTranslationQualityObservation({
+      aoTaskRunner: runner,
+      translations: translations(20),
+      translationMemory: {},
+      jobId: `quality_zero_token_split_${Date.now()}`,
+    });
+
+    expect(runner.runTranslationQualityObservationWindow).toHaveBeenCalledTimes(3);
+    expect(result.observation.coverage.ratio).toBe(1);
   });
 });

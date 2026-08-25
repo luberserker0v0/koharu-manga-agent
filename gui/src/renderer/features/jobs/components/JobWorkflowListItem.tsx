@@ -3,6 +3,7 @@ import type { GuiJob } from "../../../api/jobs";
 import {
   isTerminalJob,
   jobMeta,
+  jobOutcomeKey,
   jobStatusKey,
   jobTypeKey,
   resolveBilingualWindowAttempt,
@@ -15,6 +16,7 @@ import { formatSystemDateTime } from "../../shared/formatters/date_time";
 
 type Props = {
   workflow: JobWorkflowViewModel;
+  selected: boolean;
   checked: boolean;
   collapsed: boolean;
   busy: boolean;
@@ -22,6 +24,7 @@ type Props = {
   onToggleChecked: (jobId: string) => void;
   onSelect: (job: GuiJob) => void;
   onRetry: (jobId: string) => void;
+  onResume: (jobId: string) => void;
   onCancel: (jobId: string) => void;
   onDelete: (job: GuiJob) => void;
   onRestore: (jobId: string) => void;
@@ -30,6 +33,7 @@ type Props = {
 
 export function JobWorkflowListItem({
   workflow,
+  selected,
   checked,
   collapsed,
   busy,
@@ -37,6 +41,7 @@ export function JobWorkflowListItem({
   onToggleChecked,
   onSelect,
   onRetry,
+  onResume,
   onCancel,
   onDelete,
   onRestore,
@@ -66,13 +71,37 @@ export function JobWorkflowListItem({
   const publicationStatus = job.result && typeof job.result === "object"
     ? (job.result as { publication?: { status?: string } }).publication?.status
     : null;
+  const chapterDisplay = chapterLabel !== "none"
+    ? /^\d+(?:\.\d+)?$/.test(chapterLabel.trim())
+      ? t("jobList.card.chapter", { value: chapterLabel })
+      : chapterLabel
+    : t("jobList.value.unassignedChapter");
+  const progressTotal = Math.max(workflow.effectiveStages.length, 1);
+  const progressCompleted = hasStages
+    ? workflow.completedStages
+    : job.status === "succeeded" ? 1 : 0;
+  const progressPercent = Math.round((progressCompleted / progressTotal) * 100);
+  const retryTarget = failedStage && !isBilingualWorkflow ? failedStage : job;
+  const canRetry = Boolean(failedStage) || ["failed", "canceled", "blocked"].includes(job.status);
+  const canStop = !isTerminalJob(job) && job.status !== "cancel_requested";
+  const progressText = workflow.activeStage
+    ? t("jobList.card.runningStage", { value: resolveJobStageLabel(workflow.activeStage.stage, t) })
+    : failedStage
+      ? t("jobList.card.failedStage", { value: t(jobTypeKey(failedStage.type)) })
+      : job.status === "succeeded"
+        ? hasStages
+          ? t("jobList.card.completedStages", { count: workflow.effectiveStages.length })
+          : t("jobList.card.completed")
+        : job.status === "queued" || job.status === "waiting_dependency"
+          ? t("jobList.card.waiting")
+          : resolveJobStageLabel(job.stage, t);
 
   useEffect(() => {
     if (failedStage) setExpanded(true);
   }, [failedStage?.id]);
 
   return (
-    <li className="job-list-item workflow-list-item">
+    <li className={`job-list-item workflow-list-item${selected ? " is-selected" : ""}`}>
       <div className={collapsed ? "job-row compact" : "job-row"}>
         {!collapsed ? (
           <label className="job-checkbox">
@@ -86,8 +115,11 @@ export function JobWorkflowListItem({
         ) : null}
         <button className="job-link" onClick={() => onSelect(job)} type="button">
           <div className="workflow-row-heading">
-            <strong>{t(jobTypeKey(job.type))}</strong>
+            <strong className="job-card-title">{t("jobList.card.title", { manga: mangaLabel, chapter: chapterDisplay })}</strong>
             <span className={`pill job-status-${job.status}`}>{t(jobStatusKey(job.status))}</span>
+            {job.status === "succeeded" && job.outcome && job.outcome !== "clean" ? (
+              <span className="pill pill-neutral">{t(jobOutcomeKey(job.outcome))}</span>
+            ) : null}
             {failedStage ? (
               <span className="pill job-status-failed">{t("jobList.workflow.childFailed")}</span>
             ) : null}
@@ -95,20 +127,20 @@ export function JobWorkflowListItem({
               <span className="pill pill-neutral">{t("jobList.workflow.supersededAttempt")}</span>
             ) : null}
           </div>
-          <div className="job-subtext"><span className="pill pill-neutral">{mode.label}</span></div>
-          <div className="job-subtext workflow-context-line">
-            <span>{mangaLabel}</span>
-            <span>{translatorLabel}</span>
-            <span>{chapterLabel !== "none" ? chapterLabel : t("jobList.value.unassignedChapter")}</span>
+          <div className="job-card-purpose">
+            <strong>{t(jobTypeKey(job.type))}</strong>
+            <span>{mode.label}</span>
           </div>
-          {hasStages ? (
-            <div className="workflow-progress-summary">
-              <span>{t("jobList.workflow.progress", { completed: workflow.completedStages, total: workflow.effectiveStages.length })}</span>
-              <span>
-                {workflow.activeStage
-                  ? t("jobList.workflow.currentStage", { value: t(jobTypeKey(workflow.activeStage.type)) })
-                  : t("jobList.workflow.noActiveStage")}
-              </span>
+          <div className="job-card-context">
+            <span>{t("jobList.card.translator", { value: translatorLabel })}</span>
+            <span>{t("jobList.updatedAt", { value: formatSystemDateTime(job.updatedAt) })}</span>
+          </div>
+          <div className="workflow-progress-summary">
+            <div className="job-progress-copy">
+              <strong>{progressText}</strong>
+              {hasStages ? (
+                <span>{t("jobList.workflow.progress", { completed: progressCompleted, total: progressTotal })}</span>
+              ) : null}
               {isBilingualWorkflow ? (
                 <span>{t("jobList.workflow.reusedWindows", { count: reusedWindows })}</span>
               ) : null}
@@ -125,32 +157,44 @@ export function JobWorkflowListItem({
                   })}
                 </span>
               ) : null}
-              {failedStage ? (
-                <span className="job-error">
-                  {t("jobList.workflow.failedStage", { value: t(jobTypeKey(failedStage.type)) })}
-                </span>
-              ) : null}
             </div>
-          ) : (
-            <div className="job-subtext">
-              <span>{mode.description}</span>
-              <span>{resolveJobStageLabel(job.stage, t)}</span>
+            <div
+              aria-label={t("jobList.card.progressLabel", { value: progressPercent })}
+              className="job-progress-track"
+              role="progressbar"
+              aria-valuemax={100}
+              aria-valuemin={0}
+              aria-valuenow={progressPercent}
+            >
+              <span style={{ width: `${progressPercent}%` }} />
             </div>
-          )}
-          <div className="job-subtext">{t("jobList.updatedAt", { value: formatSystemDateTime(job.updatedAt) })}</div>
+          </div>
           {job.blockedReason ? (
             <div className="job-subtext job-error">{t("jobList.blockedReason", { value: job.blockedReason })}</div>
           ) : null}
+          {job.status === "failed" && job.diagnostics?.resourceFailureType ? (
+            <div className="job-subtext job-error">
+              {t("jobList.failureSummary", {
+                source: t(`jobDetail.failure.source.${job.diagnostics.failureSource || "unknown"}`),
+                stage: resolveJobStageLabel(job.diagnostics.failureStage || job.stage, t),
+                type: t(`jobList.resourceFailure.${job.diagnostics.resourceFailureType}`),
+              })}
+            </div>
+          ) : null}
         </button>
         <div className="job-actions">
-          {failedStage && !isBilingualWorkflow ? (
+          {canRetry ? (
             <button
-              className="secondary-button"
+              className="primary-button"
               disabled={busy}
-              onClick={() => onRetry(failedStage.id)}
+              onClick={() => retryTarget.resumeMetadata?.resumeAvailable
+                ? onResume(retryTarget.id)
+                : onRetry(retryTarget.id)}
               type="button"
             >
-              {t("jobList.workflow.retryFailedStage", { value: t(jobTypeKey(failedStage.type)) })}
+              {retryTarget.resumeMetadata?.resumeAvailable
+                ? t("jobList.action.resume")
+                : t("jobList.action.retry")}
             </button>
           ) : null}
           {hasStages ? (
@@ -158,26 +202,16 @@ export function JobWorkflowListItem({
               {expanded ? t("jobList.workflow.collapseStages") : t("jobList.workflow.expandStages", { count: workflow.stages.length })}
             </button>
           ) : null}
-          <button
-            className="secondary-button"
-            disabled={busy || Boolean(job.deletedAt) || !["failed", "canceled", "blocked"].includes(job.status)}
-            onClick={() => onRetry(job.id)}
-            type="button"
-          >
-            {isBilingualWorkflow
-              ? t("jobList.workflow.resumeUnfinishedWindows")
-              : t("jobList.action.retry")}
-          </button>
           {!job.deletedAt ? (
             <>
-              <button
+              {canStop ? <button
                 className="secondary-button"
-                disabled={busy || isTerminalJob(job) || job.status === "cancel_requested"}
+                disabled={busy}
                 onClick={() => onCancel(job.id)}
                 type="button"
               >
                 {t("jobList.action.stop")}
-              </button>
+              </button> : null}
               <button className="secondary-button" disabled={busy} onClick={() => onDelete(job)} type="button">
                 {t("jobList.action.delete")}
               </button>
@@ -227,16 +261,6 @@ export function JobWorkflowListItem({
                 </span>
                 <span className="workflow-stage-status">{t(jobStatusKey(stage.status))}</span>
               </button>
-              {!isBilingualWorkflow && ["failed", "canceled", "blocked"].includes(stage.status) && !workflow.supersededStageIds.includes(stage.id) ? (
-                <button
-                  className="secondary-button"
-                  disabled={busy}
-                  onClick={() => onRetry(stage.id)}
-                  type="button"
-                >
-                  {t("jobList.action.retry")}
-                </button>
-              ) : null}
             </li>
           ))}
         </ol>

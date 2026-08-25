@@ -137,6 +137,7 @@ export function App() {
     }
     return t("status.backendAgent", {
       backend: runtimeQuery.data.backend.status,
+      koharu: runtimeQuery.data.koharu.status,
       agent: runtimeQuery.data.agent.status,
     });
   }, [runtimeQuery.data, runtimeQuery.isError, runtimeQuery.isLoading, t]);
@@ -158,7 +159,7 @@ export function App() {
   }, [locale, selectedPage, t]);
 
   return (
-    <div className={selectedPage === "job-list" ? "app-shell job-list-shell" : "app-shell"}>
+    <div className={selectedPage === "job-list" ? "app-shell job-list-shell" : selectedPage === "post-edit" ? "app-shell post-edit-shell" : selectedPage === "reference" ? "app-shell reference-shell" : "app-shell"}>
       <header className="top-status-bar">
         <div className="brand">{t("app.brand")}</div>
         <div className="status-summary">{statusSummary}</div>

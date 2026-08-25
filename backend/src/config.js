@@ -81,6 +81,7 @@ const DEFAULT_CONFIG = {
     readyPollIntervalMs: 1000,
     readyTimeoutMs: 30000,
     messageTimeoutMs: 600000,
+    modelSilenceTimeoutMs: 600000,
   },
   engines: null,
 };
@@ -123,8 +124,10 @@ function resolvePath(targetPath) {
 const mergedConfig = deepMerge(DEFAULT_CONFIG, loadProjectConfig());
 
 module.exports = {
+  DEFAULT_CONFIG,
   PROJECT_ROOT,
   PROJECT_CONFIG_PATH,
+  deepMerge,
   config: mergedConfig,
   resolvePath,
   paths: {

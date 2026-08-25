@@ -1,6 +1,6 @@
 const {
   matchPostEditDocumentToScene,
-} = require("../../backend/src/modules/post_edit_export");
+} = require("../../backend/src/domains/post_edit/export/post_edit_export");
 
 function createDocument() {
   return {

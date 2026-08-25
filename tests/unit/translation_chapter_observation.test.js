@@ -5,7 +5,8 @@ const {
   ensureTranslationChapterObservation,
   observationPages,
   sourceFingerprint,
-} = require("../../backend/src/modules/translation_chapter_observation");
+  translationRoleContractHash,
+} = require("../../backend/src/domains/translation/execution/translation_chapter_observation");
 
 describe("translation chapter observation", () => {
   test("builds ordered pages from Koharu translations", () => {
@@ -76,7 +77,45 @@ describe("translation chapter observation", () => {
     expect(second.observation.fingerprint).toBe(first.observation.fingerprint);
     expect(second.observation.extractionFingerprint).toBe(sourceFingerprint(translations));
     expect(second.observation.nodes).toHaveLength(2);
+    expect(second.observation.translationRoleContractHash).toBe(translationRoleContractHash());
     expect(runChapterObservation).toHaveBeenCalledTimes(1);
     expect(fs.existsSync(first.observationPath)).toBe(true);
+  });
+
+  test("retries one transient AO failure with a fresh task attempt", async () => {
+    const cacheRoot = fs.mkdtempSync(path.join(os.tmpdir(), "translation-observation-retry-"));
+    const runChapterObservation = jest.fn()
+      .mockRejectedValueOnce(new Error("AO request failed (500): fetch failed"))
+      .mockImplementationOnce(async (input) => ({
+        nodes: input.pages.flatMap((page) => page.nodes.map((node) => ({
+          pageName: page.pageName,
+          nodeId: node.nodeId,
+          textRole: "dialogue",
+          speakerType: "unknown",
+          speakerRef: null,
+          styleChannel: "character_voice",
+          roleConfidence: 0.8,
+          speakerConfidence: 0,
+        }))),
+        mentions: [],
+        storyCues: [],
+        coverage: { expected: 1, observed: 1, missing: 0 },
+      }));
+    const progress = jest.fn();
+
+    const result = await ensureTranslationChapterObservation({
+      aoTaskRunner: { settings: { model: "provider/model" }, runChapterObservation },
+      translations: [{ id: "n1", pageName: "001.png", original: "台詞" }],
+      contentLanguage: "ja-JP",
+      cacheRoot,
+      onProgress: progress,
+    });
+
+    expect(result.reused).toBe(false);
+    expect(runChapterObservation).toHaveBeenCalledTimes(2);
+    expect(progress).toHaveBeenCalledWith(expect.objectContaining({
+      activity: "retrying_transient_ao_failure",
+      attempt: 2,
+    }));
   });
 });

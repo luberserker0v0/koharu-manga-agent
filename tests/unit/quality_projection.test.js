@@ -1,7 +1,7 @@
 const {
   applyQualitySemanticAnnotations,
   buildQualityContextProjection,
-} = require("../../backend/src/modules/quality_projection");
+} = require("../../backend/src/domains/translation/quality/quality_projection");
 const crypto = require("crypto");
 
 describe("quality context projection", () => {

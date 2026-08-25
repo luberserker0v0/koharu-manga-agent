@@ -10,11 +10,13 @@ describe("workflow engine manga-management binding sync", () => {
 
   test("translation job syncs manga and translator binding after success", async () => {
     const syncMangaManagementBinding = jest.fn();
-    jest.doMock("../../backend/src/modules/knowledge_paths", () => ({
+    const deleteChapterLearningData = jest.fn().mockReturnValue({ deleted: true, chapterId: "chapter_001" });
+    jest.doMock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
       syncMangaManagementBinding,
     }));
+    jest.doMock("../../backend/src/domains/knowledge/learning/knowledge", () => ({ deleteChapterLearningData }));
 
-    const { WorkflowEngine } = require("../../backend/src/workflow_engine");
+    const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
 
     const engine = new WorkflowEngine({
       sourcePreflightModule: {
@@ -81,6 +83,13 @@ describe("workflow engine manga-management binding sync", () => {
       }),
       postEditWorkspaceModule: null,
       jobStore: null,
+      translationPublicationService: {
+        publish: jest.fn().mockReturnValue({
+          revisionId: "revision_new",
+          previousActiveRevisionId: "revision_old",
+          previousActiveJobId: null,
+        }),
+      },
     });
 
     const hooks = {
@@ -117,13 +126,18 @@ describe("workflow engine manga-management binding sync", () => {
       profileKind: null,
       styleSourceTranslatorId: null,
     });
+    expect(deleteChapterLearningData).toHaveBeenCalledWith({
+      mangaId: "manga_phantom_fantasy",
+      translatorId: "translator_self_team",
+      chapterId: "chapter_001",
+    });
   });
 
   test("translation retry resumes from a completed Koharu project without rerunning the pipeline", async () => {
-    jest.doMock("../../backend/src/modules/knowledge_paths", () => ({
+    jest.doMock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
       syncMangaManagementBinding: jest.fn(),
     }));
-    const { WorkflowEngine } = require("../../backend/src/workflow_engine");
+    const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "translation-resume-"));
     const memoryPath = path.join(root, "translation_memory_snapshot.json");
     fs.writeFileSync(memoryPath, JSON.stringify({
@@ -195,11 +209,11 @@ describe("workflow engine manga-management binding sync", () => {
 
   test("reference extraction job syncs manga and translator binding after success", async () => {
     const syncMangaManagementBinding = jest.fn();
-    jest.doMock("../../backend/src/modules/knowledge_paths", () => ({
+    jest.doMock("../../backend/src/domains/knowledge/registry/knowledge_paths", () => ({
       syncMangaManagementBinding,
     }));
 
-    const { WorkflowEngine } = require("../../backend/src/workflow_engine");
+    const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
 
     const engine = new WorkflowEngine({
       sourcePreflightModule: null,

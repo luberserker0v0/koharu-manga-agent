@@ -1,4 +1,4 @@
-const { buildLearningEvidenceSnapshot, validateLearningEvidenceSnapshot } = require("../../backend/src/modules/learning_evidence");
+const { buildLearningEvidenceSnapshot, validateLearningEvidenceSnapshot } = require("../../backend/src/domains/knowledge/learning/learning_evidence");
 
 describe("learning evidence snapshot", () => {
   test("keeps corrections and evidence-backed samples but omits generic representatives", () => {
@@ -64,6 +64,21 @@ describe("learning evidence snapshot", () => {
     }] })).toThrow(/unknown reason/);
   });
 
+  test("does not learn unresolved low-confidence findings", () => {
+    const snapshot = buildLearningEvidenceSnapshot({
+      finalTranslationSnapshotPath: "final.json",
+      finalTranslations: [{ id: "n1", original: "ambiguous", translation: "暫定", pageName: "1" }],
+      translationMemory: { fingerprint: "memory" },
+      quality: {
+        finalVerification: { nodes: [{ nodeId: "n1", finalDisposition: "unresolved" }] },
+        optimizedTranslations: [],
+        projection: { candidates: [{ nodeId: "n1", reasons: [{ type: "style_evidence" }] }] },
+      },
+    });
+
+    expect(snapshot.evidence).toEqual([]);
+  });
+
   test("preserves projected semantic annotations in learned evidence", () => {
     const snapshot = buildLearningEvidenceSnapshot({
       finalTranslationSnapshotPath: "final.json",
@@ -91,5 +106,37 @@ describe("learning evidence snapshot", () => {
       roleConfidence: 0.92,
       speakerConfidence: 0.81,
     }));
+  });
+
+  test("selects bounded verified style samples from semantic annotations", () => {
+    const snapshot = buildLearningEvidenceSnapshot({
+      chapterId: "ch1",
+      finalTranslationSnapshotPath: "final.json",
+      finalTranslations: [
+        { id: "dialogue", original: "line", translation: "dialogue", pageName: "1" },
+        { id: "narration", original: "narration", translation: "narrated", pageName: "1" },
+        { id: "uncertain", original: "?", translation: "?", pageName: "1" },
+      ],
+      translationMemory: { fingerprint: "memory" },
+      quality: {
+        finalVerification: { nodes: [
+          { nodeId: "dialogue", finalDisposition: "clean" },
+          { nodeId: "narration", finalDisposition: "clean" },
+          { nodeId: "uncertain", finalDisposition: "clean" },
+        ] },
+        optimizedTranslations: [],
+        projection: { candidates: [], semanticAnnotations: [
+          { nodeId: "dialogue", textRole: "dialogue", styleChannel: "character_voice", speakerRef: "character_a", roleConfidence: 0.95, speakerConfidence: 0.9 },
+          { nodeId: "narration", textRole: "narration", styleChannel: "narrator_voice", speakerRef: "wrong", roleConfidence: 0.92 },
+          { nodeId: "uncertain", textRole: "dialogue", styleChannel: "character_voice", speakerRef: "character_b", roleConfidence: 0.7, speakerConfidence: 0.6 },
+        ] },
+      },
+    });
+
+    expect(snapshot.summary.styleSamples).toBe(2);
+    expect(snapshot.evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nodeId: "dialogue", reasons: ["speaker_evidence"], speakerRef: "character_a" }),
+      expect.objectContaining({ nodeId: "narration", reasons: ["style_evidence"], speakerRef: null }),
+    ]));
   });
 });

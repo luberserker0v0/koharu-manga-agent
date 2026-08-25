@@ -1,11 +1,11 @@
 const {
   parseBilingualEvidenceWindow,
-} = require("../../backend/src/bilingual_evidence_contract");
+} = require("../../backend/src/integrations/ao/contracts/bilingual_evidence_contract");
 const {
   buildEvidencePlan,
   mergeEvidenceLedger,
   transientAoError,
-} = require("../../backend/src/modules/reference_bilingual_enrichment");
+} = require("../../backend/src/domains/reference/bilingual/reference_bilingual_enrichment");
 
 function contractInput() {
   return {
@@ -49,38 +49,47 @@ describe("bilingual evidence contracts", () => {
     expect(result.termLinks[0].targetSurface).toBe("星際國家");
   });
 
-  test("rejects invented target text, duplicate dispositions, and incomplete windows", () => {
-    expect(() => parseBilingualEvidenceWindow([
+  test("quarantines invented text and duplicate dispositions and fills incomplete windows", () => {
+    const invented = parseBilingualEvidenceWindow([
       "TERM_LINK|term_001|mention_1|不存在|target::1|worldbuilding|0.93|invented",
       "NO_MATCH|term_001|style|style:source::2|not found",
       "WINDOW_DONE|term_001",
-    ].join("\n"), contractInput())).toThrow(/not present/i);
+    ].join("\n"), contractInput());
+    expect(invented.termLinks).toEqual([]);
+    expect(invented.semanticResult.quarantinedRecordCount).toBe(1);
 
-    expect(() => parseBilingualEvidenceWindow([
+    const duplicate = parseBilingualEvidenceWindow([
       "NO_MATCH|term_001|terminology|mention_1|not found",
       "NO_MATCH|term_001|terminology|mention_1|duplicate",
       "NO_MATCH|term_001|style|style:source::2|not found",
       "WINDOW_DONE|term_001",
-    ].join("\n"), contractInput())).toThrow(/disposed more than once/i);
+    ].join("\n"), contractInput());
+    expect(duplicate.semanticResult.quarantinedRecordCount).toBe(1);
 
-    expect(() => parseBilingualEvidenceWindow([
+    const incomplete = parseBilingualEvidenceWindow([
       "NO_MATCH|term_001|terminology|mention_1|not found",
       "WINDOW_DONE|term_001",
-    ].join("\n"), contractInput())).toThrow(/disposition is incomplete/i);
+    ].join("\n"), contractInput());
+    expect(incomplete.unmatchedAnchors).toHaveLength(2);
+    expect(incomplete.semanticResult.outcome).toBe("warnings");
   });
 
-  test("requires an exact style anchor key and valid enums", () => {
-    expect(() => parseBilingualEvidenceWindow([
+  test("quarantines ambiguous style anchors and invalid enums", () => {
+    const style = parseBilingualEvidenceWindow([
       "NO_MATCH|term_001|terminology|mention_1|not found",
       "STYLE_PAIR|term_001|source::1,source::2|target::2|narration|narrator_voice|0.8|ambiguous source",
       "WINDOW_DONE|term_001",
-    ].join("\n"), contractInput())).toThrow(/does not identify a style anchor/i);
+    ].join("\n"), contractInput());
+    expect(style.stylePairs).toEqual([]);
+    expect(style.semanticResult.quarantinedRecordCount).toBe(1);
 
-    expect(() => parseBilingualEvidenceWindow([
+    const term = parseBilingualEvidenceWindow([
       "TERM_LINK|term_001|mention_1|星際國家|target::1|invented_category|0.9|invalid category",
       "NO_MATCH|term_001|style|style:source::2|not found",
       "WINDOW_DONE|term_001",
-    ].join("\n"), contractInput())).toThrow(/Unknown terminology category/i);
+    ].join("\n"), contractInput());
+    expect(term.termLinks).toEqual([]);
+    expect(term.semanticResult.quarantinedRecordCount).toBe(1);
   });
 
   test("plans bounded evidence windows instead of partitioning every node", () => {
@@ -127,6 +136,7 @@ describe("bilingual evidence contracts", () => {
   test("only retries transient AO failures", () => {
     expect(transientAoError(new Error("HTTP 503"))).toBe(true);
     expect(transientAoError(new Error("request timed out"))).toBe(true);
+    expect(transientAoError(new Error("HTTP 429 quota exhausted"))).toBe(false);
     expect(transientAoError(new Error("unknown node id"))).toBe(false);
   });
 

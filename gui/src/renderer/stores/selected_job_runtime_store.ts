@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isGuiJobStatus } from "../api/jobs";
 import type { GuiArtifact, GuiJob, GuiJobEvent } from "../api/jobs";
 
 export type StreamConnectionState =
@@ -67,7 +68,7 @@ function reduceJobFromEvent(job: GuiJob | null, event: GuiJobEvent): GuiJob | nu
   const updatedAt = event.createdAt ?? job.updatedAt;
 
   if (event.type === "job.stage") {
-    const nextStatus = typeof payload?.status === "string" ? payload.status : job.status;
+    const nextStatus = isGuiJobStatus(payload?.status) ? payload.status : job.status;
     const nextStage = typeof payload?.stage === "string" ? payload.stage : job.stage;
     return {
       ...job,
@@ -91,7 +92,7 @@ function reduceJobFromEvent(job: GuiJob | null, event: GuiJobEvent): GuiJob | nu
   if (event.type === "job.failed") {
     return {
       ...job,
-      status: typeof payload?.status === "string" ? payload.status : "failed",
+      status: isGuiJobStatus(payload?.status) ? payload.status : "failed",
       stage: typeof payload?.status === "string" ? payload.status : "failed",
       error: typeof payload?.error === "string" ? payload.error : job.error,
       updatedAt,

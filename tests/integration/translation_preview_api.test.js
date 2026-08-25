@@ -1,5 +1,5 @@
-const { createApiServer } = require("../../backend/src/http/api_server");
-const { resolveTranslationModePolicy } = require("../../backend/src/modules/translation_modes");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
+const { resolveTranslationModePolicy } = require("../../backend/src/domains/translation/modes/translation_modes");
 
 function snapshotFor(mode) {
   return {

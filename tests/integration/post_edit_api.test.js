@@ -2,10 +2,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { JobStore } = require("../../backend/src/storage/job_store");
-const { JobManager } = require("../../backend/src/job_manager");
-const { createApiServer } = require("../../backend/src/http/api_server");
-const { PostEditWorkspaceModule } = require("../../backend/src/modules/post_edit_workspace");
+const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
+const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
+const { createApiServer } = require("../../backend/src/http/server/api_server");
+const { PostEditWorkspaceModule } = require("../../backend/src/domains/post_edit/workspace/post_edit_workspace");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "post-edit-api-"));
