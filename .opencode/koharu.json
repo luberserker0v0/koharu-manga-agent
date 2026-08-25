@@ -36,14 +36,15 @@
   "agent": {
     "baseUrl": "http://127.0.0.1:32768",
     "apiKey": null,
-    "model": "opencode/deepseek-v4-flash-free",
+    "model": "opencode/mimo-v2.5-free",
     "agentName": null,
     "qualityAgentName": "quality-optimizer",
     "knowledgeAgentName": "knowledge-builder",
     "startTimeoutMs": 10000,
     "readyPollIntervalMs": 1000,
     "readyTimeoutMs": 30000,
-    "messageTimeoutMs": 2400000
+    "messageTimeoutMs": 2400000,
+    "modelSilenceTimeoutMs": 600000
   },
   "engines": {
     "detect": "pp-doclayout-v3",
