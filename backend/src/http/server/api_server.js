@@ -1,7 +1,9 @@
 const http = require("http");
 const fs = require("fs");
+const crypto = require("crypto");
+const path = require("path");
 const { URL } = require("url");
-const { config } = require("../../config");
+const { config, DATA_ROOT } = require("../../config");
 const { AOClient } = require("../../integrations/ao/client/ao_client");
 const { loadAoAssets } = require("../../integrations/ao/assets/ao_assets");
 const { validateConfigPatch } = require("../../config_service");
@@ -86,6 +88,68 @@ function normalizeQualityPreviewTranslations(translations) {
   }));
 }
 
+function originAllowed(origin, allowedOrigins) {
+  return allowedOrigins.some((pattern) => {
+    if (pattern === "*") return true;
+    if (pattern.endsWith("*")) return origin.startsWith(pattern.slice(0, -1));
+    return origin === pattern;
+  });
+}
+
+function applyCors(req, res, allowedOrigins) {
+  const origin = req.headers.origin;
+  if (!origin || allowedOrigins.length === 0) return true;
+  if (!originAllowed(origin, allowedOrigins)) return false;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type,Last-Event-ID");
+  res.setHeader("Access-Control-Max-Age", "600");
+  return true;
+}
+
+function authorized(req, authToken) {
+  if (!authToken) return true;
+  const value = String(req.headers.authorization || "");
+  if (!value.startsWith("Bearer ")) return false;
+  const supplied = Buffer.from(value.slice(7));
+  const expected = Buffer.from(String(authToken));
+  return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+}
+
+function publicConfig(value) {
+  const output = structuredClone(value || {});
+  if (output.agent && Object.prototype.hasOwnProperty.call(output.agent, "apiKey")) {
+    output.agent.apiKey = output.agent.apiKey ? "***" : null;
+  }
+  if (output.server && Object.prototype.hasOwnProperty.call(output.server, "authToken")) {
+    output.server.authToken = output.server.authToken ? "***" : null;
+  }
+  return output;
+}
+
+function artifactContentType(filePath) {
+  switch (path.extname(filePath).toLowerCase()) {
+    case ".json": return "application/json";
+    case ".zip": return "application/zip";
+    case ".png": return "image/png";
+    case ".jpg":
+    case ".jpeg": return "image/jpeg";
+    case ".webp": return "image/webp";
+    case ".txt": return "text/plain; charset=utf-8";
+    default: return "application/octet-stream";
+  }
+}
+
+function resolveDownloadableArtifact(filePath) {
+  if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
+  const resolvedRoot = fs.realpathSync(DATA_ROOT);
+  const resolvedFile = fs.realpathSync(filePath);
+  const relative = path.relative(resolvedRoot, resolvedFile);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  return resolvedFile;
+}
+
 function createApiServer({
   jobManager,
   sourcePreflightModule,
@@ -95,9 +159,16 @@ function createApiServer({
   aoClientFactory = (options) => new AOClient(options),
   aoAssetsLoader = loadAoAssets,
   translationMemoryComposer = composeTranslationMemory,
+  uploadService = null,
   host,
   port,
+  serverConfig = {},
 }) {
+  const allowedOrigins = Array.isArray(serverConfig.corsAllowedOrigins)
+    ? serverConfig.corsAllowedOrigins.map(String)
+    : [];
+  const authToken = serverConfig.authToken || null;
+  const maxJsonBodyBytes = Number(serverConfig.maxJsonBodyBytes || 1048576);
   const qualityModule = jobManager?.engine?.qualityModule || null;
   const knowledgeModule = jobManager?.engine?.knowledgeModule || null;
   const resolvedPostEditWorkspaceModule =
@@ -112,26 +183,74 @@ function createApiServer({
     };
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (url.pathname === "/api/v1") url.pathname = "/";
+    else if (url.pathname.startsWith("/api/v1/")) url.pathname = url.pathname.slice(7);
+    req.maxJsonBodyBytes = maxJsonBodyBytes;
+    res.setHeader("X-Request-Id", crypto.randomUUID());
+    if (!applyCors(req, res, allowedOrigins)) {
+      sendJson(res, 403, { error: "Origin is not allowed." });
+      return;
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    if (url.pathname !== "/health" && !authorized(req, authToken)) {
+      res.setHeader("WWW-Authenticate", "Bearer");
+      sendJson(res, 401, { error: "Unauthorized" });
+      return;
+    }
     try {
       if (req.method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true });
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/uploads") {
+        if (!uploadService) throw Object.assign(new Error("Upload service is unavailable."), { statusCode: 503 });
+        sendJson(res, 201, uploadService.create(await readJsonBody(req)));
+        return;
+      }
+
+      const uploadFileMatch = url.pathname.match(/^\/uploads\/([^/]+)\/files\/([^/]+)$/);
+      if (req.method === "PUT" && uploadFileMatch) {
+        if (!uploadService) throw Object.assign(new Error("Upload service is unavailable."), { statusCode: 503 });
+        const file = await uploadService.putFile(uploadFileMatch[1], uploadFileMatch[2], req);
+        sendJson(res, 201, { uploadId: uploadFileMatch[1], file });
+        return;
+      }
+
+      const uploadCompleteMatch = url.pathname.match(/^\/uploads\/([^/]+)\/complete$/);
+      if (req.method === "POST" && uploadCompleteMatch) {
+        sendJson(res, 200, uploadService.complete(uploadCompleteMatch[1]));
+        return;
+      }
+
+      const uploadMatch = url.pathname.match(/^\/uploads\/([^/]+)$/);
+      if (req.method === "GET" && uploadMatch) {
+        sendJson(res, 200, uploadService.read(uploadMatch[1]));
+        return;
+      }
+      if (req.method === "DELETE" && uploadMatch) {
+        sendJson(res, 200, uploadService.remove(uploadMatch[1]));
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/config") {
-        sendJson(res, 200, jobManager.getConfig());
+        sendJson(res, 200, publicConfig(jobManager.getConfig()));
         return;
       }
 
       if (req.method === "PATCH" && url.pathname === "/config") {
         if (!configService) throw Object.assign(new Error("Config updates are not configured."), { statusCode: 503 });
-        sendJson(res, 200, configService.update(await readJsonBody(req)));
+        sendJson(res, 200, publicConfig(configService.update(await readJsonBody(req))));
         return;
       }
 
       if (req.method === "POST" && url.pathname === "/config/reset") {
         if (!configService) throw Object.assign(new Error("Config reset is not configured."), { statusCode: 503 });
-        sendJson(res, 200, configService.reset());
+        sendJson(res, 200, publicConfig(configService.reset()));
         return;
       }
 
@@ -271,9 +390,12 @@ function createApiServer({
 
       if (req.method === "POST" && url.pathname === "/references/import") {
         const body = await readJsonBody(req);
+        const sourceFolder = body.uploadId
+          ? uploadService.resolveDirectory(body.uploadId, "reference")
+          : body.sourceFolder;
         const mangaId = body.mangaId || null;
         const referenceSet = importReferenceFolder({
-          sourceFolder: body.sourceFolder,
+          sourceFolder,
           label: body.label,
           language: normalizeLanguageTag(body.language),
           source: body.source || "imported_folder",
@@ -839,7 +961,9 @@ function createApiServer({
       if (req.method === "POST" && url.pathname === "/source-preflight") {
         const body = await readJsonBody(req);
         const result = sourcePreflightModule.preflight({
-          sourceFolder: body.sourceFolder,
+          sourceFolder: body.uploadId
+            ? uploadService.resolveDirectory(body.uploadId, "source")
+            : body.sourceFolder,
         });
         sendJson(res, 200, result);
         return;
@@ -1375,6 +1499,30 @@ function createApiServer({
           return;
         }
         sendJson(res, 200, { artifacts });
+        return;
+      }
+
+      const artifactContentMatch = url.pathname.match(/^\/jobs\/([^/]+)\/artifacts\/(\d+)\/content$/);
+      if (req.method === "GET" && artifactContentMatch) {
+        const artifacts = jobManager.getJobArtifacts(artifactContentMatch[1]);
+        const artifact = artifacts?.find((entry) => String(entry.id) === artifactContentMatch[2]);
+        if (!artifact) {
+          notFound(res);
+          return;
+        }
+        const filePath = resolveDownloadableArtifact(artifact.path);
+        if (!filePath) {
+          sendJson(res, 409, { error: "Artifact file is unavailable or outside the data root." });
+          return;
+        }
+        const stat = fs.statSync(filePath);
+        const fileName = path.basename(filePath);
+        res.writeHead(200, {
+          "Content-Type": artifactContentType(filePath),
+          "Content-Length": stat.size,
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        });
+        fs.createReadStream(filePath).pipe(res);
         return;
       }
 

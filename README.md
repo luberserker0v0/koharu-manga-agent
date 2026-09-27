@@ -8,6 +8,19 @@ This repository now centers on a process-trigger backend for Koharu-based manga 
 node backend/server.js
 ```
 
+## Docker Backend
+
+The backend can run as a standalone Linux container while AO and Koharu remain external HTTP services:
+
+```bash
+docker compose -p manga-backend up -d --build
+curl http://127.0.0.1:4001/health
+```
+
+See `docs/DOCKER_BACKEND.md` for persistence, external-service addressing, browser CORS, authentication, and operational details.
+
+After host Koharu is available, `scripts/rest_translation_workflow.mjs` exercises the complete REST lifecycle from image upload through artifact download. See `docs/REST_WORKFLOW.md`.
+
 ## GUI Startup
 The GUI can now manage backend startup automatically.
 

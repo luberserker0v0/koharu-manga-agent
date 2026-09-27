@@ -148,6 +148,26 @@ describe("KoharuRuntimeManager", () => {
     expect(spawnImpl).not.toHaveBeenCalled();
   });
 
+  test("reports an unavailable external Koharu without attempting a managed install", async () => {
+    const manager = new KoharuRuntimeManager({
+      config: { managed: false, host: "host.docker.internal", port: 4000 },
+      installRoot: tempInstallRoot(),
+      fetchImpl: jest.fn().mockRejectedValue(new Error("unreachable")),
+      spawnImpl: jest.fn(),
+    });
+
+    await expect(manager.ensureRunning()).rejects.toThrow(
+      "External Koharu service is unavailable at http://host.docker.internal:4000"
+    );
+
+    const status = await manager.inspect();
+    expect(status).toEqual(expect.objectContaining({
+      status: "unavailable",
+      mode: "external",
+      baseUrl: "http://host.docker.internal:4000",
+    }));
+  });
+
   test("selects the next available port when the preferred port is occupied", async () => {
     const blocker = net.createServer();
     const address = await listen(blocker);

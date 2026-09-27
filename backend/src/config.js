@@ -2,11 +2,18 @@ const fs = require("fs");
 const path = require("path");
 
 const PROJECT_ROOT = path.join(__dirname, "..", "..");
-const PROJECT_CONFIG_PATH = path.join(PROJECT_ROOT, ".opencode", "koharu.json");
+const DATA_ROOT = path.resolve(
+  process.env.MANGA_TRANSLATION_DATA_ROOT || PROJECT_ROOT
+);
+const PROJECT_CONFIG_PATH = path.resolve(
+  process.env.MANGA_TRANSLATION_CONFIG_PATH ||
+    path.join(PROJECT_ROOT, ".opencode", "koharu.json")
+);
 
 const DEFAULT_CONFIG = {
   api: {
     baseUrl: "http://127.0.0.1:4000",
+    pageUploadMode: "auto",
   },
   llm: {
     defaultModel: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
@@ -30,6 +37,7 @@ const DEFAULT_CONFIG = {
     referenceComparisons: "references/comparisons/",
     referenceManifests: "references/manifests/",
     sourcePreflight: "cache/source-preflight/",
+    uploads: "uploads/",
     workspaceRoot: "cache/workspaces",
     logs: "logs/",
     todoList: "TODO_LIST.md",
@@ -54,6 +62,13 @@ const DEFAULT_CONFIG = {
     host: "127.0.0.1",
     port: 4001,
     pollIntervalMs: 1000,
+  },
+  server: {
+    authToken: null,
+    corsAllowedOrigins: [],
+    maxJsonBodyBytes: 1048576,
+    maxUploadFileBytes: 52428800,
+    maxUploadFiles: 500,
   },
   koharuRuntime: {
     managed: true,
@@ -118,13 +133,14 @@ function deepMerge(base, override) {
 function resolvePath(targetPath) {
   return path.isAbsolute(targetPath)
     ? targetPath
-    : path.join(PROJECT_ROOT, targetPath);
+    : path.join(DATA_ROOT, targetPath);
 }
 
 const mergedConfig = deepMerge(DEFAULT_CONFIG, loadProjectConfig());
 
 module.exports = {
   DEFAULT_CONFIG,
+  DATA_ROOT,
   PROJECT_ROOT,
   PROJECT_CONFIG_PATH,
   deepMerge,
@@ -145,6 +161,7 @@ module.exports = {
     referenceComparisons: resolvePath(mergedConfig.paths.referenceComparisons),
     referenceManifests: resolvePath(mergedConfig.paths.referenceManifests),
     sourcePreflight: resolvePath(mergedConfig.paths.sourcePreflight),
+    uploads: resolvePath(mergedConfig.paths.uploads || "uploads/"),
     logs: resolvePath(mergedConfig.paths.logs),
     todoList: resolvePath(mergedConfig.paths.todoList),
     database: resolvePath(mergedConfig.paths.database),

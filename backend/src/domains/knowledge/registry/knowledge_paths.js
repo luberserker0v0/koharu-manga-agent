@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
-const { PROJECT_ROOT, paths } = require("../../../config");
+const backendConfig = require("../../../config");
+const { paths } = backendConfig;
+const DATA_ROOT = backendConfig.DATA_ROOT || backendConfig.PROJECT_ROOT;
 const { DEFAULT_LANGUAGE_TAG, normalizeLanguageTag } = require("../../../language_codes");
 const { PostEditWorkspaceModule } = require("../../post_edit/workspace/post_edit_workspace");
 
@@ -14,7 +16,7 @@ const DEFAULT_INDEX = {
 const postEditWorkspaceModule = new PostEditWorkspaceModule();
 
 function knowledgeBaseRoot() {
-  return path.join(PROJECT_ROOT, "knowledge_base");
+  return path.join(DATA_ROOT, "knowledge_base");
 }
 
 function knowledgeIndexPath() {
@@ -58,7 +60,7 @@ function assertValidChapterId(chapterId) {
 }
 
 function toRelativeProjectPath(targetPath) {
-  return path.relative(PROJECT_ROOT, targetPath).replace(/\\/g, "/");
+  return path.relative(DATA_ROOT, targetPath).replace(/\\/g, "/");
 }
 
 function ensureKnowledgeIndex() {

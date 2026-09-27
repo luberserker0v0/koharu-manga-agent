@@ -9,7 +9,7 @@ const {
   referenceSetPaths,
 } = require("../sets/reference_sets");
 const { initializeExtractionReview } = require("../review/reference_extraction_review");
-const legacyOneClick = require("../../../../../.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js");
+const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -74,10 +74,10 @@ class ReferenceExtractionModule {
     const createdProject = await this.client.createProject(projectName, resolvedBaseUrl);
     await this.client.openProject(createdProject.id, resolvedBaseUrl);
 
-    const upload = await legacyOneClick.uploadPages(images, resolvedBaseUrl);
-    const engines = await legacyOneClick.resolveEngines(resolvedBaseUrl, config.engines || {});
+    const upload = await projectOrchestrator.uploadPages(images, resolvedBaseUrl);
+    const engines = await projectOrchestrator.resolveEngines(resolvedBaseUrl, config.engines || {});
     const steps = buildReferenceExtractionSteps(engines);
-    const pipeline = await legacyOneClick.startPipeline(
+    const pipeline = await projectOrchestrator.startPipeline(
       steps,
       targetLanguage,
       resolvedBaseUrl

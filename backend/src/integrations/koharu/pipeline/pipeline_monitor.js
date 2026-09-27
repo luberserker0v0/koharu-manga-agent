@@ -5,9 +5,12 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function createTerminalPipelineError(status) {
-  const error = new Error(`Pipeline ended with status: ${status}`);
+function createTerminalPipelineError(status, detail = null) {
+  const suffix = detail ? `: ${detail}` : "";
+  const error = new Error(`Pipeline ended with status: ${status}${suffix}`);
   error.pipelineTerminal = true;
+  error.pipelineStatus = status;
+  error.pipelineDetail = detail;
   return error;
 }
 
@@ -291,7 +294,7 @@ class PipelineMonitorModule {
           };
         }
 
-        throw new Error(`Pipeline ended with status: ${operation.status}`);
+        throw createTerminalPipelineError(operation.status, operation.error || null);
       }
 
       await sleep(runtime.pollIntervalMs);
@@ -464,7 +467,7 @@ class PipelineMonitorModule {
               };
             }
 
-            throw createTerminalPipelineError(finalStatus);
+            throw createTerminalPipelineError(finalStatus, data?.error || null);
           }
 
           eventType = "";

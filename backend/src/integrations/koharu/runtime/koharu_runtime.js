@@ -185,7 +185,7 @@ class KoharuRuntimeManager {
     let status = "not_installed";
     let mode = "managed";
     if (!this.enabled) {
-      status = reachable ? "running" : "disabled";
+      status = reachable ? "running" : "unavailable";
       mode = "external";
     } else if (reachable) {
       status = "running";
@@ -341,6 +341,10 @@ class KoharuRuntimeManager {
     if (await this.isReachable()) {
       this.lastError = null;
       return this.inspect();
+    }
+    if (!this.enabled) {
+      this.lastError = `External Koharu service is unavailable at ${this.baseUrl}. Start Koharu before retrying.`;
+      throw new Error(this.lastError);
     }
     await this.ensureInstalled();
     if (this.isManagedChildRunning()) {

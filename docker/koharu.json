@@ -1,0 +1,44 @@
+{
+  "api": {
+    "baseUrl": "http://host.docker.internal:4000",
+    "pageUploadMode": "multipart"
+  },
+  "runtime": {
+    "host": "0.0.0.0",
+    "port": 4001,
+    "pollIntervalMs": 1000
+  },
+  "server": {
+    "authToken": null,
+    "corsAllowedOrigins": [
+      "chrome-extension://*",
+      "moz-extension://*",
+      "http://localhost:*",
+      "http://127.0.0.1:*"
+    ],
+    "maxJsonBodyBytes": 1048576,
+    "maxUploadFileBytes": 52428800,
+    "maxUploadFiles": 500
+  },
+  "koharuRuntime": {
+    "managed": false,
+    "startup": "external",
+    "stopWithBackend": false,
+    "host": "host.docker.internal",
+    "port": 4000
+  },
+  "agent": {
+    "baseUrl": "http://host.docker.internal:32768",
+    "apiKey": null,
+    "model": "opencode/deepseek-v4-flash-free",
+    "agentName": null,
+    "qualityAgentName": "quality-optimizer",
+    "knowledgeAgentName": "knowledge-builder",
+    "storyContextAgentName": "story-context-builder",
+    "startTimeoutMs": 10000,
+    "readyPollIntervalMs": 1000,
+    "readyTimeoutMs": 30000,
+    "messageTimeoutMs": 600000,
+    "modelSilenceTimeoutMs": 600000
+  }
+}

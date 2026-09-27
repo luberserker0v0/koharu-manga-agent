@@ -2,6 +2,9 @@
   "name": "manga-translation-backend",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "scripts": {
     "prestart": "node scripts/ensure_koharu_runtime.js",
     "start": "node server.js"

@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const legacyOneClick = require("../../../../../.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js");
+const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
 
 function ensureDir(targetPath) {
   fs.mkdirSync(targetPath, { recursive: true });
@@ -199,6 +199,33 @@ function runPowerShell(command) {
   }
 }
 
+function expandZip(zipPath, destinationPath) {
+  if (process.platform === "win32") {
+    runPowerShell(`Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destinationPath}' -Force`);
+    return;
+  }
+  const result = spawnSync("unzip", ["-q", "-o", zipPath, "-d", destinationPath], {
+    encoding: "utf-8",
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "unzip failed.");
+  }
+}
+
+function createZip(sourcePath, destinationPath) {
+  if (process.platform === "win32") {
+    runPowerShell(`Compress-Archive -LiteralPath '${path.join(sourcePath, "*")}' -DestinationPath '${destinationPath}' -Force`);
+    return;
+  }
+  const result = spawnSync("zip", ["-q", "-r", destinationPath, "."], {
+    cwd: sourcePath,
+    encoding: "utf-8",
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || "zip failed.");
+  }
+}
+
 function reorderRenderedZip({ zipPath, sourcePageOrder, targetPageOrder, workspaceRoot }) {
   if (!zipPath.toLowerCase().endsWith(".zip")) {
     return zipPath;
@@ -220,7 +247,7 @@ function reorderRenderedZip({ zipPath, sourcePageOrder, targetPageOrder, workspa
   ensureDir(expandDir);
   ensureDir(stagedDir);
 
-  runPowerShell(`Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${expandDir}' -Force`);
+  expandZip(zipPath, expandDir);
 
   const exportedFiles = fs
     .readdirSync(expandDir, { withFileTypes: true })
@@ -244,7 +271,7 @@ function reorderRenderedZip({ zipPath, sourcePageOrder, targetPageOrder, workspa
     fs.copyFileSync(path.join(expandDir, sourceFile), path.join(stagedDir, renamed));
   });
 
-  runPowerShell(`Compress-Archive -LiteralPath '${path.join(stagedDir, "*")}' -DestinationPath '${reorderedPath}' -Force`);
+  createZip(stagedDir, reorderedPath);
   return reorderedPath;
 }
 
@@ -260,6 +287,6 @@ module.exports = {
   createRebuiltProjectName,
   matchPostEditDocumentToScene,
   reorderRenderedZip,
-  uploadPages: legacyOneClick.uploadPages,
-  startPipeline: legacyOneClick.startPipeline,
+  uploadPages: projectOrchestrator.uploadPages,
+  startPipeline: projectOrchestrator.startPipeline,
 };

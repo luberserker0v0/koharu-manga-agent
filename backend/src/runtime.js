@@ -21,6 +21,7 @@ const { KoharuRuntimeManager } = require("./integrations/koharu/runtime/koharu_r
 const { JobStore } = require("./domains/jobs/persistence/job_store");
 const { WorkflowEngine } = require("./domains/jobs/workflows/workflow_engine");
 const { JobManager } = require("./domains/jobs/job_manager");
+const { UploadService } = require("./domains/uploads/upload_service");
 const { createApiServer } = require("./http/server/api_server");
 
 function applyKoharuRuntimeStatus(runtime, status) {
@@ -60,6 +61,10 @@ function createRuntime(overrides = {}) {
     overrides.sourcePreflightModule || new SourcePreflightModule();
   const postEditWorkspaceModule =
     overrides.postEditWorkspaceModule || new PostEditWorkspaceModule();
+  const uploadService = overrides.uploadService || new UploadService({
+    maxFileBytes: config.server?.maxUploadFileBytes,
+    maxFiles: config.server?.maxUploadFiles,
+  });
   const translationPublicationService =
     overrides.translationPublicationService || new TranslationPublicationService();
   const koharuRuntimeManager =
@@ -121,10 +126,12 @@ function createRuntime(overrides = {}) {
     sourcePreflightModule,
     postEditWorkspaceModule,
     extractionReviewService,
+    uploadService,
     configService,
     translationPublicationService,
     host,
     port,
+    serverConfig: config.server || {},
   });
   const closeApi = api.close.bind(api);
   api.close = async () => {
@@ -144,6 +151,7 @@ function createRuntime(overrides = {}) {
     sourcePreflightModule,
     postEditWorkspaceModule,
     extractionReviewService,
+    uploadService,
     store,
     client,
     aoClient,

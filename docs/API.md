@@ -6,6 +6,57 @@ This document now covers two API layers:
 
 ## Local Backend API
 
+Browser clients should use the versioned `/api/v1` prefix. Existing unversioned routes remain available during the backend-client migration.
+
+For the complete upload, preflight, Translation Job, SSE, and artifact-download lifecycle, see `docs/REST_WORKFLOW.md`. The executable reference client is `scripts/rest_translation_workflow.mjs`.
+
+### Browser upload sessions
+
+Create a source-chapter or Reference upload session:
+
+```http
+POST /api/v1/uploads
+Content-Type: application/json
+
+{"kind":"source"}
+```
+
+Upload one image per request, using the original filename as the final path segment:
+
+```http
+PUT /api/v1/uploads/{uploadId}/files/{fileName}
+Content-Type: image/png
+
+<raw image bytes>
+```
+
+Complete and inspect the session:
+
+```http
+POST /api/v1/uploads/{uploadId}/complete
+GET /api/v1/uploads/{uploadId}
+DELETE /api/v1/uploads/{uploadId}
+```
+
+After completion, pass `uploadId` instead of `sourceFolder`:
+
+```http
+POST /api/v1/source-preflight
+Content-Type: application/json
+
+{"uploadId":"..."}
+```
+
+Reference uploads use `kind: "reference"` and the same `uploadId` field with `POST /api/v1/references/import`.
+
+### Download a job artifact
+
+```http
+GET /api/v1/jobs/{jobId}/artifacts/{artifactId}/content
+```
+
+Only regular files located beneath the configured backend data root can be downloaded.
+
 ### Base Convention
 - Host: `127.0.0.1`
 - Default port: `4001`

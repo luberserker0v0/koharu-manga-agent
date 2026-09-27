@@ -37,10 +37,20 @@ function beginSseHeartbeat(res) {
 function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let settled = false;
+    const limit = Number(req.maxJsonBodyBytes || 1048576);
     req.on("data", (chunk) => {
+      if (settled) return;
       body += chunk;
+      if (Buffer.byteLength(body) > limit) {
+        settled = true;
+        const error = new Error(`JSON request body exceeds the ${limit} byte limit.`);
+        error.statusCode = 413;
+        reject(error);
+      }
     });
     req.on("end", () => {
+      if (settled) return;
       if (!body) return resolve({});
       try {
         resolve(JSON.parse(body));
@@ -48,7 +58,9 @@ function readJsonBody(req) {
         reject(error);
       }
     });
-    req.on("error", reject);
+    req.on("error", (error) => {
+      if (!settled) reject(error);
+    });
   });
 }
 

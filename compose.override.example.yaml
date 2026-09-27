@@ -1,0 +1,8 @@
+services:
+  backend:
+    environment:
+      MANGA_TRANSLATION_CONFIG_PATH: /config/koharu.json
+    volumes:
+      - type: bind
+        source: ./docker/koharu.local.json
+        target: /config/koharu.json

@@ -1,0 +1,23 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:4001:4001"
+    environment:
+      MANGA_TRANSLATION_CONFIG_PATH: /app/docker/koharu.json
+      MANGA_TRANSLATION_DATA_ROOT: /data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - backend-data:/data
+      - type: bind
+        source: ./backend/ao/opencode/opencode.json
+        target: /app/backend/ao/opencode/opencode.json
+        read_only: true
+
+volumes:
+  backend-data:

@@ -1,9 +1,9 @@
-const legacyOneClick = require("../../../../../.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js");
+const projectOrchestrator = require("./project_orchestrator");
 const { config } = require("../../../config");
 
 class ProjectSetupModule {
   async run({ targetLanguage, baseUrl, systemPrompt = null, sourceImagePaths = null }) {
-    const result = await legacyOneClick.orchestrate({
+    const result = await projectOrchestrator.orchestrate({
       targetLanguage,
       baseUrl,
       systemPrompt,
