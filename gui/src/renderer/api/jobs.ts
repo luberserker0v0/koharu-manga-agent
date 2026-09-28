@@ -735,6 +735,7 @@ export type TranslationJobPayload = {
   sourcePreflightId?: string;
   targetLanguage?: string;
   baseUrl?: string;
+  /** @deprecated Trusted desktop-only override. Browser clients must omit this field. */
   outputDir?: string;
   qualityCheck?: boolean;
   exportFormat?: string;
@@ -832,6 +833,7 @@ export type PostEditExportPayload = {
   sourceJobId: string;
   baseUrl?: string;
   exportFormat?: string;
+  /** @deprecated Trusted desktop-only override. Browser clients must omit this field. */
   outputDir?: string;
 };
 

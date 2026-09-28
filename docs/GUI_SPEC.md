@@ -114,7 +114,7 @@ These are stored locally and reused by default for future jobs.
 - `outputFolder`
   - required for usable translation jobs
   - default should be the current user Downloads folder
-  - this becomes the explicit `outputDir` sent with translation and post-edit export jobs
+  - this remains an optional trusted-desktop export override; browser clients use the backend-owned export directory and Artifact API
 - `referenceFolder`
   - optional
   - root folder for other translated chapters used for comparison

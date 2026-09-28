@@ -32,6 +32,7 @@ const {
   formatTranslationMemoryPrompt,
 } = require("../../translation/memory/translation_memory");
 const { resolveTranslationModePolicy } = require("../../translation/modes/translation_modes");
+const { resolveExportOutputDir } = require("../../translation/execution/export_output_path");
 const { deleteChapterLearningData } = require("../../knowledge/learning/knowledge");
 const { buildPipelinePlan, resolveReferenceUsage, translationSceneFingerprint } = require("./workflow_helpers");
 
@@ -283,7 +284,13 @@ class WorkflowEngine {
     const baseUrl = payload.baseUrl || config.api.baseUrl;
     const targetLanguage = payload.targetLanguage || config.defaults.targetLanguage;
     const exportFormat = payload.exportFormat || config.defaults.exportFormat;
-    const outputDir = typeof payload.outputDir === "string" ? payload.outputDir.trim() : "";
+    const outputDir = resolveExportOutputDir({
+      outputDir: payload.outputDir,
+      mangaId: payload.mangaId,
+      translatorId: payload.translatorId,
+      chapterId: payload.chapterId,
+      jobId: hooks.jobId,
+    });
     const glossaryMode = payload.glossaryMode || "canonical";
     const translationMode = payload.translationMode;
     const translationPolicy = resolveTranslationModePolicy(translationMode, payload.qualityCheck === true);
@@ -294,10 +301,6 @@ class WorkflowEngine {
     let setup = null;
     let pipeline = null;
     let translationObservation = null;
-
-    if (!outputDir) {
-      throw new Error("Translation job requires outputDir.");
-    }
 
     if (resume) {
       if (!fs.existsSync(resume.translationMemorySnapshotPath || "")) {
@@ -1134,10 +1137,14 @@ class WorkflowEngine {
 
     const baseUrl = payload.baseUrl || config.api.baseUrl;
     const exportFormat = payload.exportFormat || config.defaults.exportFormat;
-    const outputDir = typeof payload.outputDir === "string" ? payload.outputDir.trim() : "";
-    if (!outputDir) {
-      throw new Error("Post-edit export requires outputDir.");
-    }
+    const outputDir = resolveExportOutputDir({
+      outputDir: payload.outputDir,
+      mangaId: sourceJob.payload?.mangaId,
+      translatorId: sourceJob.payload?.translatorId,
+      chapterId: sourceJob.payload?.chapterId,
+      jobId: hooks.jobId,
+      variant: "post-edit",
+    });
     const postEditDocument = this.postEditWorkspaceModule.load(payload.sourceJobId);
     if (!postEditDocument) {
       throw new Error("Post-edit document not found for the requested translation job.");

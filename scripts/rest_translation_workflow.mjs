@@ -34,7 +34,6 @@ Options:
   --source-language TAG        Optional source language
   --quality-check              Enable optional Quality for supported modes
   --export-format FORMAT       Koharu export format (default: rendered)
-  --container-output-dir PATH  Export directory inside the backend container
   --download-dir PATH          Local artifact download directory
                                (default: ./workflow-downloads/<jobId>)
   --timeout-ms NUMBER          Job timeout (default: 600000)
@@ -67,7 +66,6 @@ function parseArgs(argv) {
     ["--target-language", "targetLanguage"],
     ["--source-language", "sourceLanguage"],
     ["--export-format", "exportFormat"],
-    ["--container-output-dir", "containerOutputDir"],
     ["--download-dir", "downloadDir"],
     ["--timeout-ms", "timeoutMs"],
   ]);
@@ -106,10 +104,6 @@ function validateOptions(options) {
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive number.");
   }
-}
-
-function safeSegment(value) {
-  return String(value).replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^\.+$/, "_");
 }
 
 function contentType(fileName) {
@@ -307,15 +301,11 @@ async function main() {
     if (!preflight.preflightId) throw new Error("Source preflight did not return preflightId.");
     console.log(`[preflight] ${preflight.preflightId}, accepted=${preflight.summary?.acceptedCount ?? "unknown"}`);
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const containerOutputDir = options.containerOutputDir ||
-      `/data/exports/${safeSegment(options.mangaId)}/${safeSegment(options.chapterId)}-${timestamp}`;
     const payload = {
       translationMode: options.mode,
       targetLanguage: options.targetLanguage,
       qualityCheck: options.mode === "learning_style" || options.qualityCheck,
       exportFormat: options.exportFormat,
-      outputDir: containerOutputDir,
       mangaId: options.mangaId,
       translatorId: options.translatorId,
       chapterId: options.chapterId,
@@ -342,7 +332,6 @@ async function main() {
       outcome: job.outcome || null,
       stage: job.stage,
       error: job.error || null,
-      containerOutputDir,
       downloadDir,
     };
     console.log(JSON.stringify(summary, null, 2));

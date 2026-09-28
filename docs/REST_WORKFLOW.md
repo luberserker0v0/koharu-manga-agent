@@ -83,7 +83,6 @@ Content-Type: application/json
   "targetLanguage":"zh-TW",
   "qualityCheck":false,
   "exportFormat":"rendered",
-  "outputDir":"/data/exports/my_manga/ch_001",
   "mangaId":"my_manga",
   "translatorId":"quick_output",
   "chapterId":"ch_001",
@@ -91,7 +90,7 @@ Content-Type: application/json
 }
 ```
 
-`outputDir` is a path inside the backend container and must be beneath `/data` if the result needs to be downloadable through the artifact API. Clients must not send a Windows host path to a Docker backend.
+The backend owns the export location and generates it beneath its configured `paths.translated` root. Browser clients must not send `outputDir` or depend on a backend filesystem path. A trusted desktop deployment may still supply the optional legacy override while that GUI integration remains supported.
 
 The response is `202 Accepted` with the queued Job. Keep its `id`. A `202` response means accepted, not completed.
 

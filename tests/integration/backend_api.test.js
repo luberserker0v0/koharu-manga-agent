@@ -197,7 +197,6 @@ describe("backend api", () => {
         mangaLabel: "Phantom Fantasy",
         translatorId: "translator_api",
         chapterId: "ch_001",
-        outputDir: "C:\\exports\\api-translation",
       }),
     });
     expect(createRes.status).toBe(202);
@@ -216,6 +215,7 @@ describe("backend api", () => {
     expect(stored.payload.mangaLabel).toBe("Phantom Fantasy");
     expect(stored.payload.translatorId).toBe("translator_api");
     expect(stored.payload.chapterId).toBe("ch_001");
+    expect(stored.payload.outputDir).toBeUndefined();
   });
 
   test("translation jobs without a baseUrl override ensure managed Koharu first", async () => {

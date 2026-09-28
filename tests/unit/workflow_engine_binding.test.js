@@ -18,6 +18,13 @@ describe("workflow engine manga-management binding sync", () => {
 
     const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/workflow_engine");
 
+    const exportModule = {
+      run: jest.fn().mockResolvedValue({
+        path: "C:\\translated\\binding.zip",
+        size: 10,
+        format: "rendered",
+      }),
+    };
     const engine = new WorkflowEngine({
       sourcePreflightModule: {
         get: jest.fn().mockReturnValue({
@@ -63,13 +70,7 @@ describe("workflow engine manga-management binding sync", () => {
       knowledgeModule: {
         run: jest.fn().mockResolvedValue({ translationPairs: 0 }),
       },
-      exportModule: {
-        run: jest.fn().mockResolvedValue({
-          path: "C:\\translated\\binding.zip",
-          size: 10,
-          format: "rendered",
-        }),
-      },
+      exportModule,
       projectLifecycle: {
         client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
         closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
@@ -110,10 +111,13 @@ describe("workflow engine manga-management binding sync", () => {
         chapterId: "chapter_001",
         chapterTitle: "Chapter 001",
         targetLanguage: "zh-TW",
-        outputDir: "C:\\exports\\binding-translation",
       },
       hooks
     );
+
+    expect(exportModule.run).toHaveBeenCalledWith(expect.objectContaining({
+      outputDir: expect.stringMatching(/[\\/]manga_phantom_fantasy[\\/]translator_self_team[\\/]chapter_001[\\/]translation-job_translation_001$/),
+    }));
 
     expect(syncMangaManagementBinding).toHaveBeenCalledWith({
       mangaId: "manga_phantom_fantasy",

@@ -202,7 +202,7 @@ Design target:
 The backend remains the only writer for canonical storage:
 - `knowledge_base/`
 - `references/`
-- job-selected `outputDir`
+- backend-owned export directory beneath `paths.translated` (trusted desktop clients may temporarily override it)
 
 Current agent audit artifacts:
 - `cache/workspaces/<jobId>/<stage>/artifacts/import_manifest.json`

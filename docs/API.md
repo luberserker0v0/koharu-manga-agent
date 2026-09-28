@@ -120,6 +120,11 @@ Request body:
 `translationMode` is required and must be `quick`, `reference_style`, `local_style`, or `learning_style`.
 Translation jobs also require `mangaId`, `translatorId`, and `chapterId`. These fields identify the
 single output publication; chapter numbers do not need to be contiguous.
+The backend generates the export directory beneath its configured `paths.translated` root using the
+manga, translator, chapter, and Job identifiers. Browser clients must not send `outputDir`; exported
+files are discovered and downloaded through the Job Artifact API. A trusted desktop deployment may
+temporarily supply an optional `outputDir` override for its native folder-picker integration. An
+override outside the backend data root is not downloadable through the Artifact Content API.
 `qualityCheck` only controls the optional Quality stage for `reference_style` and `local_style`;
 `quick` always skips it and `learning_style` always runs it. Translation jobs never execute
 Reference Ingestion. Reference modes consume only completed Reference assets.

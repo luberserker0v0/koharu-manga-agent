@@ -174,7 +174,6 @@ describe("post edit api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sourceJobId: "translation-job-001",
-        outputDir: createTempOutputDir(),
       }),
     });
     expect(exportRes.status).toBe(202);
@@ -185,11 +184,11 @@ describe("post edit api", () => {
     expect(engine.runPostEditExportJob).toHaveBeenCalledWith(
       expect.objectContaining({
         sourceJobId: "translation-job-001",
-        outputDir: expect.any(String),
       }),
       expect.objectContaining({
         jobId: created.id,
       })
     );
+    expect(engine.runPostEditExportJob.mock.calls[0][0].outputDir).toBeUndefined();
   });
 });
