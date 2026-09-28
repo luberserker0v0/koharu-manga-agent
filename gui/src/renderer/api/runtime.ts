@@ -35,21 +35,25 @@ export type RuntimeStatus = {
     serverUrl: string | null;
   };
   translation: {
-    modelId: string | null;
-    serverUrl: string | null;
-    providerId: string | null;
-    defaultModel: string | null;
-    defaultProvider: string | null;
+    defaultTarget: TranslationTarget | null;
   };
+};
+
+export type TranslationTarget = {
+  providerId: string;
+  modelId: string;
 };
 
 export type BackendConfig = {
   api?: {
     baseUrl?: string;
   };
-  llm?: {
-    defaultModel?: string;
-    defaultProvider?: string;
+  translation?: {
+    defaultTarget?: TranslationTarget;
+    machineTranslation?: {
+      referencePostEdit?: boolean;
+      learningPostEdit?: boolean;
+    };
   };
   workflow?: {
     qualityCheck?: {
@@ -110,6 +114,31 @@ export type KoharuEngineCatalog = {
   renderers?: KoharuEngineOption[];
 };
 
+export type KoharuTranslationModel = {
+  modelId: string;
+  name: string;
+  languages: string[];
+  targetKind: "local" | "provider";
+  providerId: string;
+};
+
+export type KoharuTranslationProvider = {
+  providerId: string;
+  name: string;
+  kind: "local_llm" | "hosted_llm" | "machine_translation";
+  status: string;
+  hasCredential: boolean | null;
+  requiresCredential?: boolean;
+  models: KoharuTranslationModel[];
+  error?: string | null;
+};
+
+export type KoharuTranslationCatalog = {
+  baseUrl: string;
+  defaultTarget: TranslationTarget | null;
+  providers: KoharuTranslationProvider[];
+};
+
 export type KoharuRuntimePaths = {
   dataRoot: string | null;
   projectsRoot: string | null;
@@ -157,6 +186,10 @@ export function getAOProviderCatalog(baseUrl: string, apiKey: string | null): Pr
 
 export function getKoharuEngineCatalog(): Promise<{ engines: KoharuEngineCatalog }> {
   return apiFetch("/runtime/koharu/engines", { timeoutMs: 30000 });
+}
+
+export function getKoharuTranslationCatalog(): Promise<KoharuTranslationCatalog> {
+  return apiFetch("/runtime/koharu/translation-providers", { timeoutMs: 30000 });
 }
 
 export function getKoharuRuntimePaths(): Promise<{ koharu: KoharuRuntimePaths }> {

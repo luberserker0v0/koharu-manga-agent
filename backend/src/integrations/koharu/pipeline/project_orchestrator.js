@@ -9,6 +9,9 @@ const {
 const {
   preflightImagesForKoharuUpload,
 } = require("../../../domains/reference/extraction/reference_image_conversion");
+const {
+  resolveTranslationTarget,
+} = require("../translation/translation_targets");
 
 const ENGINE_ORDER = [
   { key: "detect", catalogKeys: ["detectors"], required: true },
@@ -122,86 +125,78 @@ async function uploadPages(imagePaths, baseUrl, { mode = config.api?.pageUploadM
   };
 }
 
-async function getCurrentLlmTarget(baseUrl) {
+async function getCurrentTranslationTarget(baseUrl) {
   const response = await apiFetch(ENDPOINTS.LLM_CURRENT, { baseUrl });
   if (!response.ok) {
-    throw new Error(`Get current LLM failed (${response.status}): ${await readResponseText(response)}`);
+    throw new Error(`Get current translation target failed (${response.status}): ${await readResponseText(response)}`);
   }
   const data = await readOptionalJson(response);
-  if (!data) throw new Error("Get current LLM returned an empty response");
+  if (!data) throw new Error("Get current translation target returned an empty response");
   return data;
 }
 
-function matchesRequestedTarget(current, modelId, providerId) {
+function matchesRequestedTarget(current, modelId, providerId, targetKind = "provider") {
   const target = current?.target;
   if (!target || target.modelId !== modelId) return false;
-  return providerId
-    ? target.kind === "provider" && target.providerId === providerId
-    : target.kind === "local" && target.providerId == null;
+  return targetKind === "local"
+    ? target.kind === "local" && target.providerId == null
+    : target.kind === "provider" && target.providerId === providerId;
 }
 
-async function loadModelTarget(modelId, baseUrl, providerId) {
+async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provider") {
   const response = await apiFetch(ENDPOINTS.LLM_CURRENT, {
     method: "PUT",
     baseUrl,
     body: {
       target: {
-        kind: providerId ? "provider" : "local",
+        kind: targetKind,
         modelId,
-        providerId: providerId || null,
+        providerId: targetKind === "local" ? null : providerId,
       },
     },
   });
   if (!response.ok) {
-    throw new Error(`Load LLM failed (${response.status}): ${await readResponseText(response)}`);
+    throw new Error(`Load translation target failed (${response.status}): ${await readResponseText(response)}`);
   }
   const data = await readOptionalJson(response);
   if (!data) {
-    const current = await getCurrentLlmTarget(baseUrl);
-    if (!matchesRequestedTarget(current, modelId, providerId)) {
+    const current = await getCurrentTranslationTarget(baseUrl);
+    if (!matchesRequestedTarget(current, modelId, providerId, targetKind)) {
       throw new Error(
-        "Load LLM returned an empty response and current target does not match the requested target"
+        "Load translation target returned an empty response and current target does not match the requested target"
       );
     }
-    return { modelId, providerId: providerId || null, data: current, verifiedAfterEmptyBody: true };
+    return { modelId, providerId: targetKind === "local" ? "local" : providerId, data: current, verifiedAfterEmptyBody: true };
   }
-  return { modelId, providerId: providerId || null, data };
+  return { modelId, providerId: targetKind === "local" ? "local" : providerId, data };
 }
 
-async function fetchLlmCatalog(baseUrl) {
+async function fetchTranslationCatalog(baseUrl) {
   return ensureOkJson(
     await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl }),
-    "Fetch LLM catalog"
+    "Fetch translation catalog"
   );
 }
 
-function catalogHasLocalModel(catalog, modelId) {
-  return (Array.isArray(catalog?.localModels) ? catalog.localModels : [])
-    .some((model) => model?.id === modelId);
-}
-
-async function loadDefaultLlm(baseUrl, modelId = null, providerId = null) {
-  const selectedModel = modelId || config.llm.defaultModel;
-  const selectedProvider = providerId || config.llm.defaultProvider || "openai-compatible";
-  if (!selectedModel) throw new Error("Default model is not configured");
-  try {
-    return await loadModelTarget(selectedModel, baseUrl, selectedProvider);
-  } catch (providerError) {
-    const catalog = await fetchLlmCatalog(baseUrl).catch(() => null);
-    if (!catalogHasLocalModel(catalog, selectedModel)) {
-      throw new Error(`Failed to load default LLM via provider: ${providerError.message}`);
-    }
-    try {
-      return {
-        ...(await loadModelTarget(selectedModel, baseUrl, null)),
-        fallbackFromProvider: true,
-      };
-    } catch (localError) {
-      throw new Error(
-        `Failed to load default LLM. Provider error: ${providerError.message}; Local error: ${localError.message}`
-      );
-    }
-  }
+async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLanguage = null) {
+  const catalog = await fetchTranslationCatalog(baseUrl);
+  const selected = resolveTranslationTarget({
+    catalog,
+    requestedTarget,
+    defaultTarget: config.translation?.defaultTarget,
+    targetLanguage,
+  });
+  const loaded = await loadModelTarget(
+    selected.modelId,
+    baseUrl,
+    selected.providerId,
+    selected.targetKind
+  );
+  return {
+    ...selected,
+    data: loaded.data,
+    verifiedAfterEmptyBody: loaded.verifiedAfterEmptyBody === true,
+  };
 }
 
 async function fetchEnginesCatalog(baseUrl) {
@@ -280,6 +275,11 @@ async function startPipeline(steps, targetLanguage, baseUrl, systemPrompt = null
 }
 
 async function orchestrate(options) {
+  const translationTarget = await loadTranslationTarget(
+    options.baseUrl,
+    options.translationTarget || null,
+    options.targetLanguage || null
+  );
   const projectName = createProjectName();
   const created = await ensureOkJson(
     await apiFetch(ENDPOINTS.PROJECTS, {
@@ -299,7 +299,6 @@ async function orchestrate(options) {
     "Open project"
   );
   const upload = await uploadPages(options.sourceImagePaths, options.baseUrl);
-  const llm = await loadDefaultLlm(options.baseUrl, options.modelId, options.providerId);
   const engines = await resolveEngines(options.baseUrl, options.engines);
   const steps = buildPipelineSteps(engines);
   const pipeline = await startPipeline(
@@ -314,7 +313,7 @@ async function orchestrate(options) {
     engines,
     steps,
     upload,
-    llm,
+    translationTarget,
   };
 }
 
@@ -322,6 +321,7 @@ module.exports = {
   ENGINE_ORDER,
   buildPipelineSteps,
   createProjectName,
+  loadTranslationTarget,
   orchestrate,
   resolveEngines,
   startPipeline,

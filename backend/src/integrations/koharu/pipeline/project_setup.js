@@ -2,14 +2,13 @@ const projectOrchestrator = require("./project_orchestrator");
 const { config } = require("../../../config");
 
 class ProjectSetupModule {
-  async run({ targetLanguage, baseUrl, systemPrompt = null, sourceImagePaths = null }) {
+  async run({ targetLanguage, baseUrl, systemPrompt = null, sourceImagePaths = null, translationTarget = null }) {
     const result = await projectOrchestrator.orchestrate({
       targetLanguage,
       baseUrl,
       systemPrompt,
       sourceImagePaths,
-      modelId: config.llm.defaultModel,
-      providerId: config.llm.defaultProvider,
+      translationTarget: translationTarget || config.translation?.defaultTarget || null,
       engines: config.engines,
     });
 
@@ -18,7 +17,7 @@ class ProjectSetupModule {
       operationId: result.operationId,
       engines: result.engines,
       steps: result.steps,
-      llm: result.llm,
+      translationTarget: result.translationTarget,
       systemPromptApplied: Boolean(systemPrompt),
     };
   }

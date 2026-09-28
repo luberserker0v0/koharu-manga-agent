@@ -90,11 +90,18 @@ Current implementation status:
 
 It owns:
 - Koharu HTTP request helpers
+- provider-neutral translation catalog and target selection
 - pipeline start
 - operation polling
 - scene access
 - export
 - current-project close
+
+Workflow mode and translation target are separate contracts. `quick`, `reference_style`,
+`local_style`, and `learning_style` may use local/hosted LLMs or Machine Translation. Machine
+Translation produces the initial draft; Reference/Local workflows reuse the AO Quality contract for
+post-edit before export. Provider credentials remain owned by Koharu and are never persisted by the
+backend.
 
 ## Module Ownership
 

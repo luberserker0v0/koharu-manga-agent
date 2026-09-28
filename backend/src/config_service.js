@@ -8,7 +8,7 @@ const TIMEOUT_KEYS = new Set([
 ]);
 const EDITABLE_KEYS = {
   api: new Set(["baseUrl"]),
-  llm: new Set(["defaultModel", "defaultProvider"]),
+  translation: new Set(["defaultTarget", "machineTranslation"]),
   workflow: new Set(["qualityCheck"]),
   agent: new Set(["baseUrl", "apiKey", "model", "agentName", ...TIMEOUT_KEYS]),
   engines: ENGINE_KEYS,
@@ -33,7 +33,21 @@ function validateConfigPatch(patch) {
     if (!values || typeof values !== "object" || Array.isArray(values)) throw invalid(`${section} must be an object.`);
     for (const [key, value] of Object.entries(values)) {
       if (!EDITABLE_KEYS[section].has(key)) throw invalid(`Unsupported config field: ${section}.${key}.`);
-      if (section === "workflow") {
+      if (section === "translation" && key === "defaultTarget") {
+        if (!value || typeof value !== "object" || Array.isArray(value) ||
+          Object.keys(value).some((item) => !["providerId", "modelId"].includes(item))) {
+          throw invalid("translation.defaultTarget only accepts providerId and modelId.");
+        }
+        if (![value.providerId, value.modelId].every((item) => typeof item === "string" && item.trim())) {
+          throw invalid("translation.defaultTarget requires providerId and modelId.");
+        }
+      } else if (section === "translation" && key === "machineTranslation") {
+        if (!value || typeof value !== "object" || Array.isArray(value) ||
+          Object.keys(value).some((item) => !["referencePostEdit", "learningPostEdit"].includes(item)) ||
+          Object.values(value).some((item) => typeof item !== "boolean")) {
+          throw invalid("translation.machineTranslation only accepts boolean referencePostEdit and learningPostEdit fields.");
+        }
+      } else if (section === "workflow") {
         if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((item) => item !== "enabled")) {
           throw invalid("workflow.qualityCheck only accepts enabled.");
         }
@@ -48,8 +62,6 @@ function validateConfigPatch(patch) {
         throw invalid(`${section}.${key} must be a non-empty string.`);
       } else if (section === "agent" && key === "model" && !/^[^/\s]+\/[^/\s]+$/.test(value.trim())) {
         throw invalid("agent.model must use the provider_id/model_id format.");
-      } else if (section === "llm" && key === "defaultModel" && value.includes("/")) {
-        throw invalid("llm.defaultModel must be a model_id without a provider prefix.");
       }
     }
   }

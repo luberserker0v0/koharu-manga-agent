@@ -7,6 +7,8 @@ export type TranslationDraft = {
   translationMode: TranslationMode;
   sourceFolder: string;
   targetLanguage: string;
+  translationProviderId: string;
+  translationModelId: string;
   profileSelection: string;
   translatorSelection: string;
   learningProfileSelection: string;
@@ -37,6 +39,8 @@ export const DEFAULT_TRANSLATION_DRAFT: TranslationDraft = {
   translationMode: "quick",
   sourceFolder: "",
   targetLanguage: "zh-TW",
+  translationProviderId: "",
+  translationModelId: "",
   profileSelection: "",
   translatorSelection: "",
   learningProfileSelection: "",

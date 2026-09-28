@@ -27,6 +27,9 @@ function snapshotFor(mode) {
 describe("translation preview API", () => {
   let api;
   let baseUrl;
+  const translationMemoryComposer = jest.fn(
+    ({ translationMode = "learning_style" }) => snapshotFor(translationMode)
+  );
   const qualityModule = {
     runPreview: jest.fn().mockResolvedValue({
       originalTranslations: [{ nodeId: "node_1", original: "星間国家", currentTranslation: "星際國" }],
@@ -47,10 +50,19 @@ describe("translation preview API", () => {
   beforeEach(async () => {
     qualityModule.runPreview.mockClear();
     knowledgeModule.preview.mockClear();
+    translationMemoryComposer.mockClear();
     api = createApiServer({
-      jobManager: { engine: { qualityModule, knowledgeModule } },
+      jobManager: {
+        engine: { qualityModule, knowledgeModule },
+        resolvedConfig: {
+          translation: {
+            defaultTarget: { providerId: "openai-compatible", modelId: "default-model" },
+            machineTranslation: { referencePostEdit: true, learningPostEdit: true },
+          },
+        },
+      },
       sourcePreflightModule: null,
-      translationMemoryComposer: ({ translationMode = "learning_style" }) => snapshotFor(translationMode),
+      translationMemoryComposer,
       host: "127.0.0.1",
       port: 0,
     });
@@ -107,5 +119,26 @@ describe("translation preview API", () => {
     expect(payload.knowledgeDelta.skipped).toBe(true);
     expect(qualityModule.runPreview).not.toHaveBeenCalled();
     expect(knowledgeModule.preview).not.toHaveBeenCalled();
+  });
+
+  test("memory inspection enables AO post-edit for Machine Translation reference mode", async () => {
+    const response = await fetch(`${baseUrl}/translation/memory/inspect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        translationMode: "reference_style",
+        qualityCheck: false,
+        translationTarget: { providerId: "deepl", modelId: "mt" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = await response.json();
+    expect(payload.translationTarget).toEqual({ providerId: "deepl", modelId: "mt" });
+    expect(payload.machineTranslationPostEdit).toBe(true);
+    expect(translationMemoryComposer).toHaveBeenLastCalledWith(expect.objectContaining({
+      translationMode: "reference_style",
+      qualityCheck: true,
+    }));
   });
 });

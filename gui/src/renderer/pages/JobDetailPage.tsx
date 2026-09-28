@@ -1060,6 +1060,15 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
       description: t("jobDetail.translationMode.quick.description"),
     };
   }, [displayJob?.payload, t]);
+  const translationTarget = useMemo(() => {
+    const resultTarget = asRecord(asRecord(displayJob?.result)?.translationTarget);
+    const payloadTarget = asRecord(displayJob?.payload?.translationTarget);
+    const target = resultTarget || payloadTarget;
+    if (!target) return null;
+    const providerId = typeof target.providerId === "string" ? target.providerId : null;
+    const modelId = typeof target.modelId === "string" ? target.modelId : null;
+    return providerId && modelId ? `${providerId} / ${modelId}` : null;
+  }, [displayJob?.payload, displayJob?.result]);
 
   const translationMemorySummary = useMemo(
     () => extractLatestEventPayload(runtimeEvents, "translation_memory.built"),
@@ -1176,6 +1185,9 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
               <div><strong>{t("jobDetail.summary.manga")}</strong><span>{formatValue(displayJob.payload.mangaLabel ?? displayJob.payload.mangaId)}</span></div>
               <div><strong>{t("jobDetail.summary.translator")}</strong><span>{formatValue(displayJob.payload.translatorLabel ?? displayJob.payload.translatorId ?? displayJob.payload.translator)}</span></div>
               <div><strong>{t("jobDetail.summary.chapter")}</strong><span>{formatValue(displayJob.payload.chapterTitle ?? displayJob.payload.chapterLabel ?? displayJob.payload.chapterId)}</span></div>
+              {displayJob.type === "translation" ? (
+                <div><strong>{t("jobDetail.summary.translationTarget")}</strong><span>{formatValue(translationTarget)}</span></div>
+              ) : null}
               {displayJob.type === "translation_knowledge_commit" ? (
                 <div><strong>{t("jobDetail.summary.sourceTranslationJob")}</strong><span>{formatValue(displayJob.payload.sourceTranslationJobId)}</span></div>
               ) : displayJob.type === "translation" || displayJob.type === "post_edit_export" ? (
@@ -1559,6 +1571,10 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
                   <div>
                     <strong>{t("jobDetail.summary.translationMode")}</strong>
                     <span>{translationModeView.label}</span>
+                  </div>
+                  <div>
+                    <strong>{t("jobDetail.summary.translationTarget")}</strong>
+                    <span>{formatValue(translationTarget)}</span>
                   </div>
                   <div>
                     <strong>{t("jobDetail.translationMemory.fingerprint")}</strong>

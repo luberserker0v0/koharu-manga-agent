@@ -133,7 +133,65 @@ describe("process-trigger runtime", () => {
       baseUrl: "http://127.0.0.1:4000",
       sourceImagePaths: ["C:\\source\\001.png"],
       systemPrompt: expect.any(String),
+      translationTarget: {
+        providerId: "openai-compatible",
+        modelId: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
+      },
     });
+  });
+
+  test("machine translation reference mode uses MT as the primary target and forces AO post-edit", async () => {
+    const setup = { run: jest.fn().mockResolvedValue({
+      projectName: "p-mt",
+      operationId: "op-mt",
+      engines: {},
+      steps: [],
+      translationTarget: { kind: "machine_translation", providerId: "deepl", modelId: "mt", targetKind: "provider" },
+    }) };
+    const quality = { run: jest.fn().mockResolvedValue({
+      overall: "pass", score: 1, totalTranslations: 1, issues: [], warnings: [],
+      passedChecks: ["translations_present"], failedChecks: [],
+    }) };
+    const translationMemoryComposer = jest.fn().mockReturnValue({
+      translationMode: "reference_style",
+      policy: { useReferenceMemory: true, useLocalMemory: false, runQuality: true, commitKnowledge: false },
+      readiness: { reference: true, local: true },
+      effective: { glossary: [], sourceIdentity: [], story: null, style: null, localKnowledge: null },
+      usage: {}, warnings: [], revisions: [], layers: { reference: {}, local: null }, fingerprint: "mt-memory",
+    });
+    const engine = new WorkflowEngine({
+      projectSetup: setup,
+      pipelineMonitor: { run: jest.fn().mockResolvedValue({ summary: { finalStatus: "completed", totalPages: 1, steps: {} } }) },
+      qualityModule: quality,
+      knowledgeModule: { run: jest.fn() },
+      exportModule: { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\mt.zip", size: 123 }) },
+      projectLifecycle: {
+        client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
+        closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
+      },
+      translationMemoryComposer,
+    });
+
+    const result = await engine.runTranslationJob({
+      translationMode: "reference_style",
+      qualityCheck: false,
+      targetLanguage: "zh-TW",
+      translationTarget: { providerId: "deepl", modelId: "mt" },
+      sourceImagePaths: ["C:\\source\\001.png"],
+      outputDir: "C:\\exports\\mt-reference",
+    }, {
+      jobId: "mt-reference-job",
+      setStage: jest.fn(), emit: jest.fn(), isCanceled: jest.fn().mockReturnValue(false),
+    });
+
+    expect(translationMemoryComposer).toHaveBeenCalledWith(expect.objectContaining({ qualityCheck: true }));
+    expect(setup.run).toHaveBeenCalledWith(expect.objectContaining({
+      translationTarget: { providerId: "deepl", modelId: "mt" },
+      systemPrompt: null,
+    }));
+    expect(quality.run).toHaveBeenCalledTimes(1);
+    expect(result.machineTranslationPostEdit).toBe(true);
+    expect(result.translationTarget).toEqual(expect.objectContaining({ providerId: "deepl", modelId: "mt" }));
   });
 
   test("job manager persists a successful translation job", async () => {

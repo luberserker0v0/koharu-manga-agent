@@ -128,6 +128,10 @@ Request body:
 ```json
 {
   "translationMode": "learning_style",
+  "translationTarget": {
+    "providerId": "deepl",
+    "modelId": "mt"
+  },
   "targetLanguage": "zh-TW",
   "baseUrl": "http://127.0.0.1:9999",
   "qualityCheck": true,
@@ -143,6 +147,10 @@ Request body:
 ```
 
 `translationMode` is required and must be `quick`, `reference_style`, `local_style`, or `learning_style`.
+`translationMode` selects the workflow and is independent from `translationTarget`, which selects the
+Koharu translation provider and model. If `translationTarget` is omitted, the backend uses
+`translation.defaultTarget` from configuration. Clients must send only `providerId` and `modelId`;
+the backend derives whether the target is a local LLM, hosted LLM, or machine-translation provider.
 Translation jobs also require `mangaId`, `translatorId`, and `chapterId`. These fields identify the
 single output publication; chapter numbers do not need to be contiguous.
 The backend generates the export directory beneath its configured `paths.translated` root using the
@@ -150,9 +158,25 @@ manga, translator, chapter, and Job identifiers. Browser clients must not send `
 files are discovered and downloaded through the Job Artifact API. A trusted desktop deployment may
 temporarily supply an optional `outputDir` override for its native folder-picker integration. An
 override outside the backend data root is not downloadable through the Artifact Content API.
-`qualityCheck` only controls the optional Quality stage for `reference_style` and `local_style`;
-`quick` always skips it and `learning_style` always runs it. Translation jobs never execute
+`qualityCheck` controls the optional Quality stage for LLM-backed `reference_style` and `local_style`;
+`quick` always skips it and `learning_style` always runs it. When a machine-translation target is used
+with `reference_style`, `local_style`, or `learning_style`, the backend automatically runs the existing
+AO Quality path as a Reference-aware post-edit according to `translation.machineTranslation` settings.
+The Reference prompt is not sent to DeepL, Google Cloud Translation, or Caiyun because those providers
+do not consume LLM instructions. Translation jobs never execute
 Reference Ingestion. Reference modes consume only completed Reference assets.
+
+### List Koharu translation providers
+
+```http
+GET /runtime/koharu/translation-providers
+```
+
+The response contains a sanitized provider catalog with `providerId`, provider `kind`, readiness,
+credential presence, models, and supported languages. It never contains credential values. Known
+machine-translation providers are DeepL, Google Cloud Translation, and Caiyun. A provider whose status
+is not `ready`, an unknown model, or an unsupported target language is rejected before the backend
+creates a Koharu project or uploads source pages.
 
 For Reference-backed modes, `referenceTranslatorId` identifies the read-only translator
 Reference that supplies canonical terminology and style evidence. `translatorId` identifies the

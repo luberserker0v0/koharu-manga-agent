@@ -17,7 +17,7 @@ describe("runtime configuration API", () => {
     configPath = path.join(directory, "koharu.json");
     const defaults = {
       api: { baseUrl: "http://127.0.0.1:4000" },
-      llm: { defaultModel: "default-model", defaultProvider: "default-provider" },
+      translation: { defaultTarget: { providerId: "default-provider", modelId: "default-model" } },
       workflow: { qualityCheck: { enabled: true }, knowledgeBuilder: { enabled: false } },
       agent: { baseUrl: "http://127.0.0.1:32768", model: "provider/default", messageTimeoutMs: 1000 },
       engines: null,
@@ -61,7 +61,7 @@ describe("runtime configuration API", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         api: { baseUrl: "http://127.0.0.1:4100" },
-        llm: { defaultModel: "gemma", defaultProvider: "lmstudio" },
+        translation: { defaultTarget: { modelId: "gemma", providerId: "lmstudio" } },
         agent: { model: "provider/next", messageTimeoutMs: 2000 },
         workflow: { qualityCheck: { enabled: false } },
         engines: { ocr: "ocr-engine" },
@@ -70,7 +70,7 @@ describe("runtime configuration API", () => {
     expect(response.status).toBe(200);
     const updated = await response.json();
     expect(updated.agent.model).toBe("provider/next");
-    expect(updated.llm.defaultModel).toBe("gemma");
+    expect(updated.translation.defaultTarget).toEqual({ modelId: "gemma", providerId: "lmstudio" });
     expect(updated.workflow.qualityCheck.enabled).toBe(false);
     expect((await (await fetch(`${baseUrl}/config`)).json()).agent.model).toBe("provider/next");
     expect(JSON.parse(fs.readFileSync(configPath, "utf8")).paths.reports).toBe("preserved");

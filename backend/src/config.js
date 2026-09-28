@@ -15,9 +15,15 @@ const DEFAULT_CONFIG = {
     baseUrl: "http://127.0.0.1:4000",
     pageUploadMode: "auto",
   },
-  llm: {
-    defaultModel: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
-    defaultProvider: "openai-compatible",
+  translation: {
+    defaultTarget: {
+      providerId: "openai-compatible",
+      modelId: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
+    },
+    machineTranslation: {
+      referencePostEdit: true,
+      learningPostEdit: true,
+    },
   },
   timeouts: {
     sseListen: 600,

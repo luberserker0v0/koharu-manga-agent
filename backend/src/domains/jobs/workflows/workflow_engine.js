@@ -33,6 +33,7 @@ const {
 } = require("../../translation/memory/translation_memory");
 const { resolveTranslationModePolicy } = require("../../translation/modes/translation_modes");
 const { resolveExportOutputDir } = require("../../translation/execution/export_output_path");
+const { isMachineTranslationTarget } = require("../../../integrations/koharu/translation/translation_targets");
 const { deleteChapterLearningData } = require("../../knowledge/learning/knowledge");
 const { buildPipelinePlan, resolveReferenceUsage, translationSceneFingerprint } = require("./workflow_helpers");
 
@@ -293,7 +294,15 @@ class WorkflowEngine {
     });
     const glossaryMode = payload.glossaryMode || "canonical";
     const translationMode = payload.translationMode;
-    const translationPolicy = resolveTranslationModePolicy(translationMode, payload.qualityCheck === true);
+    const requestedTranslationTarget = payload.translationTarget || config.translation?.defaultTarget || null;
+    const machineTranslationRequested = isMachineTranslationTarget(requestedTranslationTarget);
+    const machineTranslationSettings = config.translation?.machineTranslation || {};
+    const machineTranslationPostEdit = machineTranslationRequested && (
+      (translationMode === "reference_style" && machineTranslationSettings.referencePostEdit !== false) ||
+      (["local_style", "learning_style"].includes(translationMode) && machineTranslationSettings.learningPostEdit !== false)
+    );
+    const effectiveQualityRequested = payload.qualityCheck === true || machineTranslationPostEdit;
+    const translationPolicy = resolveTranslationModePolicy(translationMode, effectiveQualityRequested);
     const resume = payload.resumeFromTranslation || null;
     let sourcePreflight = null;
     let sourceImagePaths = null;
@@ -334,7 +343,7 @@ class WorkflowEngine {
       }
       translationMemory = this.translationMemoryComposer({
         translationMode,
-        qualityCheck: payload.qualityCheck === true,
+        qualityCheck: effectiveQualityRequested,
         mangaId: payload.mangaId || null,
         translatorId: payload.translatorId || null,
         referenceTranslatorId: payload.referenceTranslatorId || null,
@@ -427,8 +436,16 @@ class WorkflowEngine {
       setup = await this.projectSetup.run({
         targetLanguage,
         baseUrl,
-        systemPrompt,
+        systemPrompt: machineTranslationRequested ? null : systemPrompt,
         sourceImagePaths,
+        translationTarget: requestedTranslationTarget,
+      });
+      hooks.emit("translation_target.selected", {
+        kind: setup.translationTarget?.kind || null,
+        providerId: setup.translationTarget?.providerId || null,
+        modelId: setup.translationTarget?.modelId || null,
+        targetKind: setup.translationTarget?.targetKind || null,
+        referencePostEdit: machineTranslationPostEdit,
       });
       hooks.emit("setup.completed", setup);
 
@@ -634,6 +651,7 @@ class WorkflowEngine {
       chapterId: payload.chapterId || null,
       sourceChapterId: translationMemory.chapterMapping?.sourceChapterId || null,
       translationMode,
+      translationTarget: setup.translationTarget || requestedTranslationTarget,
       translationMemoryFingerprint: translationMemory.fingerprint,
       generatedAt: new Date().toISOString(),
       translations: finalTranslations.translations,
@@ -787,6 +805,8 @@ class WorkflowEngine {
       steps: setup.steps,
       translationMode,
       translationPolicy,
+      translationTarget: setup.translationTarget || requestedTranslationTarget,
+      machineTranslationPostEdit,
       translationMemoryFingerprint: translationMemory.fingerprint,
       translationMemorySnapshotPath,
       finalTranslationSnapshotPath,

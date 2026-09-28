@@ -24,7 +24,10 @@ import {
 } from "../components/TranslatorProfileSelector";
 import { CREATE_NEW_TRANSLATOR_VALUE } from "../components/TranslatorSelector";
 import { ReferenceGlossaryStrategySelector } from "../components/ReferenceGlossaryStrategySelector";
-import { getBackendConfig } from "../api/runtime";
+import {
+  getBackendConfig,
+  getKoharuTranslationCatalog,
+} from "../api/runtime";
 import { pickDirectory, readSettings, validatePaths, writeSettings } from "../services/desktop_api";
 import {
   type TranslationDraft,
@@ -316,6 +319,11 @@ export function JobsPage() {
     queryFn: getBackendConfig,
     retry: false,
   });
+  const translationCatalogQuery = useQuery({
+    queryKey: ["koharu-translation-catalog"],
+    queryFn: getKoharuTranslationCatalog,
+    retry: false,
+  });
   const mangaSeriesQuery = useQuery({
     queryKey: ["mangaSeries"],
     queryFn: getMangaSeries,
@@ -356,6 +364,28 @@ export function JobsPage() {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!translationCatalogQuery.data || !backendConfigQuery.data) return;
+    setTranslationDraft((current) => {
+      if (current.translationProviderId && current.translationModelId) return current;
+      const configured = backendConfigQuery.data.translation?.defaultTarget;
+      const configuredProvider = translationCatalogQuery.data.providers.find(
+        (provider) => provider.providerId === configured?.providerId
+      );
+      const provider = configuredProvider?.status === "ready"
+        ? configuredProvider
+        : translationCatalogQuery.data.providers.find((entry) => entry.status === "ready");
+      const configuredModel = provider?.models.find((model) => model.modelId === configured?.modelId);
+      const model = configuredModel || provider?.models[0];
+      if (!provider || !model) return current;
+      return {
+        ...current,
+        translationProviderId: provider.providerId,
+        translationModelId: model.modelId,
+      };
+    });
+  }, [backendConfigQuery.data, setTranslationDraft, translationCatalogQuery.data]);
 
   useEffect(() => {
     return subscribeToJobsStream({
@@ -646,6 +676,29 @@ export function JobsPage() {
     () => getTranslationModeDefinition(translationDraft.translationMode),
     [translationDraft.translationMode]
   );
+  const translationProviders = useMemo(
+    () => translationCatalogQuery.data?.providers || [],
+    [translationCatalogQuery.data]
+  );
+  const selectedTranslationProvider = useMemo(
+    () => translationProviders.find(
+      (provider) => provider.providerId === translationDraft.translationProviderId
+    ) || null,
+    [translationDraft.translationProviderId, translationProviders]
+  );
+  const selectedTranslationModel = useMemo(
+    () => selectedTranslationProvider?.models.find(
+      (model) => model.modelId === translationDraft.translationModelId
+    ) || null,
+    [selectedTranslationProvider, translationDraft.translationModelId]
+  );
+  const normalizedTargetLanguage = normalizeReferenceLanguage(translationDraft.targetLanguage);
+  const translationTargetSupportsLanguage = Boolean(
+    selectedTranslationModel && (
+      selectedTranslationModel.languages.length === 0 ||
+      selectedTranslationModel.languages.includes(normalizedTargetLanguage)
+    )
+  );
   const consistencyCheckEnabled = useMemo(
     () => isConsistencyCheckEnabled(translationDraft),
     [translationDraft]
@@ -660,6 +713,8 @@ export function JobsPage() {
       provisionalTranslationContext?.chapterId,
       translationDraft.sourceChapterSelection,
       translationDraft.glossaryMode,
+      translationDraft.translationProviderId,
+      translationDraft.translationModelId,
       consistencyCheckEnabled,
     ],
     queryFn: () =>
@@ -674,6 +729,12 @@ export function JobsPage() {
         sourceChapterId: sanitizeOptional(translationDraft.sourceChapterSelection),
         glossaryMode: translationDraft.glossaryMode,
         targetLanguage: normalizeReferenceLanguage(translationDraft.targetLanguage),
+        translationTarget: translationDraft.translationProviderId && translationDraft.translationModelId
+          ? {
+              providerId: translationDraft.translationProviderId,
+              modelId: translationDraft.translationModelId,
+            }
+          : undefined,
       }),
     enabled:
       translationDraft.translationMode !== "quick" &&
@@ -755,6 +816,15 @@ export function JobsPage() {
         translationPathValidation,
         preflightResult,
       });
+    items.splice(1, 0, {
+      label: t("jobs.translationProvider.label"),
+      done: selectedTranslationProvider?.status === "ready" && translationTargetSupportsLanguage,
+      detail: selectedTranslationProvider && selectedTranslationModel
+        ? `${selectedTranslationProvider.name} / ${selectedTranslationModel.name}`
+        : translationCatalogQuery.isFetching
+          ? t("jobs.translationProvider.loading")
+          : t("jobs.translationProvider.select"),
+    });
     if (translationDraft.translationMode !== "quick") {
       const inspection = translationMemoryInspectionQuery.data;
       items.push({
@@ -775,7 +845,11 @@ export function JobsPage() {
       provisionalTranslationContext?.mangaLabel,
       provisionalTranslationContext?.translatorLabel,
       settingsSnapshot,
+      selectedTranslationModel,
+      selectedTranslationProvider,
       translationDraft,
+      translationCatalogQuery.isFetching,
+      translationTargetSupportsLanguage,
       translationMemoryInspectionQuery.data,
       translationMemoryInspectionQuery.isFetching,
       translationModeDefinition,
@@ -786,6 +860,18 @@ export function JobsPage() {
 
   const translationBlockingIssues = useMemo(() => {
     const issues: string[] = [];
+
+    if (translationCatalogQuery.isFetching) {
+      issues.push(t("jobs.translationProvider.loading"));
+    } else if (translationCatalogQuery.isError) {
+      issues.push(t("jobs.translationProvider.failed"));
+    } else if (!selectedTranslationProvider || !selectedTranslationModel) {
+      issues.push(t("jobs.translationProvider.select"));
+    } else if (selectedTranslationProvider.status !== "ready") {
+      issues.push(t("jobs.translationProvider.notReady"));
+    } else if (!translationTargetSupportsLanguage) {
+      issues.push(t("jobs.translationTarget.unsupportedLanguage"));
+    }
 
     if (!translationDraft.sourceFolder.trim()) {
       issues.push("Choose a source folder first.");
@@ -849,7 +935,12 @@ export function JobsPage() {
     draftDirtySincePreflight,
     preflightResult,
     settingsSnapshot,
+    selectedTranslationModel,
+    selectedTranslationProvider,
     translationDraft,
+    translationCatalogQuery.isError,
+    translationCatalogQuery.isFetching,
+    translationTargetSupportsLanguage,
     translationMemoryInspectionQuery.data,
     translationMemoryInspectionQuery.error,
     translationMemoryInspectionQuery.isError,
@@ -1014,6 +1105,10 @@ export function JobsPage() {
       translationMode: translationDraft.translationMode,
       sourcePreflightId: activePreflight.preflightId,
       targetLanguage: normalizeReferenceLanguage(translationDraft.targetLanguage),
+      translationTarget: {
+        providerId: translationDraft.translationProviderId,
+        modelId: translationDraft.translationModelId,
+      },
       outputDir,
       mangaId: resolvedContext.mangaId,
       mangaLabel: sanitizeOptional(resolvedContext.mangaLabel),
@@ -1163,6 +1258,68 @@ export function JobsPage() {
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              <span>{t("jobs.translationProvider.label")}</span>
+              <small className="muted-text">{t("jobs.translationProvider.help")}</small>
+              <select
+                value={translationDraft.translationProviderId}
+                onChange={(event) => {
+                  const providerId = event.currentTarget.value;
+                  const provider = translationProviders.find((entry) => entry.providerId === providerId);
+                  const compatibleModel = provider?.models.find(
+                    (model) => model.languages.length === 0 || model.languages.includes(normalizedTargetLanguage)
+                  ) || provider?.models[0];
+                  setTranslationDraft((current) => ({
+                    ...current,
+                    translationProviderId: providerId,
+                    translationModelId: compatibleModel?.modelId || "",
+                  }));
+                }}
+              >
+                <option value="">
+                  {translationCatalogQuery.isFetching
+                    ? t("jobs.translationProvider.loading")
+                    : translationCatalogQuery.isError
+                      ? t("jobs.translationProvider.failed")
+                      : t("jobs.translationProvider.select")}
+                </option>
+                {translationProviders.map((provider) => (
+                  <option key={provider.providerId} value={provider.providerId}>
+                    {provider.name}{provider.status === "ready" ? "" : ` — ${t("jobs.translationProvider.notReady")}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>{t("jobs.translationModel.label")}</span>
+              <small className="muted-text">{t("jobs.translationModel.help")}</small>
+              <select
+                value={translationDraft.translationModelId}
+                disabled={!selectedTranslationProvider}
+                onChange={(event) => {
+                  const modelId = event.currentTarget.value;
+                  setTranslationDraft((current) => ({ ...current, translationModelId: modelId }));
+                }}
+              >
+                <option value="">{t("jobs.translationModel.select")}</option>
+                {(selectedTranslationProvider?.models || []).map((model) => (
+                  <option key={model.modelId} value={model.modelId}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              {selectedTranslationProvider && selectedTranslationModel ? (
+                <small className="muted-text">
+                  {selectedTranslationProvider.status !== "ready"
+                    ? t("jobs.translationProvider.notReady")
+                    : !translationTargetSupportsLanguage
+                      ? t("jobs.translationTarget.unsupportedLanguage")
+                      : selectedTranslationProvider.kind === "machine_translation" && translationDraft.translationMode !== "quick"
+                        ? t("jobs.translationTarget.machinePostEdit")
+                        : t("jobs.translationTarget.ready")}
+                </small>
+              ) : null}
             </label>
           </div>
 

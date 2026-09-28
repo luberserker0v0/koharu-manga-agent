@@ -9,6 +9,11 @@ const { loadAoAssets } = require("../../integrations/ao/assets/ao_assets");
 const { validateConfigPatch } = require("../../config_service");
 const { normalizeLanguageTag } = require("../../language_codes");
 const {
+  isMachineTranslationTarget,
+  normalizeTranslationCatalog,
+  validateTranslationTargetShape,
+} = require("../../integrations/koharu/translation/translation_targets");
+const {
   loadCanonicalGlossary,
   loadCandidateTerms,
   loadStoryContext,
@@ -339,6 +344,26 @@ function createApiServer({
         }
         const baseUrl = baseUrlOverride || jobManager.koharuRuntimeManager?.baseUrl || jobManager.resolvedConfig?.api?.baseUrl;
         sendJson(res, 200, { engines: await client.getEngines(baseUrl) });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/runtime/koharu/translation-providers") {
+        const client = jobManager?.engine?.projectLifecycle?.client;
+        if (!client?.getTranslationCatalog) throw new Error("Koharu translation catalog is not configured.");
+        const baseUrlOverride = url.searchParams.get("baseUrl");
+        if (!baseUrlOverride && jobManager.koharuRuntimeManager) {
+          const status = await jobManager.koharuRuntimeManager.ensureRunning();
+          if (status?.baseUrl) {
+            jobManager.resolvedConfig.api = { ...(jobManager.resolvedConfig.api || {}), baseUrl: status.baseUrl };
+            client.defaultBaseUrl = status.baseUrl;
+          }
+        }
+        const baseUrl = baseUrlOverride || jobManager.koharuRuntimeManager?.baseUrl || jobManager.resolvedConfig?.api?.baseUrl;
+        sendJson(res, 200, {
+          baseUrl,
+          ...normalizeTranslationCatalog(await client.getTranslationCatalog(baseUrl)),
+          defaultTarget: jobManager.resolvedConfig?.translation?.defaultTarget || null,
+        });
         return;
       }
 
@@ -862,6 +887,8 @@ function createApiServer({
           badRequest(res, `Translation jobs require output bindings: ${missingBindings.join(", ")}.`);
           return;
         }
+        body.translationTarget = validateTranslationTargetShape(body.translationTarget) ||
+          jobManager.resolvedConfig?.translation?.defaultTarget || null;
         if (body.mangaId && body.translatorId && body.chapterId) {
           const duplicate = jobManager.listJobs().find((job) =>
             job.type === "translation" &&
@@ -926,9 +953,17 @@ function createApiServer({
 
       if (req.method === "POST" && url.pathname === "/translation/memory/inspect") {
         const body = await readJsonBody(req);
+        const translationTarget = validateTranslationTargetShape(body.translationTarget) ||
+          jobManager.resolvedConfig?.translation?.defaultTarget || null;
+        const machineTranslationPostEdit = isMachineTranslationTarget(translationTarget) && (
+          body.translationMode === "reference_style"
+            ? jobManager.resolvedConfig?.translation?.machineTranslation?.referencePostEdit !== false
+            : ["local_style", "learning_style"].includes(body.translationMode) &&
+              jobManager.resolvedConfig?.translation?.machineTranslation?.learningPostEdit !== false
+        );
         const snapshot = translationMemoryComposer({
           translationMode: body.translationMode,
-          qualityCheck: body.qualityCheck === true,
+          qualityCheck: body.qualityCheck === true || machineTranslationPostEdit,
           mangaId: body.mangaId || null,
           translatorId: body.translatorId || null,
           referenceTranslatorId: body.referenceTranslatorId || null,
@@ -949,6 +984,8 @@ function createApiServer({
           ready: !blockingReason,
           blockingReason,
           translationMode: snapshot.translationMode,
+          translationTarget,
+          machineTranslationPostEdit,
           policy: snapshot.policy,
           fingerprint: snapshot.fingerprint,
           chapterMapping: snapshot.chapterMapping,

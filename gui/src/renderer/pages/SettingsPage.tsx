@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  getAOProviderCatalog, getBackendConfig, getKoharuEngineCatalog, getKoharuRuntimePaths, getRuntimeStatus,
+  getAOProviderCatalog, getBackendConfig, getKoharuEngineCatalog, getKoharuRuntimePaths, getKoharuTranslationCatalog, getRuntimeStatus,
   prepareKoharuRuntime, resetBackendConfig, startKoharuRuntime, stopKoharuRuntime,
   testAOConnection, updateBackendConfig, type AOModelOption, type BackendConfig, type KoharuEngineCatalog,
   type KoharuEngineOption, type RuntimeStatus,
@@ -44,7 +44,16 @@ function Section({ title, description, children, defaultOpen = true }: {
 function buildConfigPatch(config: BackendConfig): BackendConfig {
   return {
     api: { baseUrl: config.api?.baseUrl || "" },
-    llm: { defaultModel: config.llm?.defaultModel || "", defaultProvider: config.llm?.defaultProvider || "" },
+    translation: {
+      defaultTarget: {
+        modelId: config.translation?.defaultTarget?.modelId || "",
+        providerId: config.translation?.defaultTarget?.providerId || "",
+      },
+      machineTranslation: {
+        referencePostEdit: config.translation?.machineTranslation?.referencePostEdit !== false,
+        learningPostEdit: config.translation?.machineTranslation?.learningPostEdit !== false,
+      },
+    },
     workflow: { qualityCheck: { enabled: config.workflow?.qualityCheck?.enabled !== false } },
     agent: {
       baseUrl: config.agent?.baseUrl || "", model: config.agent?.model || "",
@@ -74,6 +83,7 @@ export function SettingsPage() {
   const runtimeQuery = useQuery({ queryKey: ["runtime-status"], queryFn: getRuntimeStatus, retry: false });
   const configQuery = useQuery({ queryKey: ["backend-config"], queryFn: getBackendConfig, retry: false });
   const catalogQuery = useQuery({ queryKey: ["koharu-engine-catalog"], queryFn: getKoharuEngineCatalog, retry: false });
+  const translationCatalogQuery = useQuery({ queryKey: ["koharu-translation-catalog"], queryFn: getKoharuTranslationCatalog, retry: false });
   const pathsQuery = useQuery({ queryKey: ["koharu-runtime-paths"], queryFn: getKoharuRuntimePaths, retry: false });
 
   useEffect(() => {
@@ -120,8 +130,18 @@ export function SettingsPage() {
     setSettings((current) => current ? { ...current, [key]: value } as GuiSettings : current);
   };
   const updateApi = (baseUrl: string) => setConfig((current) => current ? { ...current, api: { ...current.api, baseUrl } } : current);
-  const updateLlm = (key: "defaultModel" | "defaultProvider", value: string) =>
-    setConfig((current) => current ? { ...current, llm: { ...current.llm, [key]: value } } : current);
+  const updateTranslationTarget = (key: "modelId" | "providerId", value: string) =>
+    setConfig((current) => current ? {
+      ...current,
+      translation: {
+        ...current.translation,
+        defaultTarget: {
+          modelId: current.translation?.defaultTarget?.modelId || "",
+          providerId: current.translation?.defaultTarget?.providerId || "",
+          [key]: value,
+        },
+      },
+    } : current);
   const updateAgent = (key: "baseUrl" | "model" | "apiKey" | "agentName" | TimeoutKey, value: string | number) =>
     setConfig((current) => current ? { ...current, agent: { ...current.agent, [key]: value } } : current);
 
@@ -130,6 +150,7 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["backend-config"] }),
       queryClient.invalidateQueries({ queryKey: ["runtime-status"] }),
       queryClient.invalidateQueries({ queryKey: ["koharu-engine-catalog"] }),
+      queryClient.invalidateQueries({ queryKey: ["koharu-translation-catalog"] }),
       queryClient.invalidateQueries({ queryKey: ["koharu-runtime-paths"] }),
     ]);
   };
@@ -266,8 +287,25 @@ export function SettingsPage() {
           <Section title={t("settings.koharu.translationTitle")} description={t("settings.koharu.translationDescription")}>
             <div className="form-grid">
               <label className="field"><span>{t("settings.koharu.baseUrl.label")}</span><input value={config.api?.baseUrl || ""} onChange={(event) => updateApi(event.currentTarget.value)} /></label>
-              <label className="field"><span>{t("settings.koharu.translationModel.label")}</span><small className="muted-text">{t("settings.koharu.translationModel.help")}</small><input value={config.llm?.defaultModel || ""} onChange={(event) => updateLlm("defaultModel", event.currentTarget.value)} /></label>
-              <label className="field"><span>{t("settings.koharu.translationProvider.label")}</span><input value={config.llm?.defaultProvider || ""} onChange={(event) => updateLlm("defaultProvider", event.currentTarget.value)} /></label>
+              <label className="field"><span>{t("settings.koharu.translationProvider.label")}</span>
+                <select value={config.translation?.defaultTarget?.providerId || ""} onChange={(event) => {
+                  const providerId = event.currentTarget.value;
+                  const provider = translationCatalogQuery.data?.providers.find((entry) => entry.providerId === providerId);
+                  setConfig((current) => current ? { ...current, translation: { ...current.translation, defaultTarget: { providerId, modelId: provider?.models[0]?.modelId || "" } } } : current);
+                }}>
+                  {(config.translation?.defaultTarget?.providerId && !translationCatalogQuery.data?.providers.some((entry) => entry.providerId === config.translation?.defaultTarget?.providerId)) && <option value={config.translation.defaultTarget.providerId}>{config.translation.defaultTarget.providerId}</option>}
+                  {(translationCatalogQuery.data?.providers || []).map((provider) => <option key={provider.providerId} value={provider.providerId} disabled={provider.status !== "ready"}>{provider.name}</option>)}
+                </select>
+              </label>
+              <label className="field"><span>{t("settings.koharu.translationModel.label")}</span><small className="muted-text">{t("settings.koharu.translationModel.help")}</small>
+                <select value={config.translation?.defaultTarget?.modelId || ""} onChange={(event) => updateTranslationTarget("modelId", event.currentTarget.value)}>
+                  {(() => {
+                    const models = translationCatalogQuery.data?.providers.find((provider) => provider.providerId === config.translation?.defaultTarget?.providerId)?.models || [];
+                    const current = config.translation?.defaultTarget?.modelId || "";
+                    return <>{current && !models.some((model) => model.modelId === current) && <option value={current}>{current}</option>}{models.map((model) => <option key={model.modelId} value={model.modelId}>{model.name}</option>)}</>;
+                  })()}
+                </select>
+              </label>
               {ENGINE_KEYS.map((key) => {
                 const current = config.engines?.[key] || "";
                 const options = engineOptionsFor(catalogQuery.data?.engines, key);

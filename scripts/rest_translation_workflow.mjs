@@ -32,6 +32,8 @@ Options:
   --reference-translator-id ID Required by reference_style and learning_style
   --target-language TAG        Target language (default: zh-TW)
   --source-language TAG        Optional source language
+  --translation-provider ID   Optional Koharu provider ID, for example deepl
+  --translation-model ID      Optional Koharu model ID, for example mt
   --quality-check              Enable optional Quality for supported modes
   --export-format FORMAT       Koharu export format (default: rendered)
   --download-dir PATH          Local artifact download directory
@@ -65,6 +67,8 @@ function parseArgs(argv) {
     ["--reference-translator-id", "referenceTranslatorId"],
     ["--target-language", "targetLanguage"],
     ["--source-language", "sourceLanguage"],
+    ["--translation-provider", "translationProvider"],
+    ["--translation-model", "translationModel"],
     ["--export-format", "exportFormat"],
     ["--download-dir", "downloadDir"],
     ["--timeout-ms", "timeoutMs"],
@@ -103,6 +107,9 @@ function validateOptions(options) {
   }
   if (!Number.isFinite(options.timeoutMs) || options.timeoutMs <= 0) {
     throw new Error("--timeout-ms must be a positive number.");
+  }
+  if (Boolean(options.translationProvider) !== Boolean(options.translationModel)) {
+    throw new Error("--translation-provider and --translation-model must be provided together.");
   }
 }
 
@@ -293,6 +300,16 @@ async function main() {
   if (options.mode !== "quick" && runtime.agent?.status !== "ready") {
     throw new Error(`AO is required by ${options.mode} but is ${runtime.agent?.status || "unknown"}.`);
   }
+  if (options.translationProvider) {
+    const catalog = await client.json("/runtime/koharu/translation-providers");
+    const provider = catalog.providers?.find((entry) => entry.providerId === options.translationProvider);
+    const model = provider?.models?.find((entry) => entry.modelId === options.translationModel);
+    if (!provider || !model) throw new Error(`Unknown translation target ${options.translationProvider}/${options.translationModel}.`);
+    if (provider.status !== "ready") throw new Error(`Translation provider ${provider.providerId} is not ready (${provider.status}).`);
+    if (model.languages?.length && !model.languages.includes(options.targetLanguage)) {
+      throw new Error(`Translation target ${provider.providerId}/${model.modelId} does not support ${options.targetLanguage}.`);
+    }
+  }
 
   const upload = await client.json("/uploads", { method: "POST", body: { kind: "source" } });
   console.log(`[upload] created ${upload.uploadId}`);
@@ -326,6 +343,10 @@ async function main() {
       sourcePreflightId: preflight.preflightId,
       ...(options.sourceLanguage ? { sourceLanguage: options.sourceLanguage } : {}),
       ...(options.referenceTranslatorId ? { referenceTranslatorId: options.referenceTranslatorId } : {}),
+      ...(options.translationProvider ? { translationTarget: {
+        providerId: options.translationProvider,
+        modelId: options.translationModel,
+      } } : {}),
     };
     const created = await client.json("/jobs/translation", { method: "POST", body: payload });
     console.log(`[job] created ${created.id}`);

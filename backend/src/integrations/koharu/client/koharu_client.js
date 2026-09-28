@@ -70,6 +70,30 @@ class KoharuClient {
     return ensureJson(res, "Fetch engines");
   }
 
+  async getTranslationCatalog(baseUrl) {
+    const res = await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    return ensureJson(res, "Fetch translation catalog");
+  }
+
+  async getCurrentTranslationTarget(baseUrl) {
+    const res = await apiFetch(ENDPOINTS.LLM_CURRENT, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    return ensureJson(res, "Get current translation target");
+  }
+
+  async setTranslationTarget(target, baseUrl) {
+    const res = await apiFetch(ENDPOINTS.LLM_CURRENT, {
+      method: "PUT",
+      baseUrl: this.resolveBaseUrl(baseUrl),
+      body: { target },
+    });
+    if (!res.ok) {
+      const text = await readTextSafe(res);
+      throw new Error(`Set translation target failed (${res.status}): ${text}`);
+    }
+    const text = await readTextSafe(res);
+    return text ? JSON.parse(text) : this.getCurrentTranslationTarget(baseUrl);
+  }
+
   async createProject(name, baseUrl) {
     const res = await apiFetch(ENDPOINTS.PROJECTS, {
       method: "POST",

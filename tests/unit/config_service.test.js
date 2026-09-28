@@ -14,7 +14,7 @@ describe("runtime config service", () => {
     configPath = path.join(root, "koharu.json");
     defaults = {
       api: { baseUrl: "http://127.0.0.1:4000" },
-      llm: { defaultModel: "default-model", defaultProvider: "default-provider" },
+      translation: { defaultTarget: { modelId: "default-model", providerId: "default-provider" } },
       workflow: { qualityCheck: { enabled: true }, knowledgeBuilder: { enabled: false } },
       agent: { baseUrl: "http://127.0.0.1:32768", model: "provider/default", messageTimeoutMs: 1000 },
       engines: null,
@@ -29,7 +29,7 @@ describe("runtime config service", () => {
     fs.writeFileSync(configPath, JSON.stringify({ paths: { reports: "custom" } }), "utf8");
     const applied = jest.fn();
     const service = new ConfigService({ configPath, defaults, effectiveConfig, onApply: applied });
-    service.update({ agent: { model: "new/model", messageTimeoutMs: 2000 }, llm: { defaultModel: "gemma" }, engines: { ocr: "ocr-v2" } });
+    service.update({ agent: { model: "new/model", messageTimeoutMs: 2000 }, translation: { defaultTarget: { modelId: "gemma", providerId: "lmstudio" } }, engines: { ocr: "ocr-v2" } });
     expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual(expect.objectContaining({ paths: { reports: "custom" }, engines: { ocr: "ocr-v2" } }));
     expect(effectiveConfig.agent.model).toBe("new/model");
     expect(applied).toHaveBeenCalledWith(effectiveConfig);
@@ -41,7 +41,7 @@ describe("runtime config service", () => {
     expect(() => service.update({ agent: { baseUrl: "invalid" } })).toThrow("agent.baseUrl");
     expect(() => service.update({ agent: { messageTimeoutMs: 0 } })).toThrow("positive integer");
     expect(() => service.update({ agent: { model: "model-without-provider" } })).toThrow("provider_id/model_id");
-    expect(() => service.update({ llm: { defaultModel: "provider/model" } })).toThrow("without a provider prefix");
+    expect(() => service.update({ translation: { defaultTarget: { providerId: "deepl" } } })).toThrow("requires providerId and modelId");
     expect(() => service.update({ engines: { invalid: "engine" } })).toThrow("Unsupported config field");
     expect(fs.readFileSync(configPath, "utf8")).toBe("{}");
   });
@@ -49,7 +49,7 @@ describe("runtime config service", () => {
   test("resets managed settings and retains unrelated settings", () => {
     fs.writeFileSync(configPath, JSON.stringify({
       agent: { model: "custom/model", storyContextAgentName: "story-agent" },
-      llm: { defaultModel: "custom" },
+      translation: { defaultTarget: { modelId: "custom", providerId: "custom-provider" } },
       workflow: { qualityCheck: { enabled: false }, knowledgeBuilder: { enabled: true } },
       engines: { ocr: "custom" },
       paths: { reports: "custom" },

@@ -120,6 +120,35 @@ describe("backend api", () => {
     expect(jobManager.listJobs()).toEqual([]);
   });
 
+  test("POST /jobs/translation rejects credentials inside translationTarget", async () => {
+    const store = new JobStore(createTempDbPath());
+    const jobManager = new JobManager({
+      store,
+      engine: { runTranslationJob: jest.fn() },
+      runtimeConfig: { host: "127.0.0.1", port: 0 },
+      resolvedConfig: {},
+    });
+    api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
+    await api.listen();
+    baseUrl = `http://127.0.0.1:${api.server.address().port}`;
+
+    const response = await fetch(`${baseUrl}/jobs/translation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        translationMode: "quick",
+        mangaId: "series",
+        translatorId: "output",
+        chapterId: "chapter_1",
+        translationTarget: { providerId: "deepl", modelId: "mt", apiKey: "must-not-be-accepted" },
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("only accepts providerId and modelId");
+    expect(jobManager.listJobs()).toEqual([]);
+  });
+
   test("POST /jobs/translation rejects a concurrent job for the same output chapter", async () => {
     const store = new JobStore(createTempDbPath());
     const jobManager = new JobManager({
@@ -174,7 +203,10 @@ describe("backend api", () => {
       store,
       engine,
       runtimeConfig: { host: "127.0.0.1", port: 0 },
-      resolvedConfig: { workflow: { qualityCheck: { enabled: true } } },
+      resolvedConfig: {
+        workflow: { qualityCheck: { enabled: true } },
+        translation: { defaultTarget: { providerId: "openai-compatible", modelId: "default-model" } },
+      },
     });
 
     api = createApiServer({
@@ -215,6 +247,7 @@ describe("backend api", () => {
     expect(stored.payload.mangaLabel).toBe("Phantom Fantasy");
     expect(stored.payload.translatorId).toBe("translator_api");
     expect(stored.payload.chapterId).toBe("ch_001");
+    expect(stored.payload.translationTarget).toEqual({ providerId: "openai-compatible", modelId: "default-model" });
     expect(stored.payload.outputDir).toBeUndefined();
   });
 
@@ -897,9 +930,8 @@ describe("backend api", () => {
         model: "openai/gpt-5",
         agentName: "quality-optimizer",
       },
-      llm: {
-        defaultModel: "gemma-test",
-        defaultProvider: "openai-compatible",
+      translation: {
+        defaultTarget: { modelId: "gemma-test", providerId: "openai-compatible" },
       },
       workflow: { qualityCheck: { enabled: true } },
     };
@@ -972,7 +1004,10 @@ describe("backend api", () => {
     expect(runtimePayload.koharu.baseUrl).toBe("http://127.0.0.1:9999");
     expect(runtimePayload.agent.baseUrl).toBe("http://127.0.0.1:32768");
     expect(runtimePayload.agent.agentName).toBe("quality-optimizer");
-    expect(runtimePayload.translation.defaultModel).toBe("gemma-test");
+    expect(runtimePayload.translation.defaultTarget).toEqual({
+      modelId: "gemma-test",
+      providerId: "openai-compatible",
+    });
 
     fs.rmSync(path.join(paths.workspaceRoot, created.id), { recursive: true, force: true });
   });

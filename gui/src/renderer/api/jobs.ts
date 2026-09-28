@@ -786,12 +786,18 @@ export type TranslationJobPayload = {
   chapterTitle?: string;
   chapterLabel?: string;
   glossaryMode?: "canonical" | "reference_only" | "disabled";
+  translationTarget?: {
+    providerId: string;
+    modelId: string;
+  };
 };
 
 export type TranslationMemoryInspection = {
   ready: boolean;
   blockingReason: string | null;
   translationMode: TranslationJobPayload["translationMode"];
+  translationTarget: TranslationJobPayload["translationTarget"] | null;
+  machineTranslationPostEdit: boolean;
   policy: {
     useReferenceMemory: boolean;
     useLocalMemory: boolean;
@@ -897,6 +903,7 @@ export function inspectTranslationMemory(
     | "sourceChapterId"
     | "chapterTitle"
     | "glossaryMode"
+    | "translationTarget"
   >
 ): Promise<TranslationMemoryInspection> {
   return apiFetch("/translation/memory/inspect", {

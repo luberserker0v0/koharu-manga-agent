@@ -14,7 +14,8 @@ The examples use `http://127.0.0.1:4001/api/v1`. Add `Authorization: Bearer <tok
 1. Call `GET /health` to confirm that the HTTP process is alive.
 2. Call `GET /api/v1/runtime/status` to inspect dependencies.
 3. Require `backend.status === "ready"` and `koharu.status === "running"` before submitting any Translation Job.
-4. Also require `agent.status === "ready"` for `reference_style`, `local_style` with Quality enabled, and `learning_style`. Quick mode does not use AO.
+4. Also require `agent.status === "ready"` for `reference_style`, `local_style` with Quality enabled, and `learning_style`. Machine Translation in a Reference/Local workflow uses AO for post-edit. Quick mode does not use AO.
+5. Call `GET /api/v1/runtime/koharu/translation-providers` to populate the translation provider/model selector and verify readiness and target-language support.
 
 Backend readiness does not imply Koharu or AO readiness. An offline external service is reported independently.
 
@@ -80,6 +81,10 @@ Content-Type: application/json
 
 {
   "translationMode":"quick",
+  "translationTarget": {
+    "providerId":"deepl",
+    "modelId":"mt"
+  },
   "targetLanguage":"zh-TW",
   "qualityCheck":false,
   "exportFormat":"rendered",
@@ -94,11 +99,19 @@ The backend owns the export location and generates it beneath its configured `pa
 
 The response is `202 Accepted` with the queued Job. Keep its `id`. A `202` response means accepted, not completed.
 
+`translationMode` selects workflow behavior. `translationTarget` independently selects the Koharu
+provider and model. Omit `translationTarget` to use the backend default. Do not send provider credentials
+from a browser extension; credentials remain owned by the host Koharu service.
+
 Reference-backed modes have additional prerequisites:
 
 - `reference_style` requires `referenceTranslatorId` and completed compatible Reference assets.
 - `local_style` consumes and commits Local Knowledge, so it requires AO; Quality remains optional.
 - `learning_style` requires `referenceTranslatorId`, a distinct learning-clone `translatorId`, compatible Reference assets, and AO.
+
+All workflow modes accept either an LLM or Machine Translation target. For Machine Translation,
+`quick` uses the provider result directly. Reference and Learning workflows treat that result as a
+draft and run the validated AO Quality path to apply terminology/style-aware revisions before export.
 
 ### 6. Follow live progress
 

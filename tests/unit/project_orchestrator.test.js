@@ -30,7 +30,7 @@ describe("Koharu project orchestrator uploads", () => {
     });
 
     jest.doMock(CONFIG_PATH, () => ({
-      config: { api: { pageUploadMode: "multipart" }, llm: {}, engines: {} },
+      config: { api: { pageUploadMode: "multipart" }, translation: {}, engines: {} },
     }));
     jest.doMock(CLIENT_PATH, () => ({
       apiFetch,
@@ -81,7 +81,7 @@ describe("Koharu project orchestrator uploads", () => {
       throw new Error(`Unexpected API fetch: ${endpoint}`);
     });
 
-    jest.doMock(CONFIG_PATH, () => ({ config: { api: {}, llm: {}, engines: {} } }));
+    jest.doMock(CONFIG_PATH, () => ({ config: { api: {}, translation: {}, engines: {} } }));
     jest.doMock(CLIENT_PATH, () => ({
       apiFetch,
       buildUrl: (endpoint, baseUrl) => `${baseUrl}${endpoint}`,

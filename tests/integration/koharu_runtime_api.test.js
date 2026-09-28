@@ -53,6 +53,16 @@ describe("Koharu runtime API", () => {
         ocr: [{ id: "paddle-ocr-vl-1.6" }],
         inpainters: [{ id: "aot-inpainting" }],
       }),
+      getTranslationCatalog: jest.fn().mockResolvedValue({
+        providers: [{
+          id: "deepl",
+          name: "DeepL",
+          requiresApiKey: true,
+          hasApiKey: true,
+          status: "ready",
+          models: [{ target: { kind: "provider", providerId: "deepl", modelId: "mt" }, languages: ["zh-TW"] }],
+        }],
+      }),
     };
     const jobManager = new JobManager({
       store: new JobStore(createTempDbPath()),
@@ -111,6 +121,18 @@ describe("Koharu runtime API", () => {
       ocr: [{ id: "paddle-ocr-vl-1.6" }],
       inpainters: [{ id: "aot-inpainting" }],
     }));
+  });
+
+  test("GET /runtime/koharu/translation-providers returns a sanitized catalog", async () => {
+    const response = await fetch(`${baseUrl}/runtime/koharu/translation-providers`);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(koharuClient.getTranslationCatalog).toHaveBeenCalledWith("http://127.0.0.1:4000");
+    expect(payload.providers).toEqual([
+      expect.objectContaining({ providerId: "deepl", kind: "machine_translation", hasCredential: true }),
+    ]);
+    expect(JSON.stringify(payload)).not.toContain("apiKey");
   });
 
   test("GET /runtime/koharu/paths returns Koharu storage locations", async () => {

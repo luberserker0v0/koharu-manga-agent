@@ -39,6 +39,11 @@ koharu_windows_x64.exe --headless --host 0.0.0.0 --port 4000
 
 Keep the host firewall restricted to the Docker/local-machine path. The backend health endpoint can be ready while Koharu is offline, but `/api/v1/runtime/status` will report the external dependency as unavailable and Koharu-backed jobs must not proceed.
 
+Koharu translation credentials remain on the host. Configure DeepL, Google Cloud Translation, or
+Caiyun in Koharu, then inspect the sanitized backend view at
+`GET /api/v1/runtime/koharu/translation-providers`. Never put those provider API keys in the browser
+extension, Docker image, Job payload, or `docker/koharu.json`.
+
 ## Configuration And Data
 
 Two bootstrap environment variables separate code from deployment state:

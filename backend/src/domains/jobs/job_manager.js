@@ -10,6 +10,7 @@ const { listChapterRegistry } = require("../knowledge/registry/knowledge_paths")
 const { loadReferenceManifest } = require("../reference/sets/reference_sets");
 const { ensureLegacyReviewMetadata } = require("../reference/review/reference_extraction_review");
 const { resolveTranslationModePolicy } = require("../translation/modes/translation_modes");
+const { isMachineTranslationTarget } = require("../../integrations/koharu/translation/translation_targets");
 const { assertJobType, assertJobStatus } = require("./contracts/job_contracts");
 const { buildAoFailureDiagnostics } = require("../../integrations/ao/errors/ao_error_classifier");
 const { summarizeJobOutcome } = require("../../integrations/ao/contracts/semantic_result");
@@ -462,6 +463,7 @@ class JobManager {
   }
 
   createTranslationJob(payload) {
+    const translationTarget = payload?.translationTarget || this.resolvedConfig.translation?.defaultTarget || null;
     const policy = resolveTranslationModePolicy(payload?.translationMode, payload?.qualityCheck === true);
     const obsoleteFields = ["referenceSetId", "ingestReference", "knowledgeBuilder"]
       .filter((field) => Object.prototype.hasOwnProperty.call(payload, field));
@@ -474,12 +476,21 @@ class JobManager {
     if (payload?.translationMode === "learning_style" && payload.translatorId === payload.referenceTranslatorId) {
       throw new Error("Learning Style requires a separate learning clone profile.");
     }
-    return this.createJob("translation", payload);
+    return this.createJob("translation", {
+      ...payload,
+      ...(translationTarget ? { translationTarget } : {}),
+    });
   }
 
   async assertAgentAvailableForTranslation(payload) {
     const policy = resolveTranslationModePolicy(payload?.translationMode, payload?.qualityCheck === true);
-    const requiresAgent = policy.useReferenceMemory || policy.runQuality || policy.commitKnowledge;
+    const translationTarget = payload?.translationTarget || this.resolvedConfig.translation?.defaultTarget || null;
+    const machineSettings = this.resolvedConfig.translation?.machineTranslation || {};
+    const machineTranslationPostEdit = isMachineTranslationTarget(translationTarget) && (
+      (payload?.translationMode === "reference_style" && machineSettings.referencePostEdit !== false) ||
+      (["local_style", "learning_style"].includes(payload?.translationMode) && machineSettings.learningPostEdit !== false)
+    );
+    const requiresAgent = policy.useReferenceMemory || policy.runQuality || policy.commitKnowledge || machineTranslationPostEdit;
     if (!requiresAgent || !this.aoClient?.checkAvailability) return { required: requiresAgent, available: null };
     await this.aoClient.checkAvailability({ timeoutMs: 3000 });
     return { required: true, available: true };
@@ -1875,11 +1886,7 @@ class JobManager {
         serverUrl: this.resolvedConfig.quality?.serverUrl || null,
       },
       translation: {
-        modelId: this.resolvedConfig.translation?.modelId || null,
-        serverUrl: this.resolvedConfig.translation?.serverUrl || null,
-        providerId: this.resolvedConfig.translation?.providerId || null,
-        defaultModel: this.resolvedConfig.llm?.defaultModel || null,
-        defaultProvider: this.resolvedConfig.llm?.defaultProvider || null,
+        defaultTarget: this.resolvedConfig.translation?.defaultTarget || null,
       },
     };
   }
