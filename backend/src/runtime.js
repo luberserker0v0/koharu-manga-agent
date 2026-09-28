@@ -22,6 +22,7 @@ const { JobStore } = require("./domains/jobs/persistence/job_store");
 const { WorkflowEngine } = require("./domains/jobs/workflows/workflow_engine");
 const { JobManager } = require("./domains/jobs/job_manager");
 const { UploadService } = require("./domains/uploads/upload_service");
+const { TranslatedImageService } = require("./domains/translation/exports/translated_image_service");
 const { createApiServer } = require("./http/server/api_server");
 
 function applyKoharuRuntimeStatus(runtime, status) {
@@ -64,6 +65,11 @@ function createRuntime(overrides = {}) {
   const uploadService = overrides.uploadService || new UploadService({
     maxFileBytes: config.server?.maxUploadFileBytes,
     maxFiles: config.server?.maxUploadFiles,
+  });
+  const translatedImageService = overrides.translatedImageService || new TranslatedImageService({
+    maxFileBytes: config.server?.maxTranslatedImageBytes,
+    maxFiles: config.server?.maxTranslatedImageFiles,
+    maxTotalBytes: config.server?.maxTranslatedImagesTotalBytes,
   });
   const translationPublicationService =
     overrides.translationPublicationService || new TranslationPublicationService();
@@ -127,6 +133,7 @@ function createRuntime(overrides = {}) {
     postEditWorkspaceModule,
     extractionReviewService,
     uploadService,
+    translatedImageService,
     configService,
     translationPublicationService,
     host,
@@ -152,6 +159,7 @@ function createRuntime(overrides = {}) {
     postEditWorkspaceModule,
     extractionReviewService,
     uploadService,
+    translatedImageService,
     store,
     client,
     aoClient,

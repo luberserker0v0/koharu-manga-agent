@@ -57,6 +57,31 @@ GET /api/v1/jobs/{jobId}/artifacts/{artifactId}/content
 
 Only regular files located beneath the configured backend data root can be downloaded.
 
+### Read translated images
+
+List the rendered pages for a completed Translation or Post-edit Export Job. ZIP exports are safely
+extracted into a backend-owned cache; direct image exports use the same response contract:
+
+```http
+GET /api/v1/jobs/{jobId}/translated-images
+```
+
+Each image entry contains stable `encodedUrl` and `contentUrl` fields. Read one image as Base64 JSON:
+
+```http
+GET /api/v1/jobs/{jobId}/translated-images/{imageId}
+```
+
+The response includes `encoding: "base64"`, `mediaType`, `fileName`, `size`, and `data`. For previews,
+Blob URLs, or downloads, stream the image directly instead:
+
+```http
+GET /api/v1/jobs/{jobId}/translated-images/{imageId}/content
+```
+
+The binary response uses the image media type and an inline `Content-Disposition`. Clients must start
+from the list response and must not derive cache paths or inspect ZIP contents themselves.
+
 ### Base Convention
 - Host: `127.0.0.1`
 - Default port: `4001`

@@ -160,6 +160,7 @@ function createApiServer({
   aoAssetsLoader = loadAoAssets,
   translationMemoryComposer = composeTranslationMemory,
   uploadService = null,
+  translatedImageService = null,
   host,
   port,
   serverConfig = {},
@@ -1499,6 +1500,51 @@ function createApiServer({
           return;
         }
         sendJson(res, 200, { artifacts });
+        return;
+      }
+
+      const translatedImageContentMatch = url.pathname.match(/^\/jobs\/([^/]+)\/translated-images\/([^/]+)\/content$/);
+      if (req.method === "GET" && translatedImageContentMatch) {
+        if (!translatedImageService) throw Object.assign(new Error("Translated image service is unavailable."), { statusCode: 503 });
+        const artifacts = jobManager.getJobArtifacts(translatedImageContentMatch[1]);
+        if (!artifacts) { notFound(res); return; }
+        const { image } = await translatedImageService.find({
+          jobId: translatedImageContentMatch[1],
+          artifacts,
+          imageId: translatedImageContentMatch[2],
+        });
+        res.writeHead(200, {
+          "Content-Type": image.mediaType,
+          "Content-Length": image.size,
+          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(image.fileName)}`,
+          "Cache-Control": "private, max-age=31536000, immutable",
+        });
+        fs.createReadStream(image.path).pipe(res);
+        return;
+      }
+
+      const translatedImageMatch = url.pathname.match(/^\/jobs\/([^/]+)\/translated-images\/([^/]+)$/);
+      if (req.method === "GET" && translatedImageMatch) {
+        if (!translatedImageService) throw Object.assign(new Error("Translated image service is unavailable."), { statusCode: 503 });
+        const artifacts = jobManager.getJobArtifacts(translatedImageMatch[1]);
+        if (!artifacts) { notFound(res); return; }
+        sendJson(res, 200, await translatedImageService.encoded({
+          jobId: translatedImageMatch[1],
+          artifacts,
+          imageId: translatedImageMatch[2],
+        }));
+        return;
+      }
+
+      const translatedImagesMatch = url.pathname.match(/^\/jobs\/([^/]+)\/translated-images$/);
+      if (req.method === "GET" && translatedImagesMatch) {
+        if (!translatedImageService) throw Object.assign(new Error("Translated image service is unavailable."), { statusCode: 503 });
+        const artifacts = jobManager.getJobArtifacts(translatedImagesMatch[1]);
+        if (!artifacts) { notFound(res); return; }
+        sendJson(res, 200, await translatedImageService.list({
+          jobId: translatedImagesMatch[1],
+          artifacts,
+        }));
         return;
       }
 

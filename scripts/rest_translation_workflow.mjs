@@ -252,6 +252,20 @@ async function downloadArtifacts(client, jobId, artifacts, destination) {
   return downloaded;
 }
 
+async function downloadTranslatedImages(client, jobId, manifest, destination) {
+  const imageDirectory = path.join(destination, "translated-images");
+  await fs.mkdir(imageDirectory, { recursive: true });
+  for (const image of manifest.images || []) {
+    const response = await client.request(
+      `/jobs/${encodeURIComponent(jobId)}/translated-images/${encodeURIComponent(image.id)}/content`
+    );
+    const safeName = path.basename(image.fileName).replace(/[^a-zA-Z0-9._-]+/g, "_");
+    const target = path.join(imageDirectory, `${String(image.index + 1).padStart(4, "0")}-${safeName}`);
+    await fs.writeFile(target, Buffer.from(await response.arrayBuffer()));
+    console.log(`[translated-image] ${target}`);
+  }
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   validateOptions(options);
@@ -323,6 +337,13 @@ async function main() {
 
     const downloadDir = path.resolve(options.downloadDir || path.join("workflow-downloads", created.id));
     await downloadArtifacts(client, created.id, artifactEnvelope.artifacts, downloadDir);
+    let translatedImageCount = 0;
+    if (job.status === "succeeded") {
+      const translatedImages = await client.json(`/jobs/${created.id}/translated-images`);
+      translatedImageCount = translatedImages.count;
+      console.log(`[translated-images] source=${translatedImages.sourceFormat} count=${translatedImages.count}`);
+      await downloadTranslatedImages(client, created.id, translatedImages, downloadDir);
+    }
 
     const summary = {
       uploadId: upload.uploadId,
@@ -332,6 +353,7 @@ async function main() {
       outcome: job.outcome || null,
       stage: job.stage,
       error: job.error || null,
+      translatedImageCount,
       downloadDir,
     };
     console.log(JSON.stringify(summary, null, 2));

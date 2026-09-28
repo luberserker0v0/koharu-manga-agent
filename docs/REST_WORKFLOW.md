@@ -140,7 +140,19 @@ GET /api/v1/jobs/{jobId}/artifacts/{artifactId}/content
 
 Only regular files beneath the backend data root are downloadable. A `409` means that the artifact is unavailable or outside that root; do not attempt to interpret its backend filesystem path from the client.
 
-### 9. Upload retention
+### 9. Display translated pages
+
+The extension does not need to download and unpack the export ZIP. Ask the backend for its translated
+image manifest:
+
+```http
+GET /api/v1/jobs/{jobId}/translated-images
+```
+
+Use each returned `contentUrl` for efficient binary preview/download. Use `encodedUrl` only when a
+Base64 JSON value is specifically required. The backend extracts ZIP pages once and reuses the cache.
+
+### 10. Upload retention
 
 Do not delete the source upload immediately after Translation. Post-edit and re-export operations can still depend on the original source images referenced by the preflight record.
 

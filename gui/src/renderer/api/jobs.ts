@@ -113,6 +113,31 @@ export type GuiArtifact = {
   createdAt: string;
 };
 
+export type TranslatedImage = {
+  id: string;
+  index: number;
+  fileName: string;
+  mediaType: string;
+  size: number;
+  encodedUrl: string;
+  contentUrl: string;
+};
+
+export type TranslatedImageManifest = {
+  jobId: string;
+  artifactId: number;
+  sourceFormat: "zip" | "image";
+  count: number;
+  images: TranslatedImage[];
+};
+
+export type EncodedTranslatedImage = Omit<TranslatedImage, "encodedUrl" | "contentUrl"> & {
+  jobId: string;
+  artifactId: number;
+  encoding: "base64";
+  data: string;
+};
+
 export type DeepAuditReviewItem = {
   nodeId: string;
   original: string;
@@ -660,6 +685,17 @@ export function getJobEvents(jobId: string): Promise<{ events: GuiJobEvent[] }> 
 
 export function getJobArtifacts(jobId: string): Promise<{ artifacts: GuiArtifact[] }> {
   return apiFetch(`/jobs/${jobId}/artifacts`);
+}
+
+export function getTranslatedImages(jobId: string): Promise<TranslatedImageManifest> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images`, { timeoutMs: 30000 });
+}
+
+export function getEncodedTranslatedImage(jobId: string, imageId: string): Promise<EncodedTranslatedImage> {
+  return apiFetch(
+    `/jobs/${encodeURIComponent(jobId)}/translated-images/${encodeURIComponent(imageId)}`,
+    { timeoutMs: 30000 }
+  );
 }
 
 export function getIngestionKnowledgeReport(
