@@ -1,6 +1,7 @@
 # 依賴管理
 node_modules/
 package-lock.json
+!gui/package-lock.json
 bun.lock
 tests/node_modules/
 tests/package-lock.json
@@ -15,6 +16,7 @@ workflow-downloads/
 blobs/
 cache/process-agent.sqlite
 gui/dist/
+gui/release/
 backend/.omo/
 
 # 翻譯輸出（可重新生成）

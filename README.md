@@ -22,7 +22,18 @@ See `docs/DOCKER_BACKEND.md` for persistence, external-service addressing, brows
 After host Koharu is available, `scripts/rest_translation_workflow.mjs` exercises the complete REST lifecycle from image upload through artifact download. See `docs/REST_WORKFLOW.md`.
 
 ## GUI Startup
-The GUI can now manage backend startup automatically.
+
+Release installers contain the GUI client only. Start the Docker backend and host Koharu before
+opening an installed release:
+
+```bash
+docker compose -p manga-backend up -d --build
+```
+
+The packaged GUI connects to `http://127.0.0.1:4001`. It does not bundle Node, backend source,
+Koharu, AO, provider credentials, or user data.
+
+For repository development, the GUI can manage backend startup automatically.
 
 For normal desktop usage:
 
@@ -33,7 +44,8 @@ npm run preview
 
 Startup behavior:
 - if backend is already running on `http://127.0.0.1:4001`, the GUI connects to it as `external`
-- if backend is not running, Electron starts `node backend/server.js` as a managed child process
+- in repository development, if backend is not running, Electron starts `node backend/server.js` as a managed child process
+- in an installed release, a missing backend is reported without attempting to launch repository source
 - closing the GUI stops only a GUI-managed backend
 - closing the GUI does not stop an externally started backend
 
@@ -41,6 +53,12 @@ Runtime requirement:
 - the backend uses Node built-in `node:sqlite`
 - backend startup must use a real Node runtime
 - if backend is launched with the wrong executable, you may see `no such built-in module sqlite`
+
+Create the Windows installer and portable ZIP with:
+
+```bash
+npm --prefix gui run package
+```
 
 ## GUI Pages
 

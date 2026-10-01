@@ -2,11 +2,14 @@
   "name": "manga-translation-gui",
   "private": true,
   "version": "0.1.0",
+  "description": "Desktop client for the Koharu Manga Agent REST backend",
+  "author": "luberserker0v0",
   "type": "module",
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "package": "npm run build && electron-builder --win nsis zip",
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit"
   },
@@ -21,8 +24,34 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^2.3.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
+  },
+  "build": {
+    "appId": "dev.luberserker.koharu-manga-agent",
+    "productName": "Koharu Manga Agent",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "artifactName": "Koharu-Manga-Agent-${version}-Windows-${arch}.${ext}",
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

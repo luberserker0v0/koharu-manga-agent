@@ -86,6 +86,16 @@ export class BackendProcessService {
       return;
     }
 
+    if (app.isPackaged) {
+      this.state = {
+        mode: "external",
+        status: "failed",
+        note: "The packaged GUI requires the Docker backend at http://127.0.0.1:4001.",
+        pid: null,
+      };
+      return;
+    }
+
     if (this.child && !this.child.killed) {
       await this.waitUntilHealthy();
       return;
