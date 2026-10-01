@@ -95,8 +95,11 @@ See `docs/REFERENCE_OBSERVATION_ARCHITECTURE.md` for the current contract.
 ## Configuration
 Config precedence is always:
 1. HTTP request overrides
-2. `.opencode/koharu.json`
+2. `MANGA_TRANSLATION_CONFIG_PATH`, or the OS user config path when unset
 3. backend defaults
+
+`.opencode/koharu.json` is the legacy repository config and is copied to the OS user config path on
+first native startup when no user config exists.
 
 Important runtime settings include:
 - Koharu API base URL and timeouts

@@ -60,6 +60,23 @@ Create the Windows installer and portable ZIP with:
 npm --prefix gui run package
 ```
 
+## Uninstall And User Data
+
+For an installed Windows build, open **Settings → Apps → Installed apps**, find **Koharu Manga
+Agent**, and choose **Uninstall**. For the portable ZIP, close the application and delete the extracted
+folder.
+
+Uninstalling the GUI intentionally preserves user data:
+
+- GUI preferences: `%APPDATA%\Koharu Manga Agent\gui-settings.json`
+- Native backend configuration: `%APPDATA%\Koharu Manga Agent\backend\koharu.json`
+- Native backend data: `%LOCALAPPDATA%\Koharu Manga Agent\backend`
+- Docker backend data and configuration: the `manga-backend_backend-data` named volume
+
+`docker compose -p manga-backend down` removes only the container and network. Adding `-v` also
+deletes the named volume and all backend jobs, Knowledge, Reference data, uploads, and exports; use it
+only when permanent data removal is intended.
+
 ## GUI Pages
 
 The GUI currently exposes the following main pages through the left navigation.
@@ -184,7 +201,9 @@ Reference ingestion promotes extracted reference text into reusable manga-scoped
 These are uploaded into each AO conversation workspace at runtime.
 
 ## Important Config
-Config file: `.opencode/koharu.json`
+Native backend configuration is stored outside the repository. On Windows the default is
+`%APPDATA%\Koharu Manga Agent\backend\koharu.json`; Docker stores it in the persistent `/data`
+volume. `MANGA_TRANSLATION_CONFIG_PATH` can override the location.
 
 Important fields:
 - `api.baseUrl`

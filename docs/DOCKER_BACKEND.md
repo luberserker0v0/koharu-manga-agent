@@ -51,7 +51,7 @@ Two bootstrap environment variables separate code from deployment state:
 - `MANGA_TRANSLATION_CONFIG_PATH`: backend configuration file
 - `MANGA_TRANSLATION_DATA_ROOT`: root for SQLite, workspaces, references, Knowledge, outputs, and logs
 
-Relative paths from the selected configuration resolve beneath the data root. The default container values are `/app/docker/koharu.json` and `/data`.
+Relative paths from the selected configuration resolve beneath the data root. The default container values are `/data/config/koharu.json` and `/data`. On first startup, the container copies the image template from `/app/docker/koharu.json` into the persistent volume. Settings changed through the API therefore survive container recreation.
 
 `backend/ao/opencode/opencode.json` is bind-mounted read-only by Compose. The build excludes it, so user-owned provider configuration is not stored in an image layer.
 
@@ -63,6 +63,19 @@ Copy-Item compose.override.example.yaml compose.override.yaml
 ```
 
 Compose will then mount the local config at `/config/koharu.json`. Update that file with the deployment AO URL, Koharu URL, API key, allowed extension origin, and a strong `server.authToken`. Do not commit API keys or backend tokens.
+
+For a native backend without environment overrides, configuration and runtime data also live outside
+the repository:
+
+- Windows config: `%APPDATA%\Koharu Manga Agent\backend\koharu.json`
+- Windows data: `%LOCALAPPDATA%\Koharu Manga Agent\backend`
+- macOS: `~/Library/Application Support/Koharu Manga Agent/backend`
+- Linux config: `${XDG_CONFIG_HOME:-~/.config}/koharu-manga-agent/backend`
+- Linux data: `${XDG_DATA_HOME:-~/.local/share}/koharu-manga-agent/backend`
+
+On first native startup, an existing repository `.opencode/koharu.json` is copied to the user config
+location. Runtime data is not silently moved or deleted; set `MANGA_TRANSLATION_DATA_ROOT` explicitly
+when performing a controlled migration of an existing installation.
 
 ## Browser API Security
 

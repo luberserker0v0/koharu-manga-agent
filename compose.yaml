@@ -8,7 +8,7 @@ services:
     ports:
       - "127.0.0.1:4001:4001"
     environment:
-      MANGA_TRANSLATION_CONFIG_PATH: /app/docker/koharu.json
+      MANGA_TRANSLATION_CONFIG_PATH: /data/config/koharu.json
       MANGA_TRANSLATION_DATA_ROOT: /data
     extra_hosts:
       - "host.docker.internal:host-gateway"

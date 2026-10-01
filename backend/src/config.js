@@ -1,14 +1,65 @@
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const PROJECT_ROOT = path.join(__dirname, "..", "..");
+const APP_DIRECTORY_NAME = "Koharu Manga Agent";
+const APP_DIRECTORY_SLUG = "koharu-manga-agent";
+
+function defaultDataRoot() {
+  if (process.platform === "win32") {
+    return path.join(
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
+      APP_DIRECTORY_NAME,
+      "backend"
+    );
+  }
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", APP_DIRECTORY_NAME, "backend");
+  }
+  return path.join(
+    process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"),
+    APP_DIRECTORY_SLUG,
+    "backend"
+  );
+}
+
+function defaultConfigPath() {
+  if (process.platform === "win32") {
+    return path.join(
+      process.env.APPDATA || process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Roaming"),
+      APP_DIRECTORY_NAME,
+      "backend",
+      "koharu.json"
+    );
+  }
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", APP_DIRECTORY_NAME, "backend", "koharu.json");
+  }
+  return path.join(
+    process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
+    APP_DIRECTORY_SLUG,
+    "backend",
+    "koharu.json"
+  );
+}
+
 const DATA_ROOT = path.resolve(
-  process.env.MANGA_TRANSLATION_DATA_ROOT || PROJECT_ROOT
+  process.env.MANGA_TRANSLATION_DATA_ROOT || defaultDataRoot()
 );
 const PROJECT_CONFIG_PATH = path.resolve(
-  process.env.MANGA_TRANSLATION_CONFIG_PATH ||
-    path.join(PROJECT_ROOT, ".opencode", "koharu.json")
+  process.env.MANGA_TRANSLATION_CONFIG_PATH || defaultConfigPath()
 );
+const LEGACY_PROJECT_CONFIG_PATH = path.join(PROJECT_ROOT, ".opencode", "koharu.json");
+
+function bootstrapUserConfig() {
+  if (process.env.MANGA_TRANSLATION_CONFIG_PATH || fs.existsSync(PROJECT_CONFIG_PATH)) return;
+  if (!fs.existsSync(LEGACY_PROJECT_CONFIG_PATH)) return;
+  fs.mkdirSync(path.dirname(PROJECT_CONFIG_PATH), { recursive: true });
+  fs.copyFileSync(LEGACY_PROJECT_CONFIG_PATH, PROJECT_CONFIG_PATH, fs.constants.COPYFILE_EXCL);
+}
+
+bootstrapUserConfig();
 
 const DEFAULT_CONFIG = {
   api: {
@@ -151,8 +202,11 @@ const mergedConfig = deepMerge(DEFAULT_CONFIG, loadProjectConfig());
 module.exports = {
   DEFAULT_CONFIG,
   DATA_ROOT,
+  LEGACY_PROJECT_CONFIG_PATH,
   PROJECT_ROOT,
   PROJECT_CONFIG_PATH,
+  defaultConfigPath,
+  defaultDataRoot,
   deepMerge,
   config: mergedConfig,
   resolvePath,

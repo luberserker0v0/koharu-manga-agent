@@ -2,6 +2,8 @@ const path = require("path");
 
 // Set project root for all tests
 global.PROJECT_ROOT = path.join(__dirname, "..");
+process.env.MANGA_TRANSLATION_DATA_ROOT = global.PROJECT_ROOT;
+process.env.MANGA_TRANSLATION_CONFIG_PATH = path.join(global.PROJECT_ROOT, ".opencode", "koharu.json");
 
 // Helper to require modules relative to project root
 global.requireFromProject = function (relativePath) {

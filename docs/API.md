@@ -91,8 +91,8 @@ from the list response and must not derive cache paths or inspect ZIP contents t
 AO-facing agent communication is documented separately:
 - `docs/AGENT_INTEGRATION.md`
 
-Current AO runtime config lives under:
-- `.opencode/koharu.json -> agent`
+Current AO runtime config lives under the backend user config's `agent` section. The file is selected
+by `MANGA_TRANSLATION_CONFIG_PATH`; without an override, the backend uses the OS user config directory.
 
 Example runtime config:
 ```json

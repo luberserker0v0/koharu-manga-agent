@@ -150,7 +150,8 @@ Deferred utilities:
 These are not part of the first-class backend workflow.
 
 ## Runtime Policy
-- `.opencode/koharu.json` remains the main config source
+- backend configuration lives in the OS user config directory, or at `MANGA_TRANSLATION_CONFIG_PATH`
+- `.opencode/koharu.json` is a legacy bootstrap source, not mutable runtime storage
 - request payloads may override config values
 - default workflow never deletes stored Koharu projects
 - `close project` always means `DELETE /projects/current`
