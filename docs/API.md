@@ -272,10 +272,10 @@ Optional fields:
 - `baseUrl`
 - `targetLanguage`
 
-This job reads `references/other_images/<referenceSetId>/`, runs a Koharu extraction pipeline,
+This job reads `domains/reference/images/<referenceSetId>/`, runs a Koharu extraction pipeline,
 and writes:
-- `references/extracted/<referenceSetId>/scene.json`
-- `references/extracted/<referenceSetId>/texts.json`
+- `domains/reference/extraction/<referenceSetId>/scene.json`
+- `domains/reference/extraction/<referenceSetId>/texts.json`
 
 ### Create reference ingestion job
 ```http
@@ -294,10 +294,10 @@ Request body:
 ```
 
 This job promotes extracted reference text into:
-- `knowledge_base/self/<mangaId>/canonical_glossary.json`
-- `knowledge_base/self/<mangaId>/story_context.json`
-- `knowledge_base/self/<mangaId>/style_profile.json`
-- `knowledge_base/self/<mangaId>/translation_context.json`
+- `domains/knowledge/self/<mangaId>/canonical_glossary.json`
+- `domains/knowledge/self/<mangaId>/story_context.json`
+- `domains/knowledge/self/<mangaId>/style_profile.json`
+- `domains/knowledge/self/<mangaId>/translation_context.json`
 
 ### Read job
 ```http
@@ -420,6 +420,62 @@ GET /config
 ### Health check
 ```http
 GET /health
+```
+
+`/health` is a liveness check. HTTP `200` means only that the backend process is running; it does
+not imply that Koharu or AO can be reached.
+
+### Readiness check
+```http
+GET /ready
+```
+
+This endpoint is public like `/health`, and is also available as `GET /api/v1/ready`. It returns
+HTTP `200` when Koharu-backed jobs can run and HTTP `503` when Koharu is unavailable. AO is an
+optional dependency at this level because some translation modes do not use it; when Koharu is
+ready but AO is unavailable, the response is HTTP `200` with `status: "degraded"`.
+
+```json
+{
+  "ok": false,
+  "status": "blocked",
+  "checkedAt": "2026-10-02T06:45:00.000Z",
+  "deploymentMode": "docker",
+  "services": {
+    "backend": { "required": true, "ready": true, "status": "ready" },
+    "koharu": {
+      "required": true,
+      "ready": false,
+      "status": "unavailable",
+      "mode": "external",
+      "baseUrl": "http://host.docker.internal:4000"
+    },
+    "ao": { "required": false, "ready": true, "status": "ready", "baseUrl": "http://host.docker.internal:32768" }
+  },
+  "capabilities": { "koharuJobs": false, "aoJobs": true },
+  "blockers": [
+    { "service": "koharu", "code": "koharu_unavailable", "message": "Koharu is not reachable." }
+  ],
+  "warnings": []
+}
+```
+
+Creation, retry, and resume requests for Koharu-backed jobs fail before mutating job storage when
+Koharu cannot be started or reached:
+
+```json
+{
+  "error": "External Koharu service is unavailable at http://host.docker.internal:4000.",
+  "code": "koharu_unavailable",
+  "details": {
+    "service": "koharu",
+    "jobType": "translation",
+    "status": "unavailable",
+    "mode": "external",
+    "baseUrl": "http://host.docker.internal:4000",
+    "retrySafe": true
+  }
+}
 ```
 
 ### Runtime status
@@ -559,15 +615,15 @@ The link update action is `accept`, `unbind`, or `bind`. Manual binding requires
 
 ## Reference Asset Files
 Reference processing uses these backend-owned file conventions:
-- `references/manifests/<reference_set_id>.json`
-- `references/extracted/<reference_set_id>/texts.json`
-- `references/extracted/<reference_set_id>/chapter_observation.json`
-- `references/extracted/<reference_set_id>/observations/<cache_key>.json`
-- `references/extracted/<reference_set_id>/deep_reviews/<revision_id>.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence_ledger.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_ledger_revisions/`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_runs/checkpoints/`
+- `domains/reference/manifests/<reference_set_id>.json`
+- `domains/reference/extraction/<reference_set_id>/texts.json`
+- `domains/reference/extraction/<reference_set_id>/chapter_observation.json`
+- `domains/reference/extraction/<reference_set_id>/observations/<cache_key>.json`
+- `domains/reference/extraction/<reference_set_id>/deep_reviews/<revision_id>.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_evidence.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_evidence_ledger.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_ledger_revisions/`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_runs/checkpoints/`
 
 `reference_stream.json`, `dialogue_alignment.json`, and persisted TextRole evidence are not runtime
 contracts.
@@ -580,7 +636,7 @@ Standard Quality writes backend-owned artifacts:
 - `learning_evidence_snapshot`
 - `translation_deep_audit_report` for manual full audits
 
-Typical paths are under `cache/workspaces/<jobId>/standard_quality/` and the Translation workspace.
+Typical paths are under `workspaces/jobs/<jobId>/standard_quality/` and the Translation workspace.
 
 This report is the formal quality-stage output.
 Legacy comparison artifacts should be treated as transitional diagnostics, not the main quality result.

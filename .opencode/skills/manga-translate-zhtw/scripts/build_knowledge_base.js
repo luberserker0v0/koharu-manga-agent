@@ -6,7 +6,7 @@
  * characters, terminology, and style hints.
  *
  * Usage:
- *   node build_knowledge_base.js --input ./knowledge_base/self/my-manga.json [--base-url http://127.0.0.1:9999]
+ *   node build_knowledge_base.js --input ./domains/knowledge/self/default.json [--base-url http://127.0.0.1:9999]
  */
 
 const fs = require("fs");

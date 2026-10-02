@@ -29,8 +29,8 @@ describe("reference image conversion helper", () => {
         language: "zh-TW",
         pageCount: 43,
         notes: "reference images for quality comparison",
-        imageDir: "references/other_images/ref_001",
-        extractedDir: "references/extracted/ref_001",
+        imageDir: "domains/reference/images/ref_001",
+        extractedDir: "domains/reference/extraction/ref_001",
         comparisonDir: "references/comparisons/ref_001",
         enabled: true,
       },
@@ -39,9 +39,9 @@ describe("reference image conversion helper", () => {
     );
 
     expect(manifest.id).toBe("ref_001_converted");
-    expect(manifest.imageDir).toBe("references/other_images/ref_001_converted");
-    expect(manifest.extractedDir).toBe("references/extracted/ref_001_converted");
-    expect(manifest.comparisonDir).toBe("references/comparisons/ref_001_converted");
+    expect(manifest.imageDir).toBe("domains/reference/images/ref_001_converted");
+    expect(manifest.extractedDir).toBe("domains/reference/extraction/ref_001_converted");
+    expect(manifest.comparisonDir).toBe("domains/reference/comparisons/ref_001_converted");
     expect(manifest.notes).toContain("Converted to PNG from ref_001.");
   });
 
@@ -54,8 +54,8 @@ describe("reference image conversion helper", () => {
         language: "zh-TW",
         pageCount: 12,
         notes: "reference images for translation-style diagnostics",
-        imageDir: "references/other_images/ref_002",
-        extractedDir: "references/extracted/ref_002",
+        imageDir: "domains/reference/images/ref_002",
+        extractedDir: "domains/reference/extraction/ref_002",
         enabled: true,
       },
       "ref_002_converted",
@@ -63,8 +63,8 @@ describe("reference image conversion helper", () => {
     );
 
     expect(manifest.comparisonDir).toBeUndefined();
-    expect(manifest.imageDir).toBe("references/other_images/ref_002_converted");
-    expect(manifest.extractedDir).toBe("references/extracted/ref_002_converted");
+    expect(manifest.imageDir).toBe("domains/reference/images/ref_002_converted");
+    expect(manifest.extractedDir).toBe("domains/reference/extraction/ref_002_converted");
   });
 
   test("preflight marks unsupported payloads for conversion before Koharu upload", () => {

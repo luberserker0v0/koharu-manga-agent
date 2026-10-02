@@ -12,15 +12,21 @@ logs/
 
 # 快取與暫存
 cache/
+/workspaces/
+/runtime/
 workflow-downloads/
 blobs/
-cache/process-agent.sqlite
+/state/
 gui/dist/
 gui/release/
+gui/.local-backend-runtime/
 backend/.omo/
 
 # 翻譯輸出（可重新生成）
 translated/
+/outputs/
+/ingress/
+/domains/
 
 # 原始圖片（版權考量 & 檔案大小）
 original/

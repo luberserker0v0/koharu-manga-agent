@@ -67,40 +67,34 @@ Rules:
 - if source-folder read access fails or output-folder write access fails, translation must not start until the user fixes the issue
 
 ## Reference Style Flow
-1. Put other-translation images into `references/other_images/<reference_set_id>/`
-2. Add `references/manifests/<reference_set_id>.json`
+1. Import other-translation images through the Reference API
+2. The backend writes `domains/reference/manifests/<reference_set_id>.json`
 3. Run `POST /jobs/reference-extraction` with `referenceSetId`
 4. Optionally run `POST /jobs/reference-ingestion` with `referenceSetId + mangaId (+ chapterId)`
-5. The backend extracts reference text into `references/extracted/<reference_set_id>/texts.json`
-   and stores the raw scene in `references/extracted/<reference_set_id>/scene.json`
+5. The backend extracts reference text into `domains/reference/extraction/<reference_set_id>/texts.json`
+   and stores the raw scene in `domains/reference/extraction/<reference_set_id>/scene.json`
 6. The backend promotes the extracted reference into:
-   - `knowledge_base/self/<manga_id>/canonical_glossary.json`
-   - `knowledge_base/self/<manga_id>/story_context.json`
-   - `knowledge_base/self/<manga_id>/style_profile.json`
+   - `domains/knowledge/self/<manga_id>/canonical_glossary.json`
+   - `domains/knowledge/self/<manga_id>/story_context.json`
+   - `domains/knowledge/self/<manga_id>/style_profile.json`
 7. Run a `reference_style` or `learning_style` translation for the bound manga and translator
 8. The backend writes:
-  - legacy diagnostic outputs may still exist under `references/comparisons/<reference_set_id>/`
+  - optional diagnostic outputs may exist under `domains/reference/comparisons/<reference_set_id>/`
 
-Current implementation note:
-- these comparison artifacts still exist today
-- they should be treated as transitional diagnostic outputs rather than required quality-stage outputs
+Comparison artifacts are diagnostics rather than required quality-stage outputs.
 
 ## Knowledge Base Artifacts
 Current runtime outputs:
-- `knowledge_base/self/my-manga.json`
-- `knowledge_base/reports/extract_report.json`
-- `knowledge_base/index.json`
-
-Planned v2 design references:
-- `knowledge_base/self/my-manga.schema.example.json`
-- `knowledge_base/reports/migration_plan_v2.md`
+- `domains/knowledge/self/default.json`
+- `domains/knowledge/reports/extract_report.json`
+- `domains/knowledge/index.json`
 
 When `mangaId` is provided, the backend resolves manga-scoped paths:
-- `knowledge_base/self/<manga_id>/knowledge.json`
-- `knowledge_base/reports/<manga_id>/extract_report.json`
-- `knowledge_base/self/<manga_id>/canonical_glossary.json`
-- `knowledge_base/self/<manga_id>/story_context.json`
-- `knowledge_base/self/<manga_id>/style_profile.json`
+- `domains/knowledge/self/<manga_id>/knowledge.json`
+- `domains/knowledge/reports/<manga_id>/extract_report.json`
+- `domains/knowledge/self/<manga_id>/canonical_glossary.json`
+- `domains/knowledge/self/<manga_id>/story_context.json`
+- `domains/knowledge/self/<manga_id>/style_profile.json`
 
 When `chapterId` is provided:
 - the knowledge base still stays under the same `mangaId`
@@ -143,10 +137,6 @@ Backend job states:
 - default workflow never deletes the stored project
 - `defaults.autoDeleteProject` remains compatibility-only and is not the main workflow switch
 
-## Legacy Note
-`.opencode/agents/*`, `.opencode/opencode.json`, and `SKILL.md` files are no longer official workflow control planes.
-They remain only as migration references while backend modules absorb their logic.
-
 ## Agent Workspace Audit
 When `quality_review` or `knowledge_enrichment` runs through the agent provider layer,
 the backend records:
@@ -154,5 +144,5 @@ the backend records:
 - `artifacts/export_manifest.json`
 
 These manifests belong to:
-- `cache/workspaces/<jobId>/quality_review/`
-- `cache/workspaces/<jobId>/knowledge_enrichment/`
+- `workspaces/jobs/<jobId>/quality_review/`
+- `workspaces/jobs/<jobId>/knowledge_enrichment/`

@@ -8,7 +8,7 @@ function buildTempConfig(rootDir) {
     paths: {
       knowledgeBase: path.join(rootDir, "knowledge_base", "self", "my-manga.json"),
       reports: path.join(rootDir, "knowledge_base", "reports", "extract_report.json"),
-      postEditDocuments: path.join(rootDir, "post_edit"),
+      postEditDocuments: path.join(rootDir, "domains", "post-edit"),
     },
   };
 }

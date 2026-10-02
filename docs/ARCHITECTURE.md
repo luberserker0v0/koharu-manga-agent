@@ -151,7 +151,7 @@ These are not part of the first-class backend workflow.
 
 ## Runtime Policy
 - backend configuration lives in the OS user config directory, or at `MANGA_TRANSLATION_CONFIG_PATH`
-- `.opencode/koharu.json` is a legacy bootstrap source, not mutable runtime storage
+- repository `.opencode/koharu.json` is not a Backend runtime configuration source
 - request payloads may override config values
 - default workflow never deletes stored Koharu projects
 - `close project` always means `DELETE /projects/current`
@@ -163,12 +163,12 @@ These are not part of the first-class backend workflow.
 The quality workflow can consume a reference set through `referenceSetId`.
 
 Reference assets live under:
-- `references/other_images/<reference_set_id>/`
-- `references/extracted/<reference_set_id>/`
-- `references/comparisons/<reference_set_id>/` (legacy diagnostics only)
-- `references/manifests/<reference_set_id>.json`
+- `domains/reference/images/<reference_set_id>/`
+- `domains/reference/extraction/<reference_set_id>/`
+- `domains/reference/comparisons/<reference_set_id>/` (optional diagnostics)
+- `domains/reference/manifests/<reference_set_id>.json`
 
-`references/comparisons/` is compatibility-only storage for transitional diagnostics.
+`domains/reference/comparisons/` stores optional diagnostics.
 It is not part of the primary quality-validation contract.
 
 Process expectations:
@@ -179,12 +179,8 @@ Process expectations:
 
 ## Knowledge Base Layout
 Knowledge artifacts live under:
-- `knowledge_base/self/my-manga.json`
-- `knowledge_base/reports/extract_report.json`
-
-Planned v2 design:
-- `knowledge_base/self/my-manga.schema.example.json`
-- `knowledge_base/reports/migration_plan_v2.md`
+- `domains/knowledge/self/default.json`
+- `domains/knowledge/reports/extract_report.json`
 
 V2 separates:
 - fact-layer `translation_pairs`
@@ -194,27 +190,27 @@ V2 separates:
 - inferred `style_examples`
 
 Reference-promoted translation assets now also include:
-- `knowledge_base/self/<mangaId>/canonical_glossary.json`
-- `knowledge_base/self/<mangaId>/story_context.json`
-- `knowledge_base/self/<mangaId>/style_profile.json`
-- `knowledge_base/self/<mangaId>/translation_context.json`
+- `domains/knowledge/self/<mangaId>/canonical_glossary.json`
+- `domains/knowledge/self/<mangaId>/story_context.json`
+- `domains/knowledge/self/<mangaId>/style_profile.json`
+- `domains/knowledge/self/<mangaId>/translation_context.json`
 
 ## Agent Workspace Isolation
 External agent communication must not operate directly in repo root.
 
 Design target:
-- `cache/workspaces/<jobId>/<stage>/input/`
-- `cache/workspaces/<jobId>/<stage>/output/`
-- `cache/workspaces/<jobId>/<stage>/artifacts/`
+- `workspaces/jobs/<jobId>/<stage>/input/`
+- `workspaces/jobs/<jobId>/<stage>/output/`
+- `workspaces/jobs/<jobId>/<stage>/artifacts/`
 
 The backend remains the only writer for canonical storage:
-- `knowledge_base/`
-- `references/`
+- `domains/knowledge/`
+- `domains/reference/`
 - backend-owned export directory beneath `paths.translated` (trusted desktop clients may temporarily override it)
 
 Current agent audit artifacts:
-- `cache/workspaces/<jobId>/<stage>/artifacts/import_manifest.json`
-- `cache/workspaces/<jobId>/<stage>/artifacts/export_manifest.json`
+- `workspaces/jobs/<jobId>/<stage>/artifacts/import_manifest.json`
+- `workspaces/jobs/<jobId>/<stage>/artifacts/export_manifest.json`
 
 These manifests record:
 - what the backend materialized into the isolated workspace
@@ -252,12 +248,10 @@ comics/1/
 |     `- workflow_engine.js
 |- docs/
 |- tests/
-|- references/
-|- knowledge_base/
-|- logs/
-|- cache/
-|- post_edit/
 `- .opencode/
-   |- koharu.json
-   `- legacy migration assets
+   `- developer tooling and local examples
 ```
+
+Runtime state is not part of the repository tree. Native and packaged backends use the OS data
+directory; Docker uses `/data`. Both follow the modular layout documented in
+`docs/BUILD_AND_PACKAGE.md`.

@@ -11,11 +11,15 @@ describe("backend API security boundary", () => {
     update: jest.fn(() => effectiveConfig),
     reset: jest.fn(() => effectiveConfig),
   };
+  const fetchForbiddenPorts = new Set([6000, 6665, 6666, 6667, 6668, 6669, 6697, 10080]);
 
   beforeEach(async () => {
     configService.update.mockClear();
     api = createApiServer({
-      jobManager: { getConfig: () => effectiveConfig },
+      jobManager: {
+        getConfig: () => effectiveConfig,
+        getReadiness: jest.fn().mockResolvedValue({ ok: true, status: "ready" }),
+      },
       configService,
       host: "127.0.0.1",
       port: 0,
@@ -26,7 +30,27 @@ describe("backend API security boundary", () => {
       },
     });
     await api.listen();
-    baseUrl = `http://127.0.0.1:${api.server.address().port}`;
+    let port = api.server.address().port;
+    while (fetchForbiddenPorts.has(port)) {
+      await api.close();
+      api = createApiServer({
+        jobManager: {
+          getConfig: () => effectiveConfig,
+          getReadiness: jest.fn().mockResolvedValue({ ok: true, status: "ready" }),
+        },
+        configService,
+        host: "127.0.0.1",
+        port: 0,
+        serverConfig: {
+          authToken: "backend-secret",
+          corsAllowedOrigins: ["chrome-extension://allowed-id", "http://localhost:*"],
+          maxJsonBodyBytes: 32,
+        },
+      });
+      await api.listen();
+      port = api.server.address().port;
+    }
+    baseUrl = `http://127.0.0.1:${port}`;
   });
 
   afterEach(async () => {
@@ -34,8 +58,16 @@ describe("backend API security boundary", () => {
   });
 
   test("keeps health public and protects other endpoints", async () => {
-    expect((await fetch(`${baseUrl}/health`)).status).toBe(200);
+    const health = await fetch(`${baseUrl}/health`);
+    expect(health.status).toBe(200);
+    expect(await health.json()).toEqual({ ok: true, deploymentMode: "standalone" });
     expect((await fetch(`${baseUrl}/config`)).status).toBe(401);
+  });
+
+  test("keeps readiness public for deployment probes", async () => {
+    const response = await fetch(`${baseUrl}/ready`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ ok: true, status: "ready" });
   });
 
   test("accepts a bearer token and redacts secrets", async () => {

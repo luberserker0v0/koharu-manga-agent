@@ -47,10 +47,10 @@ describe("knowledge path helpers", () => {
     expect(resolved.mangaId).toBe("phantom_fantasy");
     expect(resolved.mode).toBe("scoped");
     expect(resolved.knowledgeBasePath.replace(/\\/g, "/")).toContain(
-      "knowledge_base/self/phantom_fantasy/knowledge.json"
+      "domains/knowledge/self/phantom_fantasy/knowledge.json"
     );
     expect(resolved.reportPath.replace(/\\/g, "/")).toContain(
-      "knowledge_base/reports/phantom_fantasy/extract_report.json"
+      "domains/knowledge/reports/phantom_fantasy/extract_report.json"
     );
   });
 
@@ -73,10 +73,10 @@ describe("knowledge path helpers", () => {
     expect(matched).toBeDefined();
     expect(translator).toBeDefined();
     expect(translator.knowledgePath).toBe(
-      "knowledge_base/self/phantom_fantasy/knowledge.json"
+      "domains/knowledge/self/phantom_fantasy/knowledge.json"
     );
     expect(translator.reportPath).toBe(
-      "knowledge_base/reports/phantom_fantasy/extract_report.json"
+      "domains/knowledge/reports/phantom_fantasy/extract_report.json"
     );
     expect(fs.existsSync(knowledgeIndexPath())).toBe(true);
   });
@@ -207,16 +207,15 @@ describe("knowledge path helpers", () => {
       paths: {
         knowledgeBase: path.join(tempRoot, "knowledge_base", "self", "my-manga.json"),
         reports: path.join(tempRoot, "knowledge_base", "reports", "extract_report.json"),
-        referenceImages: path.join(tempRoot, "references", "other_images"),
-        referenceExtracted: path.join(tempRoot, "references", "extracted"),
-        legacyReferenceDiagnostics: path.join(tempRoot, "references", "comparisons"),
-        referenceComparisons: path.join(tempRoot, "references", "comparisons"),
-        referenceManifests: path.join(tempRoot, "references", "manifests"),
+        referenceImages: path.join(tempRoot, "domains", "reference", "images"),
+        referenceExtracted: path.join(tempRoot, "domains", "reference", "extraction"),
+        referenceComparisons: path.join(tempRoot, "domains", "reference", "comparisons"),
+        referenceManifests: path.join(tempRoot, "domains", "reference", "manifests"),
         sourcePreflight: path.join(tempRoot, "cache", "source-preflight"),
         logs: path.join(tempRoot, "logs"),
         todoList: path.join(tempRoot, "TODO_LIST.md"),
-        database: path.join(tempRoot, "cache", "process-agent.sqlite"),
-        workspaceRoot: path.join(tempRoot, "cache", "workspaces"),
+        database: path.join(tempRoot, "state", "jobs.sqlite"),
+        workspaceRoot: path.join(tempRoot, "workspaces", "jobs"),
       },
     }));
 
@@ -225,7 +224,7 @@ describe("knowledge path helpers", () => {
       writeKnowledgeIndex,
     } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 
-    const manifestsDir = path.join(tempRoot, "references", "manifests");
+    const manifestsDir = path.join(tempRoot, "domains", "reference", "manifests");
     const translatorDir = path.join(
       tempRoot,
       "knowledge_base",

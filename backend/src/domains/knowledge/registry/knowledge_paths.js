@@ -16,7 +16,7 @@ const DEFAULT_INDEX = {
 const postEditWorkspaceModule = new PostEditWorkspaceModule();
 
 function knowledgeBaseRoot() {
-  return path.join(DATA_ROOT, "knowledge_base");
+  return paths.knowledgeRoot || path.dirname(path.dirname(paths.knowledgeBase));
 }
 
 function knowledgeIndexPath() {

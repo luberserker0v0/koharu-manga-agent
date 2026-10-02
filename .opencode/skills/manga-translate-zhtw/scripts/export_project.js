@@ -5,11 +5,11 @@
  * Export the current Koharu project through the HTTP API.
  *
  * Usage:
- *   node export_project.js --format "rendered" --output "./translated/"
- *   node export_project.js --format "psd" --output "./translated/"
- *   node export_project.js --format "khr" --output "./translated/"
- *   node export_project.js --format "inpainted" --output "./translated/"
- *   node export_project.js --format "rendered" --pages "page-id-1,page-id-2" --output "./translated/"
+ *   node export_project.js --format "rendered" --output "<backend-data-root>/outputs/translated"
+ *   node export_project.js --format "psd" --output "<backend-data-root>/outputs/translated"
+ *   node export_project.js --format "khr" --output "<backend-data-root>/outputs/translated"
+ *   node export_project.js --format "inpainted" --output "<backend-data-root>/outputs/translated"
+ *   node export_project.js --format "rendered" --pages "page-id-1,page-id-2" --output "<backend-data-root>/outputs/translated"
  */
 
 const fs = require("fs");

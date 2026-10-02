@@ -80,14 +80,14 @@ function buildConvertedManifest(sourceManifest, outputReferenceSetId, format) {
     ...sourceManifest,
     id: outputReferenceSetId,
     label: `${sourceManifest.label}_converted_${format}`,
-    imageDir: `references/other_images/${outputReferenceSetId}`,
-    extractedDir: `references/extracted/${outputReferenceSetId}`,
+    imageDir: `domains/reference/images/${outputReferenceSetId}`,
+    extractedDir: `domains/reference/extraction/${outputReferenceSetId}`,
     notes: `${sourceManifest.notes || ""} Converted to ${format.toUpperCase()} from ${sourceManifest.id}.`.trim(),
     enabled: true,
   };
 
   if (typeof sourceManifest.comparisonDir === "string" && sourceManifest.comparisonDir.length > 0) {
-    manifest.comparisonDir = `references/comparisons/${outputReferenceSetId}`;
+    manifest.comparisonDir = `domains/reference/comparisons/${outputReferenceSetId}`;
   }
 
   return manifest;

@@ -11,9 +11,10 @@ npm run preview
 ```
 
 Notes:
-- if backend is already running, the GUI connects to it as `external`
-- if backend is not running, Electron starts `node backend/server.js` as `managed`
-- closing the GUI stops only a managed backend
+- the GUI first checks the configured Backend API address
+- if that backend is not running, Electron starts the bundled/local backend as `local-process`
+- the Windows package includes a Node 24 runtime for the local-process backend
+- closing the GUI stops only a local-process backend started by that GUI session
 - closing or refreshing the GUI does not stop backend jobs that belong to an external backend
 - the backend remains the source of truth for jobs, events, artifacts, and knowledge assets
 - backend startup requires a real Node runtime because the job store uses `node:sqlite`
@@ -29,6 +30,20 @@ Observed result:
 - Electron process stayed alive during the observation window
 - backend stderr only showed the expected `node:sqlite` experimental warning
 - GUI build and typecheck passed after the latest `Trash / Restore / Delete forever / live interaction` updates
+
+## Build And Package Gate
+
+Before testing an installed release, follow `docs/BUILD_AND_PACKAGE.md` and confirm all of these use
+the current source revision:
+
+```powershell
+npm --prefix gui run typecheck
+npm --prefix gui run build
+npm --prefix gui run package
+```
+
+Install the newly generated version from `gui/release`. A repository build updates `gui/dist` only;
+it cannot modify a previously installed application.
 
 ## Manual Smoke Checklist
 
@@ -64,6 +79,24 @@ Gate: `Important`
 - Open `Settings`
 - Confirm the page is not blank
 - Confirm runtime badges render
+- Confirm Settings shows separate Backend API and Koharu API address fields
+- Confirm the active backend type is Docker, local-process, or external
+- Confirm the host Koharu executable picker stores an `.exe` path
+- Confirm the Koharu auto-start checkbox persists after closing and reopening the GUI
+- With port `4000` unused, confirm auto-start launches the selected executable and the host status becomes `Running`
+- With an external Koharu already on port `4000`, confirm the GUI connects without launching or stopping it
+- In Docker mode, confirm Koharu starts with `--host 0.0.0.0` and the backend reaches it through `host.docker.internal:4000`
+- With Koharu stopped, confirm backend `/ready` returns `503` and the GUI opens the Koharu recovery dialog
+- Click `Download and start Koharu`; confirm the official Windows x64 executable is placed beneath
+  `%LOCALAPPDATA%\Koharu Manga Agent\gui\koharu-runtime`, its path is saved, and auto-start is enabled
+- If the native backend already downloaded the same Koharu version, confirm the GUI reuses that valid
+  executable instead of downloading a duplicate
+- In the recovery dialog, select a valid executable and confirm the path is saved, auto-start becomes enabled,
+  Koharu starts, `/ready` becomes successful, and the dialog closes without reloading the GUI
+- Stop Koharu again, select `I will start it myself`, start the documented command externally, and confirm
+  the persistent warning disappears after the next readiness poll without the GUI taking ownership of that process
+- Select a missing or invalid executable and confirm the dialog displays the startup error and retains retry,
+  executable picker, manual-start, and full-settings actions
 - Confirm local settings file path renders
 - Expand each settings section:
   - `Folders`
@@ -83,6 +116,24 @@ Gate: `Important`
   - settings page crashes or renders blank
   - save does not persist
   - folder picker does not open
+
+### B2. Windows uninstall
+Gate: `Important`
+- Install the current NSIS package and confirm `Uninstall Koharu Manga Agent.exe` exists in the
+  installation directory and the app appears in Windows Installed apps
+- Start uninstall and confirm both cleanup checkboxes are visible and unchecked:
+  - application-owned data
+  - all local app/Koharu/Docker backend data
+- Uninstall without selecting it and confirm GUI settings and managed Koharu remain on disk
+- Reinstall, select the checkbox, and confirm these application-owned roots are removed:
+  - `%APPDATA%\manga-translation-gui`
+  - `%APPDATA%\Koharu Manga Agent`
+  - `%LOCALAPPDATA%\Koharu Manga Agent`
+- Confirm selected output/reference folders, external Koharu data, and the Docker named volume are
+  not removed by the normal application-data checkbox
+- Reinstall test data, select the full-cleanup checkbox, and confirm `%LOCALAPPDATA%\Koharu`, the
+  `manga-backend-backend-1` container, and `manga-backend_backend-data` volume are removed when present
+- Confirm arbitrary selected output/reference roots are never recursively deleted by either checkbox
 
 ### C. Job Creation
 Gate: `Blocker`
@@ -157,6 +208,23 @@ Gate: `Blocker`
   - reference jobs cannot be inspected from the page
   - extracted JSON cannot be previewed after extraction completes
   - ingestion artifacts do not appear after ingestion completes
+
+### C2. Post Edit Translated Images
+Gate: `Blocker`
+- Complete or select a successful translation job that contains a `post_edit_document` artifact
+- Open `Post Edit` and select that job
+- Confirm the page list displays translated-image thumbnails rather than container or host filesystem paths
+- Select multiple pages and confirm the main preview loads the matching translated image through
+  `GET /api/v1/jobs/:jobId/translated-images/:imageId/content`
+- Reorder two pages and confirm each page keeps its original image instead of adopting the image at its new list index
+- Confirm dialogue overlays remain aligned with the selected image
+- Temporarily make the backend unavailable and confirm the preview displays a translated-image load error instead of a blank area
+- Restore the backend, reselect the job, and confirm the image can be loaded again
+- Failure signal:
+  - preview or thumbnails are blank while the content endpoint returns HTTP 200
+  - DevTools shows an attempted `/data/...`, Windows drive, or `file:` image URL
+  - page reorder assigns the wrong image to a page
+  - image-load failure has no visible explanation
 
 ### D. Job List Workspace
 Gate: `Important`

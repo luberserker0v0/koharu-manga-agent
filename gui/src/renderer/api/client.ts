@@ -1,12 +1,17 @@
 const DEFAULT_BASE_URL = "http://127.0.0.1:4001";
 const DEFAULT_TIMEOUT_MS = 4000;
+let activeBaseUrl = DEFAULT_BASE_URL;
 
 type ApiFetchInit = RequestInit & {
   timeoutMs?: number;
 };
 
 export function buildApiUrl(pathname: string) {
-  return `${DEFAULT_BASE_URL}${pathname}`;
+  return `${activeBaseUrl}${pathname}`;
+}
+
+export function setApiBaseUrl(baseUrl: string) {
+  activeBaseUrl = baseUrl.trim().replace(/\/+$/, "") || DEFAULT_BASE_URL;
 }
 
 export async function apiFetch<T>(pathname: string, init?: ApiFetchInit): Promise<T> {

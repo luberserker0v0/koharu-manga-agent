@@ -5,7 +5,7 @@
  * 比對新翻譯與歷史翻譯，識別風格漂移，生成一致性報告。
  *
  * 用法:
- *   node self_reflection.js [--kb ./knowledge_base/self/my-manga.json] [--base-url http://127.0.0.1:9999]
+ *   node self_reflection.js [--kb ./domains/knowledge/self/default.json] [--base-url http://127.0.0.1:9999]
  */
 
 const fs = require("fs");

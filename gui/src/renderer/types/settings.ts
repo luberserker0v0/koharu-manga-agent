@@ -1,7 +1,10 @@
 export type GuiSettings = {
-  schemaVersion: 2;
+  schemaVersion: 4;
   updatedAt: string;
   locale: "zh-TW" | "en-US";
+  backendBaseUrl: string;
+  koharuExecutablePath: string;
+  koharuAutoStart: boolean;
   sourceFolder: string;
   outputFolder: string;
   referenceFolder: string;
@@ -20,9 +23,22 @@ export type DesktopInfo = {
   settingsFilePath: string;
   backendProcess: {
     mode: string;
+    deploymentMode: string;
+    fallbackUsed: boolean;
+    baseUrl: string;
     status: string;
     note: string;
   };
+  koharuProcess: KoharuHostProcessState;
+};
+
+export type KoharuHostProcessState = {
+  mode: "external" | "managed";
+  status: "checking" | "downloading" | "running" | "stopped" | "unavailable" | "failed";
+  baseUrl: string;
+  executablePath: string | null;
+  pid: number | null;
+  note: string;
 };
 
 export type PathValidationResult = {

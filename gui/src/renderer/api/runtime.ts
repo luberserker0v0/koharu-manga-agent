@@ -1,10 +1,26 @@
-import { apiFetch } from "./client";
+import { apiFetch, buildApiUrl } from "./client";
+
+export type BackendReadiness = {
+  ok: boolean;
+  status: "ready" | "degraded" | "blocked";
+  checkedAt: string;
+  deploymentMode: string;
+  services: {
+    backend: { required: true; ready: boolean; status: string };
+    koharu: { required: true; ready: boolean; status: string; mode: string; baseUrl: string | null };
+    ao: { required: false; ready: boolean; status: string; baseUrl: string | null };
+  };
+  capabilities: { koharuJobs: boolean; aoJobs: boolean };
+  blockers: Array<{ service: string; code: string; message: string }>;
+  warnings: Array<{ service: string; code: string; message: string }>;
+};
 
 export type RuntimeStatus = {
   backend: {
     status: string;
     host: string;
     port: number;
+    deploymentMode: string;
   };
   koharu: {
     status: string;
@@ -150,6 +166,7 @@ export type KoharuRuntimePaths = {
   managedInstallRoot: string | null;
   versionDir: string | null;
   baseUrl: string | null;
+  hostAccessible: boolean;
   exists: Record<string, boolean>;
   projectSamples: Array<{
     id: string | null;
@@ -160,8 +177,32 @@ export type KoharuRuntimePaths = {
   projectApiError: string | null;
 };
 
+export type BackendStoragePaths = {
+  dataRoot: string;
+  configPath: string;
+  databasePath: string;
+  translatedRoot: string;
+  referencesRoot: string;
+  hostAccessible: boolean;
+};
+
 export function getRuntimeStatus(): Promise<RuntimeStatus> {
   return apiFetch("/runtime/status");
+}
+
+export async function getBackendReadiness(): Promise<BackendReadiness> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 4000);
+  try {
+    const response = await fetch(buildApiUrl("/ready"), { signal: controller.signal });
+    const payload = await response.json() as BackendReadiness & { error?: string };
+    if (response.status !== 200 && response.status !== 503) {
+      throw new Error(payload.error || `Readiness request failed: ${response.status}`);
+    }
+    return payload;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 export function getBackendConfig(): Promise<BackendConfig> {
@@ -192,7 +233,10 @@ export function getKoharuTranslationCatalog(): Promise<KoharuTranslationCatalog>
   return apiFetch("/runtime/koharu/translation-providers", { timeoutMs: 30000 });
 }
 
-export function getKoharuRuntimePaths(): Promise<{ koharu: KoharuRuntimePaths }> {
+export function getKoharuRuntimePaths(): Promise<{
+  backend: BackendStoragePaths;
+  koharu: KoharuRuntimePaths;
+}> {
   return apiFetch("/runtime/koharu/paths", { timeoutMs: 30000 });
 }
 

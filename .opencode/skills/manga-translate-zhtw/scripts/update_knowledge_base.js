@@ -5,7 +5,7 @@
  * Merge the current project scene into the knowledge base and update TODO_LIST.md.
  *
  * Usage:
- *   node update_knowledge_base.js [--base-url http://127.0.0.1:9999] [--kb ./knowledge_base/self/my-manga.json]
+ *   node update_knowledge_base.js [--base-url http://127.0.0.1:9999] [--kb ./domains/knowledge/self/default.json]
  */
 
 const fs = require("fs");

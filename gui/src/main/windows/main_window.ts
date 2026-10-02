@@ -7,7 +7,7 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 }
 
-export async function createMainWindow(): Promise<BrowserWindow> {
+export async function createMainWindow(backendBaseUrl = "http://127.0.0.1:4001"): Promise<BrowserWindow> {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.focus();
     return mainWindow;
@@ -25,6 +25,7 @@ export async function createMainWindow(): Promise<BrowserWindow> {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      additionalArguments: [`--backend-base-url=${encodeURIComponent(backendBaseUrl)}`],
     },
   });
 

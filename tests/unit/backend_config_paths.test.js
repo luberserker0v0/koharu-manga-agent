@@ -13,10 +13,9 @@ describe("backend user data paths", () => {
     expect(path.relative(backendConfig.PROJECT_ROOT, configPath).startsWith("..")).toBe(true);
   });
 
-  test("test environment overrides keep fixtures in the repository", () => {
-    expect(backendConfig.DATA_ROOT).toBe(path.resolve(global.PROJECT_ROOT));
-    expect(backendConfig.PROJECT_CONFIG_PATH).toBe(
-      path.resolve(global.PROJECT_ROOT, ".opencode", "koharu.json")
-    );
+  test("test environment overrides keep fixtures in an isolated temporary root", () => {
+    expect(backendConfig.DATA_ROOT).toBe(path.resolve(global.TEST_DATA_ROOT));
+    expect(backendConfig.PROJECT_CONFIG_PATH).toBe(path.resolve(global.TEST_CONFIG_PATH));
+    expect(path.relative(global.PROJECT_ROOT, backendConfig.DATA_ROOT).startsWith("..")).toBe(true);
   });
 });

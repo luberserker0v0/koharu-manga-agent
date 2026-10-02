@@ -7,17 +7,20 @@ Client -> Backend REST/SSE -> host Koharu HTTP API
                            -> host AO HTTP API when required by the mode
 ```
 
-The examples use `http://127.0.0.1:4001/api/v1`. Add `Authorization: Bearer <token>` to every API request except `/health` when `server.authToken` is configured.
+The examples use `http://127.0.0.1:4001/api/v1`. Add `Authorization: Bearer <token>` to every API request except `/health` and `/ready` when `server.authToken` is configured.
 
 ## Ready Check
 
 1. Call `GET /health` to confirm that the HTTP process is alive.
-2. Call `GET /api/v1/runtime/status` to inspect dependencies.
-3. Require `backend.status === "ready"` and `koharu.status === "running"` before submitting any Translation Job.
-4. Also require `agent.status === "ready"` for `reference_style`, `local_style` with Quality enabled, and `learning_style`. Machine Translation in a Reference/Local workflow uses AO for post-edit. Quick mode does not use AO.
+2. Call `GET /api/v1/ready`. HTTP `503` or `capabilities.koharuJobs === false` means Koharu-backed job creation is blocked.
+3. Call `GET /api/v1/runtime/status` when the UI needs complete dependency diagnostics.
+4. Require `agent.status === "ready"` for `reference_style`, `local_style` with Quality enabled, and `learning_style`. Machine Translation in a Reference/Local workflow uses AO for post-edit. Quick mode does not use AO.
 5. Call `GET /api/v1/runtime/koharu/translation-providers` to populate the translation provider/model selector and verify readiness and target-language support.
 
-Backend readiness does not imply Koharu or AO readiness. An offline external service is reported independently.
+`/health` reports only backend liveness. `/ready` reports the minimum Koharu-backed capability;
+AO remains an independently reported optional capability because its requirement depends on the selected mode.
+The backend also enforces this gate: a Koharu-backed create/retry/resume request returns an actionable
+`503 koharu_unavailable` response before creating another job.
 
 ## Complete Request Sequence
 

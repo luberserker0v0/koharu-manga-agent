@@ -15,6 +15,7 @@ The backend can run as a standalone Linux container while AO and Koharu remain e
 ```bash
 docker compose -p manga-backend up -d --build
 curl http://127.0.0.1:4001/health
+curl http://127.0.0.1:4001/ready
 ```
 
 See `docs/DOCKER_BACKEND.md` for persistence, external-service addressing, browser CORS, authentication, and operational details.
@@ -23,15 +24,17 @@ After host Koharu is available, `scripts/rest_translation_workflow.mjs` exercise
 
 ## GUI Startup
 
-Release installers contain the GUI client only. Start the Docker backend and host Koharu before
-opening an installed release:
+Release installers support both an existing REST backend and a bundled local-process fallback.
+Docker remains the preferred always-on backend:
 
 ```bash
 docker compose -p manga-backend up -d --build
 ```
 
-The packaged GUI connects to `http://127.0.0.1:4001`. It does not bundle Node, backend source,
-Koharu, AO, provider credentials, or user data.
+The packaged GUI first connects to the configured backend address (default
+`http://127.0.0.1:4001`). When it is unavailable, the GUI starts its bundled backend with its
+bundled Node 24 runtime. Koharu and AO remain separate services; provider credentials and user data
+are not embedded in the installer.
 
 For repository development, the GUI can manage backend startup automatically.
 
@@ -43,22 +46,48 @@ npm run preview
 ```
 
 Startup behavior:
-- if backend is already running on `http://127.0.0.1:4001`, the GUI connects to it as `external`
-- in repository development, if backend is not running, Electron starts `node backend/server.js` as a managed child process
-- in an installed release, a missing backend is reported without attempting to launch repository source
-- closing the GUI stops only a GUI-managed backend
+- if the configured backend is running, the GUI connects without changing that process
+- otherwise Electron starts the bundled/local `backend/server.js` as a local-process fallback
+- packaged releases include the backend source and a compatible Node 24 runtime
+- closing the GUI stops only the local-process backend started by that GUI session
 - closing the GUI does not stop an externally started backend
+- Settings exposes separate Backend API and Koharu API addresses; backend-address changes apply on restart
+- Settings stores an optional host `koharu.exe` path and auto-start preference in the GUI user-data file
+- on startup, the GUI first checks `http://127.0.0.1:4000`; when unavailable and auto-start is enabled,
+  it starts the configured executable in headless mode on port `4000`
+- if backend `/ready` still reports Koharu unavailable, the GUI retries a saved auto-start executable once
+  and then opens a recovery dialog where the user can choose `koharu.exe` or confirm manual startup
+- the recovery dialog can download the official Koharu `0.61.2` Windows x64 standalone executable;
+  it reuses a valid native-backend managed copy when one already exists
+- choosing an executable from the recovery dialog saves its path, enables auto-start, starts Koharu, and
+  keeps polling backend readiness until Koharu-backed jobs are unblocked
+- closing the GUI stops only the Koharu process started by that GUI session, never an existing external service
 
 Runtime requirement:
 - the backend uses Node built-in `node:sqlite`
 - backend startup must use a real Node runtime
 - if backend is launched with the wrong executable, you may see `no such built-in module sqlite`
 
-Create the Windows installer and portable ZIP with:
+Install dependencies, validate, and build the repository GUI with:
+
+```bash
+npm ci --prefix gui
+npm --prefix gui run typecheck
+npm --prefix gui run build
+```
+
+`build` writes the Electron and renderer bundles to `gui/dist`; it does not update an installed copy.
+Create the Windows installer and portable ZIP with Node 24+ on Windows:
 
 ```bash
 npm --prefix gui run package
 ```
+
+Release artifacts are written to `gui/release`. The package command embeds the current Windows Node
+24 runtime for the local-process backend, builds the GUI, and produces both NSIS `.exe` and portable
+`.zip` targets. Existing installed copies must be reinstalled from the new package to receive code
+changes. See `docs/BUILD_AND_PACKAGE.md` for requirements, output names, verification, and the separate
+Docker build procedure.
 
 ## Uninstall And User Data
 
@@ -66,12 +95,26 @@ For an installed Windows build, open **Settings → Apps → Installed apps**, f
 Agent**, and choose **Uninstall**. For the portable ZIP, close the application and delete the extracted
 folder.
 
-Uninstalling the GUI intentionally preserves user data:
+The Windows installer registers `Uninstall Koharu Manga Agent.exe` and exposes it through
+**Settings → Apps → Installed apps**. The assisted uninstaller includes an optional, unchecked
+checkbox to delete application-owned user data. Without that checkbox, uninstalling preserves:
 
-- GUI preferences: `%APPDATA%\Koharu Manga Agent\gui-settings.json`
+- GUI preferences: `%APPDATA%\manga-translation-gui\gui-settings.json`
+- GUI-managed Koharu: `%LOCALAPPDATA%\Koharu Manga Agent\gui\koharu-runtime\<version>\koharu.exe`
 - Native backend configuration: `%APPDATA%\Koharu Manga Agent\backend\koharu.json`
 - Native backend data: `%LOCALAPPDATA%\Koharu Manga Agent\backend`
 - Docker backend data and configuration: the `manga-backend_backend-data` named volume
+
+The uninstaller provides two unchecked cleanup levels:
+
+- **Application data** removes GUI preferences, GUI-managed Koharu, and native backend config/data.
+- **ALL local data** additionally removes `%LOCALAPPDATA%\Koharu` projects/models and attempts to
+  remove the `manga-backend-backend-1` container and `manga-backend_backend-data` Docker volume.
+
+Both options are irreversible. The full cleanup deliberately does not recursively delete the GUI's
+selected output/reference folders because those can be broad user-owned locations such as Downloads
+and may contain unrelated files. Exported files outside application-owned roots must be reviewed and
+deleted by the user; this prevents an uninstall checkbox from erasing an entire shared folder.
 
 `docker compose -p manga-backend down` removes only the container and network. Adding `-v` also
 deletes the named volume and all backend jobs, Knowledge, Reference data, uploads, and exports; use it
@@ -89,7 +132,7 @@ the matching page capture when screenshots are ready.
 | Create Job | Create translation jobs from a source folder, choose target language and translation mode, bind manga/translator/chapter metadata, configure Reference usage, quality checks, local style update, and run source preflight before starting. | ![Create Job page screenshot placeholder](docs/images/gui-create-job.png) |
 | Manga Management | Manage manga records, translator profiles, chapters, chapter titles, chapter ordering, and cascade deletion of manga, translators, or chapters with related Reference, Knowledge, Post Edit, and job data. | ![Manga Management page screenshot placeholder](docs/images/gui-manga-management.png) |
 | Reference | Import translated manga folders as Reference material, bind folders to manga/translator/chapter usage, run Extraction or Ingestion, inspect Reference jobs, review Extraction results, compare bilingual evidence, read Ingestion reports, and edit Reference artifacts. | ![Reference page screenshot placeholder](docs/images/gui-reference.png) |
-| Post Edit | Select translated jobs with post-edit documents, browse page order and bubble/node order, preview pages when available, edit original/translated text pairs, save edits, reset translations, and export corrected results. | ![Post Edit page screenshot placeholder](docs/images/gui-post-edit.png) |
+| Post Edit | Select translated jobs with post-edit documents, load translated page images through the backend REST API, browse page order and bubble/node order, edit original/translated text pairs, save edits, reset translations, and export corrected results. | ![Post Edit page screenshot placeholder](docs/images/gui-post-edit.png) |
 | Job List | Monitor current and trashed jobs with live SSE sync and polling fallback, filter/search/sort work, inspect selected-job details and workflow stages, retry/cancel/delete/restore/purge jobs, and review progress, warnings, timeline events, and result paths. | ![Job List page screenshot placeholder](docs/images/gui-job-list.png) |
 
 ## Backend API
@@ -101,6 +144,7 @@ the matching page capture when screenshots are ready.
 - `GET /jobs/:jobId/stream`
 - `POST /jobs/:jobId/retry`
 - `POST /jobs/:jobId/cancel`
+- `GET /ready` for dependency-aware readiness and capability reporting
 - `GET /config`
 - `GET /knowledge/:mangaId/glossary`
 - `GET /knowledge/:mangaId/style-profile`
@@ -121,30 +165,24 @@ AO integration notes:
 - `backend/ao/opencode/opencode.json` is uploaded into each AO workspace before `start`
 - backend polls `GET /api/conversations/:id` until `ready=true` before `POST /api/conversations/:id/message`
 
-## Reference Diagnostic Assets
-Legacy reference diagnostics still use a dedicated `references/` tree:
+## Backend Data Layout
+Reference data lives beneath the configured Backend data root:
 
 ```text
-references/
-|- other_images/<reference_set_id>/
-|- extracted/<reference_set_id>/
+domains/reference/
+|- images/<reference_set_id>/
+|- extraction/<reference_set_id>/
 |- comparisons/<reference_set_id>/
 `- manifests/<reference_set_id>.json
 ```
 
-The `comparisons/` subtree is transitional diagnostic output only.
+The `comparisons/` subtree contains optional diagnostic output only.
 The formal quality-stage result is the read-only `quality_validation_report` artifact written by the backend.
 
-When reference images are ready, place them under:
+Reference images are imported through the Backend API and stored under:
 
 ```text
-references/other_images/<reference_set_id>/
-```
-
-and add the matching manifest under:
-
-```text
-references/manifests/<reference_set_id>.json
+domains/reference/images/<reference_set_id>/
 ```
 
 Then extract the reference set through the backend:
@@ -166,13 +204,9 @@ node backend/scripts/convert_reference_images.js --reference-set-id ref_001
 
 ## Knowledge Base Design
 Knowledge artifacts live under:
-- `knowledge_base/self/my-manga.json`
-- `knowledge_base/reports/extract_report.json`
-- `knowledge_base/index.json`
-
-Planned v2 references:
-- `knowledge_base/self/my-manga.schema.example.json`
-- `knowledge_base/reports/migration_plan_v2.md`
+- `domains/knowledge/self/default.json`
+- `domains/knowledge/reports/extract_report.json`
+- `domains/knowledge/index.json`
 
 For manga-scoped knowledge storage, translation jobs may provide:
 - `translationMode` (required)
@@ -188,9 +222,9 @@ Reference assets and self-learning data into an immutable Translation Memory sna
 learning modes schedule Knowledge as a non-blocking child after the corrected final snapshot is exported.
 
 Reference ingestion promotes extracted reference text into reusable manga-scoped assets:
-- `knowledge_base/self/<mangaId>/canonical_glossary.json`
-- `knowledge_base/self/<mangaId>/story_context.json`
-- `knowledge_base/self/<mangaId>/style_profile.json`
+- `domains/knowledge/self/<mangaId>/canonical_glossary.json`
+- `domains/knowledge/self/<mangaId>/story_context.json`
+- `domains/knowledge/self/<mangaId>/style_profile.json`
 
 ## AO Runtime Assets
 - `backend/ao/AGENTS.md`
@@ -239,6 +273,7 @@ AO-runtime specific coverage now includes:
 - `docs/GUI_IA_UX.md`
 - `docs/JOB_DETAIL_SPEC.md`
 - `docs/E2E_MATRIX.md`
+- `docs/BUILD_AND_PACKAGE.md`
 - `docs/GUI_SCAFFOLD_PLAN.md`
 - `docs/GUI_SMOKE_CHECKLIST.md`
 - `docs/QUALITY_KNOWLEDGE_REFERENCE_SPEC.md`
@@ -248,6 +283,7 @@ GUI design notes:
 - `docs/GUI_IA_UX.md` captures the user-first page, pane, tab, and scroll strategy
 - `docs/JOB_DETAIL_SPEC.md` captures the selected-job workspace and progress presentation model
 - `docs/E2E_MATRIX.md` captures the mixed local-environment e2e inventory, gate levels, and automated/manual/hybrid coverage split
+- `docs/BUILD_AND_PACKAGE.md` documents GUI development builds, Windows installer and portable ZIP packaging, release outputs, and the separate Docker image build
 - `docs/QUALITY_KNOWLEDGE_REFERENCE_SPEC.md` captures the new target responsibility split between upstream reference assets, long-term knowledge accumulation, and read-only quality validation
 - the current GUI direction treats artifacts as job-scoped detail tabs inside `Job List`
 - the current `Job List` workspace includes terminal-job delete-to-trash, restore/undo protection, permanent delete from Trash, checkbox batch actions, filtering, keyword search, sorting controls, and a collapsible/resizable list pane

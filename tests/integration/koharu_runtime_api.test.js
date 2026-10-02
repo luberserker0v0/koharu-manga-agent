@@ -43,6 +43,7 @@ describe("Koharu runtime API", () => {
         managedInstallRoot: "C:\\repo\\cache\\koharu-runtime",
         versionDir: "C:\\repo\\cache\\koharu-runtime\\0.61.2",
         baseUrl: "http://127.0.0.1:4000",
+        hostAccessible: true,
         exists: {},
         projectSamples: [],
         projectApiError: null,
@@ -96,6 +97,82 @@ describe("Koharu runtime API", () => {
     }));
   });
 
+  test("GET /ready returns 503 with a Koharu blocker when the service is not running", async () => {
+    const response = await fetch(`${baseUrl}/ready`);
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload).toEqual(expect.objectContaining({
+      ok: false,
+      status: "blocked",
+      services: expect.objectContaining({
+        backend: expect.objectContaining({ ready: true }),
+        koharu: expect.objectContaining({ ready: false, status: "installed" }),
+      }),
+      capabilities: expect.objectContaining({ koharuJobs: false }),
+      blockers: [expect.objectContaining({ service: "koharu", code: "koharu_unavailable" })],
+    }));
+  });
+
+  test("GET /ready returns degraded success when Koharu runs but optional AO is unavailable", async () => {
+    koharuRuntimeManager.inspect.mockResolvedValue({
+      status: "running",
+      mode: "external",
+      baseUrl: "http://127.0.0.1:4000",
+      installed: false,
+      managedPid: null,
+      lastError: null,
+    });
+
+    const response = await fetch(`${baseUrl}/ready`);
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      ok: true,
+      status: "degraded",
+      capabilities: { koharuJobs: true, aoJobs: false },
+      warnings: [expect.objectContaining({ service: "ao", code: "ao_unavailable" })],
+    }));
+  });
+
+  test("Koharu-backed job creation returns actionable 503 before creating a job", async () => {
+    koharuRuntimeManager.ensureRunning.mockRejectedValue(new Error(
+      "External Koharu service is unavailable at http://127.0.0.1:4000."
+    ));
+    koharuRuntimeManager.inspect.mockResolvedValue({
+      status: "unavailable",
+      mode: "external",
+      baseUrl: "http://127.0.0.1:4000",
+      installed: false,
+      managedPid: null,
+      lastError: "Connection refused.",
+    });
+
+    const response = await fetch(`${baseUrl}/jobs/reference-extraction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceFolder: "C:\\manga\\chapter-1" }),
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(payload).toEqual({
+      error: "External Koharu service is unavailable at http://127.0.0.1:4000.",
+      code: "koharu_unavailable",
+      details: {
+        service: "koharu",
+        jobType: "reference_extraction",
+        status: "unavailable",
+        mode: "external",
+        baseUrl: "http://127.0.0.1:4000",
+        retrySafe: true,
+      },
+    });
+    expect(koharuRuntimeManager.ensureRunning).toHaveBeenCalledTimes(1);
+    expect(koharuRuntimeManager.inspect).toHaveBeenCalledTimes(1);
+  });
+
   test.each([
     ["/runtime/koharu/install", "ensureInstalled"],
     ["/runtime/koharu/start", "ensureRunning"],
@@ -144,12 +221,21 @@ describe("Koharu runtime API", () => {
       client: koharuClient,
       baseUrl: "http://127.0.0.1:4000",
     });
+    expect(payload.backend).toEqual(expect.objectContaining({
+      dataRoot: expect.any(String),
+      configPath: expect.any(String),
+      databasePath: expect.any(String),
+      translatedRoot: expect.any(String),
+      referencesRoot: expect.any(String),
+      hostAccessible: expect.any(Boolean),
+    }));
     expect(payload.koharu).toEqual(expect.objectContaining({
       dataRoot: expect.stringContaining("Koharu"),
       projectsRoot: expect.stringContaining("projects"),
       modelsRoot: expect.stringContaining("models"),
       runtimeRoot: expect.stringContaining("runtime"),
       configPath: expect.stringContaining("config.toml"),
+      hostAccessible: true,
     }));
   });
 });

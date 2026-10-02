@@ -1,7 +1,8 @@
 ﻿import { Component, ErrorInfo, ReactNode, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
 import { ROUTES } from "./routes";
-import { getRuntimeStatus } from "../api/runtime";
+import { getBackendReadiness, getRuntimeStatus } from "../api/runtime";
 import { translateLiteral } from "../i18n/messages";
 import { JobListPage } from "../pages/JobListPage";
 import { JobsPage } from "../pages/JobsPage";
@@ -9,9 +10,13 @@ import { MangaManagementPage } from "../pages/MangaManagementPage";
 import { PostEditPage } from "../pages/PostEditPage";
 import { ReferencePage } from "../pages/ReferencePage";
 import { SettingsPage } from "../pages/SettingsPage";
-import { readSettings } from "../services/desktop_api";
+import { KoharuRecoveryDialog } from "../features/runtime/components/KoharuRecoveryDialog";
+import {
+  getDesktopInfo, installAndStartKoharuHost, pickFile, readSettings, startKoharuHost, writeSettings,
+} from "../services/desktop_api";
 import { useLanguageStore } from "../stores/language_store";
 import { useUiStore } from "../stores/ui_store";
+import type { GuiSettings } from "../types/settings";
 
 function renderPage(routeKey: string) {
   switch (routeKey) {
@@ -111,19 +116,134 @@ export function App() {
   const setLocale = useLanguageStore((state) => state.setLocale);
   const t = useLanguageStore((state) => state.t);
   const locale = useLanguageStore((state) => state.locale);
+  const [settings, setSettings] = useState<GuiSettings | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryDownloading, setRecoveryDownloading] = useState(false);
+  const [recoveryDismissed, setRecoveryDismissed] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const autoRecoveryAttempted = useRef(false);
   const runtimeQuery = useQuery({
     queryKey: ["runtime-status"],
     queryFn: getRuntimeStatus
   });
+  const desktopInfoQuery = useQuery({
+    queryKey: ["desktop-info"],
+    queryFn: getDesktopInfo,
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  const readinessQuery = useQuery({
+    queryKey: ["backend-readiness"],
+    queryFn: getBackendReadiness,
+    refetchInterval: 10_000,
+    retry: false,
+  });
+  const koharuUnavailable = readinessQuery.data
+    ? !readinessQuery.data.capabilities.koharuJobs
+    : desktopInfoQuery.data?.koharuProcess.status !== "running";
+  const koharuFailureDetail = readinessQuery.data?.blockers.find((item) => item.service === "koharu")?.message
+    || desktopInfoQuery.data?.koharuProcess.note
+    || "";
 
   useEffect(() => {
     markHydrated();
     readSettings()
       .then((settings) => {
+        setSettings(settings);
         setLocale(settings.locale || "zh-TW");
       })
       .catch(() => {});
   }, [markHydrated, setLocale]);
+
+  const refreshRuntimeState = async () => {
+    await Promise.allSettled([
+      desktopInfoQuery.refetch(),
+      readinessQuery.refetch(),
+      runtimeQuery.refetch(),
+    ]);
+  };
+
+  const startConfiguredExecutable = async (executablePath: string, persist: boolean) => {
+    setRecoveryBusy(true);
+    setRecoveryError("");
+    try {
+      if (persist && settings) {
+        const saved = await writeSettings({
+          ...settings,
+          koharuExecutablePath: executablePath,
+          koharuAutoStart: true,
+        });
+        setSettings(saved);
+      }
+      await startKoharuHost(executablePath);
+      await refreshRuntimeState();
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+      await refreshRuntimeState();
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
+
+  const chooseAndStartKoharu = async () => {
+    try {
+      const result = await pickFile({
+        title: t("app.koharuRecovery.fileDialogTitle"),
+        defaultPath: settings?.koharuExecutablePath || undefined,
+        extensions: ["exe"],
+      });
+      if (!result.canceled && result.path) {
+        await startConfiguredExecutable(result.path, true);
+      }
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const downloadAndStartKoharu = async () => {
+    setRecoveryBusy(true);
+    setRecoveryDownloading(true);
+    setRecoveryError("");
+    try {
+      const processState = await installAndStartKoharuHost();
+      if (!processState.executablePath) {
+        throw new Error(t("app.koharuRecovery.downloadMissingPath"));
+      }
+      const saved = await writeSettings({
+        ...(settings || {}),
+        koharuExecutablePath: processState.executablePath,
+        koharuAutoStart: true,
+      });
+      setSettings(saved);
+      await refreshRuntimeState();
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+      await refreshRuntimeState();
+    } finally {
+      setRecoveryDownloading(false);
+      setRecoveryBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!koharuUnavailable) {
+      autoRecoveryAttempted.current = false;
+      setRecoveryDismissed(false);
+      setRecoveryError("");
+      return;
+    }
+    if (
+      autoRecoveryAttempted.current ||
+      recoveryBusy ||
+      !settings?.koharuAutoStart ||
+      !settings.koharuExecutablePath.trim() ||
+      desktopInfoQuery.data?.koharuProcess.status === "checking"
+    ) {
+      return;
+    }
+    autoRecoveryAttempted.current = true;
+    void startConfiguredExecutable(settings.koharuExecutablePath, false);
+  }, [desktopInfoQuery.data?.koharuProcess.status, koharuUnavailable, recoveryBusy, settings]);
 
   const statusSummary = useMemo(() => {
     if (runtimeQuery.isLoading) {
@@ -179,6 +299,21 @@ export function App() {
           ))}
         </aside>
         <main className="main-content">
+          {koharuUnavailable && (readinessQuery.data || desktopInfoQuery.data?.koharuProcess) && (
+            <div className="service-alert" role="alert">
+              <div>
+                <strong>{t("app.koharuWarning.title")}</strong>
+                <span>
+                  {koharuFailureDetail
+                    ? t("app.koharuWarning.failed", { detail: koharuFailureDetail })
+                    : t("app.koharuWarning.unavailable")}
+                </span>
+              </div>
+              <button className="secondary-button" type="button" onClick={() => setSelectedPage("settings")}>
+                {t("app.koharuWarning.openSettings")}
+              </button>
+            </div>
+          )}
           <RendererErrorBoundary
             errorTitle={t("app.error.title")}
             errorDescription={t("app.error.description")}
@@ -187,6 +322,23 @@ export function App() {
           </RendererErrorBoundary>
         </main>
       </div>
+      {koharuUnavailable && settings && !recoveryDismissed && (
+        <KoharuRecoveryDialog
+          busy={recoveryBusy}
+          configuredPath={settings.koharuExecutablePath}
+          downloading={recoveryDownloading}
+          error={recoveryBusy ? "" : recoveryError || koharuFailureDetail}
+          onChooseAndStart={() => void chooseAndStartKoharu()}
+          onDownloadAndStart={() => void downloadAndStartKoharu()}
+          onDismissForManualStart={() => setRecoveryDismissed(true)}
+          onOpenSettings={() => {
+            setRecoveryDismissed(true);
+            setSelectedPage("settings");
+          }}
+          onRetry={() => void startConfiguredExecutable(settings.koharuExecutablePath, false)}
+          t={t}
+        />
+      )}
     </div>
   );
 }

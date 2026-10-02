@@ -1,3 +1,5 @@
+import { buildApiUrl } from "../api/client";
+
 type StreamCallback = (event: {
   type: string;
   payload: unknown;
@@ -23,8 +25,6 @@ type JobsStreamEvent = {
   jobs?: unknown;
   createdAt?: string;
 };
-
-const DEFAULT_BASE_URL = "http://127.0.0.1:4001";
 
 function normalizeStreamPayload(
   rawType: string,
@@ -60,7 +60,7 @@ function normalizeStreamPayload(
 }
 
 export function subscribeToJobStream(jobId: string, handlers: StreamHandlers): () => void {
-  const eventSource = new EventSource(`${DEFAULT_BASE_URL}/jobs/${jobId}/stream?eventMode=message`);
+  const eventSource = new EventSource(buildApiUrl(`/jobs/${jobId}/stream?eventMode=message`));
   const onEvent = typeof handlers === "function" ? handlers : handlers.onEvent;
   const onOpen = typeof handlers === "function" ? undefined : handlers.onOpen;
   const onError = typeof handlers === "function" ? undefined : handlers.onError;
@@ -88,7 +88,7 @@ export function subscribeToJobsStream(handlers: {
   onOpen?: () => void;
   onError?: () => void;
 }): () => void {
-  const eventSource = new EventSource(`${DEFAULT_BASE_URL}/jobs/stream?eventMode=message`);
+  const eventSource = new EventSource(buildApiUrl("/jobs/stream?eventMode=message"));
 
   const handleMessage = (event: MessageEvent<string>) => {
     handlers.onEvent(normalizeStreamPayload(event.type, event.data) as JobsStreamEvent);

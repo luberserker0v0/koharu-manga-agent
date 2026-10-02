@@ -1,5 +1,5 @@
 import type { DesktopApi } from "../../preload";
-import type { DesktopInfo, GuiSettings, PathValidationSummary } from "../types/settings";
+import type { DesktopInfo, GuiSettings, KoharuHostProcessState, PathValidationSummary } from "../types/settings";
 
 declare global {
   interface Window {
@@ -30,9 +30,38 @@ export function getDesktopInfo(): Promise<DesktopInfo> {
   return api ? api.getDesktopInfo() : Promise.reject(unavailableError());
 }
 
-export function openDesktopPath(targetPath: string) {
+export function openDesktopPath(targetPath: string): Promise<{ ok: boolean; error: string | null }> {
   const api = getDesktopApi();
   return api ? api.openPath(targetPath) : Promise.reject(unavailableError());
+}
+
+export function pickFile(options?: {
+  title?: string;
+  defaultPath?: string;
+  extensions?: string[];
+}): Promise<{ canceled: boolean; path: string | null }> {
+  const api = getDesktopApi();
+  return api ? api.pickFile(options) : Promise.reject(unavailableError());
+}
+
+export function getKoharuHostStatus(): Promise<KoharuHostProcessState> {
+  const api = getDesktopApi();
+  return api ? api.getKoharuHostStatus() : Promise.reject(unavailableError());
+}
+
+export function startKoharuHost(executablePath: string): Promise<KoharuHostProcessState> {
+  const api = getDesktopApi();
+  return api ? api.startKoharuHost(executablePath) : Promise.reject(unavailableError());
+}
+
+export function installAndStartKoharuHost(): Promise<KoharuHostProcessState> {
+  const api = getDesktopApi();
+  return api ? api.installAndStartKoharuHost() : Promise.reject(unavailableError());
+}
+
+export function stopKoharuHost(): Promise<KoharuHostProcessState> {
+  const api = getDesktopApi();
+  return api ? api.stopKoharuHost() : Promise.reject(unavailableError());
 }
 
 export function pickDirectory(options?: {

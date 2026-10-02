@@ -1,7 +1,7 @@
 # Reference Observation Architecture
 
 Each extracted chapter is read completely by AO once. The immutable result is
-`references/extracted/<referenceSetId>/chapter_observation.json`, with cache revisions under
+`domains/reference/extraction/<referenceSetId>/chapter_observation.json`, with cache revisions under
 `observations/`.
 
 The cache identity includes the Extraction fingerprint, observer contract hash, AO model, and
@@ -35,7 +35,7 @@ revisions remain intact and do not need to be regenerated.
 
 Durable bilingual assets:
 
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_evidence_ledger.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_ledger_revisions/revision_<number>.json`
-- `knowledge_base/self/<manga_id>/<translator_id>/bilingual_runs/checkpoints/<window_fingerprint>.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_evidence.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_evidence_ledger.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_ledger_revisions/revision_<number>.json`
+- `domains/knowledge/self/<manga_id>/<translator_id>/bilingual_runs/checkpoints/<window_fingerprint>.json`

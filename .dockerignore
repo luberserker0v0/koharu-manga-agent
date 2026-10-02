@@ -4,6 +4,12 @@
 **/node_modules
 blobs
 cache
+domains
+ingress
+outputs
+runtime
+state
+workspaces
 docs
 gui
 knowledge_base

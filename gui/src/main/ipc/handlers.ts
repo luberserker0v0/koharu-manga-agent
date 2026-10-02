@@ -6,8 +6,7 @@ import { SettingsStore } from "../services/settings_store";
 import { shellPaths } from "../services/shell_paths";
 import { IPC_CHANNELS } from "./channels";
 import { closeKoharuEditorWindow, openKoharuEditorWindow } from "../windows/koharu_editor_window";
-
-const settingsStore = new SettingsStore();
+import { koharuHostProcessService } from "../services/koharu_host_process";
 
 function validateSinglePath(targetPath: string, mode: "exists" | "writable") {
   if (!targetPath.trim()) {
@@ -69,18 +68,32 @@ function validateSinglePath(targetPath: string, mode: "exists" | "writable") {
   };
 }
 
-export function registerIpcHandlers(): void {
+export function registerIpcHandlers(settingsStore: SettingsStore): void {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_READ, () => settingsStore.read());
   ipcMain.handle(IPC_CHANNELS.SETTINGS_WRITE, (_event, settings) => settingsStore.write(settings));
-  ipcMain.handle(IPC_CHANNELS.DESKTOP_INFO, () => ({
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_INFO, async () => ({
     shellPaths,
     settingsFilePath: settingsStore.getFilePath(),
     backendProcess: backendProcessService.getState(),
+    koharuProcess: await koharuHostProcessService.inspect(),
   }));
   ipcMain.handle(IPC_CHANNELS.OPEN_PATH, async (_event, targetPath: string) => {
-    await shell.openPath(targetPath);
-    return { ok: true };
+    const error = await shell.openPath(targetPath);
+    return { ok: !error, error: error || null };
   });
+  ipcMain.handle(
+    IPC_CHANNELS.PICK_FILE,
+    async (_event, options?: { title?: string; defaultPath?: string; extensions?: string[] }) => {
+      const result = await dialog.showOpenDialog({
+        title: options?.title || "Select file",
+        defaultPath: options?.defaultPath || undefined,
+        filters: options?.extensions?.length ? [{ name: "Executable", extensions: options.extensions }] : undefined,
+        properties: ["openFile"],
+      });
+      if (result.canceled || result.filePaths.length === 0) return { canceled: true, path: null };
+      return { canceled: false, path: result.filePaths[0] };
+    }
+  );
   ipcMain.handle(
     IPC_CHANNELS.PICK_DIRECTORY,
     async (_event, options?: { title?: string; defaultPath?: string }) => {
@@ -95,6 +108,12 @@ export function registerIpcHandlers(): void {
       return { canceled: false, path: result.filePaths[0] };
     }
   );
+  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STATUS, () => koharuHostProcessService.inspect());
+  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_INSTALL_START, () => koharuHostProcessService.installAndStart());
+  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_START, (_event, executablePath: string) =>
+    koharuHostProcessService.start(executablePath)
+  );
+  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STOP, () => koharuHostProcessService.stopManaged());
   ipcMain.handle(
     IPC_CHANNELS.PICK_DIRECTORIES,
     async (_event, options?: { title?: string; defaultPath?: string }) => {

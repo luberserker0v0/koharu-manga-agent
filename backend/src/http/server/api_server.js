@@ -3,7 +3,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const path = require("path");
 const { URL } = require("url");
-const { config, DATA_ROOT } = require("../../config");
+const { config, DATA_ROOT, PROJECT_CONFIG_PATH, paths } = require("../../config");
 const { AOClient } = require("../../integrations/ao/client/ao_client");
 const { loadAoAssets } = require("../../integrations/ao/assets/ao_assets");
 const { validateConfigPatch } = require("../../config_service");
@@ -202,14 +202,23 @@ function createApiServer({
       res.end();
       return;
     }
-    if (url.pathname !== "/health" && !authorized(req, authToken)) {
+    if (!["/health", "/ready"].includes(url.pathname) && !authorized(req, authToken)) {
       res.setHeader("WWW-Authenticate", "Bearer");
       sendJson(res, 401, { error: "Unauthorized" });
       return;
     }
     try {
       if (req.method === "GET" && url.pathname === "/health") {
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 200, {
+          ok: true,
+          deploymentMode: process.env.MANGA_TRANSLATION_BACKEND_MODE || "standalone",
+        });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/ready") {
+        const readiness = await jobManager.getReadiness();
+        sendJson(res, readiness.ok ? 200 : 503, readiness);
         return;
       }
 
@@ -372,6 +381,14 @@ function createApiServer({
         const client = jobManager?.engine?.projectLifecycle?.client || null;
         const baseUrl = url.searchParams.get("baseUrl") || jobManager.koharuRuntimeManager?.baseUrl || jobManager.resolvedConfig?.api?.baseUrl;
         sendJson(res, 200, {
+          backend: {
+            dataRoot: DATA_ROOT,
+            configPath: PROJECT_CONFIG_PATH,
+            databasePath: paths.database,
+            translatedRoot: paths.translated,
+            referencesRoot: paths.references,
+            hostAccessible: !fs.existsSync("/.dockerenv"),
+          },
           koharu: await jobManager.koharuRuntimeManager.inspectPaths({ client, baseUrl }),
         });
         return;
@@ -903,6 +920,7 @@ function createApiServer({
           }
         }
         await jobManager.assertAgentAvailableForTranslation?.(body);
+        await jobManager.assertKoharuAvailableForJobType?.("translation", body);
         const job = jobManager.createTranslationJob(body);
         sendJson(res, 202, job);
         return;
@@ -928,6 +946,7 @@ function createApiServer({
       const deepAuditApplyMatch = url.pathname.match(/^\/jobs\/([^/]+)\/deep-audit\/apply$/);
       if (req.method === "POST" && deepAuditApplyMatch) {
         const body = await readJsonBody(req);
+        await jobManager.assertKoharuAvailableForJobType?.("translation_deep_audit_apply", body);
         const job = jobManager.createTranslationDeepAuditApplyJob(deepAuditApplyMatch[1], body.decisions);
         sendJson(res, 202, job);
         return;
@@ -1027,6 +1046,7 @@ function createApiServer({
 
       if (req.method === "POST" && url.pathname === "/jobs/reference-extraction") {
         const body = await readJsonBody(req);
+        await jobManager.assertKoharuAvailableForJobType?.("reference_extraction", body);
         const job = jobManager.createReferenceExtractionJob(body);
         sendJson(res, 202, job);
         return;
@@ -1178,6 +1198,7 @@ function createApiServer({
 
       if (req.method === "POST" && url.pathname === "/jobs/post-edit-export") {
         const body = await readJsonBody(req);
+        await jobManager.assertKoharuAvailableForJobType?.("post_edit_export", body);
         const job = jobManager.createPostEditExportJob(body);
         sendJson(res, 202, job);
         return;
@@ -1616,6 +1637,7 @@ function createApiServer({
         if (["translation", "translation_quality_repair"].includes(sourceJob.type)) {
           await jobManager.assertAgentAvailableForTranslation?.(sourceJob.payload);
         }
+        await jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
         const job = jobManager.retryJob(retryMatch[1]);
         if (!job) {
           notFound(res);
@@ -1627,6 +1649,9 @@ function createApiServer({
 
       const resumeMatch = url.pathname.match(/^\/jobs\/([^/]+)\/resume$/);
       if (req.method === "POST" && resumeMatch) {
+        const sourceJob = jobManager.getJob(resumeMatch[1]);
+        if (!sourceJob) { notFound(res); return; }
+        await jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
         const job = jobManager.resumeJob(resumeMatch[1]);
         if (!job) {
           notFound(res);
@@ -1755,7 +1780,11 @@ function createApiServer({
 
       notFound(res);
     } catch (error) {
-      sendJson(res, error.statusCode || 500, { error: error.message });
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.details ? { details: error.details } : {}),
+      });
     }
   });
 

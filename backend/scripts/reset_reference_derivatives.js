@@ -48,7 +48,7 @@ function executeReset(plan) {
   for (const filePath of plan.referenceArtifacts) {
     fs.rmSync(filePath, { recursive: true, force: true });
   }
-  fs.rmSync(paths.legacyReferenceDiagnostics || paths.referenceComparisons, {
+  fs.rmSync(paths.referenceComparisons, {
     recursive: true,
     force: true,
   });

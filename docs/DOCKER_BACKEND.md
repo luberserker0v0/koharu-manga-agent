@@ -4,6 +4,10 @@
 
 The container runs only the workflow and persistence backend. AO and Koharu remain external HTTP services. The image does not bundle the GUI, user manga data, a managed Koharu executable, or the repository-level `.opencode` runtime.
 
+The desktop GUI can use this container or fall back to its bundled local-process backend. Both
+implement the same REST contract. `GET /health` reports `deploymentMode: "docker"` for the Compose
+service so the GUI can display the active backend type.
+
 ## Start
 
 ```bash
@@ -37,7 +41,24 @@ Start Koharu on the host before submitting a Koharu-backed job. It must listen o
 koharu_windows_x64.exe --headless --host 0.0.0.0 --port 4000
 ```
 
-Keep the host firewall restricted to the Docker/local-machine path. The backend health endpoint can be ready while Koharu is offline, but `/api/v1/runtime/status` will report the external dependency as unavailable and Koharu-backed jobs must not proceed.
+The desktop GUI can manage this host process. When `/ready` reports Koharu unavailable, its recovery
+dialog can download the official `koharu-rs/koharu` Windows x64 standalone executable, select an
+existing executable, or let the user start Koharu manually. A downloaded copy is stored under
+`%LOCALAPPDATA%\Koharu Manga Agent\gui\koharu-runtime\<version>\koharu.exe`. The GUI also reuses a
+valid copy previously downloaded by the native backend. The selected path and auto-start preference
+are stored in the GUI user-data `gui-settings.json`, outside the project folder. At the next GUI launch
+it first probes `http://127.0.0.1:4000`; only when that endpoint is unavailable does it start the
+configured executable with the command-line arguments shown above. The GUI stops only the Koharu
+process it started.
+
+The Koharu API URL in backend configuration remains `http://host.docker.internal:4000` for Docker.
+The GUI's host probe uses `http://127.0.0.1:4000`; these addresses refer to the same host service from
+different network namespaces.
+
+Keep the host firewall restricted to the Docker/local-machine path. `GET /health` remains HTTP `200`
+while Koharu is offline because it reports backend liveness. `GET /ready` returns HTTP `503` with a
+`koharu_unavailable` blocker, and `/api/v1/runtime/status` provides the detailed external dependency
+state. Koharu-backed create/retry/resume requests are rejected before a job is created.
 
 Koharu translation credentials remain on the host. Configure DeepL, Google Cloud Translation, or
 Caiyun in Koharu, then inspect the sanitized backend view at
@@ -73,9 +94,10 @@ the repository:
 - Linux config: `${XDG_CONFIG_HOME:-~/.config}/koharu-manga-agent/backend`
 - Linux data: `${XDG_DATA_HOME:-~/.local/share}/koharu-manga-agent/backend`
 
-On first native startup, an existing repository `.opencode/koharu.json` is copied to the user config
-location. Runtime data is not silently moved or deleted; set `MANGA_TRANSLATION_DATA_ROOT` explicitly
-when performing a controlled migration of an existing installation.
+Native startup does not read or copy repository configuration. It creates runtime state beneath the
+OS data root and uses backend defaults until the user saves configuration. This release intentionally
+does not migrate the former flat `cache`, `knowledge_base`, `post_edit`, `references`, `translated`,
+or `uploads` layout.
 
 ## Browser API Security
 
@@ -91,7 +113,10 @@ Browser clients should use `/api/v1`. Image input is uploaded through `/api/v1/u
 
 Run the complete REST Translation workflow with `scripts/rest_translation_workflow.mjs`. Its request sequence and client responsibilities are documented in `docs/REST_WORKFLOW.md`.
 
-`GET /health` is intentionally public for the Docker healthcheck. The default container publishes only to loopback and leaves `server.authToken` unset for initial local development. Set a strong token before exposing the port beyond the local machine.
+`GET /health` and `GET /ready` are intentionally public for deployment probes. Compose uses `/health`
+so a temporary external-service outage does not restart the persistence backend. The default container
+publishes only to loopback and leaves `server.authToken` unset for initial local development. Set a
+strong token before exposing the port beyond the local machine.
 
 ## Persistence Check
 

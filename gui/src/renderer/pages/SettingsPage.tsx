@@ -4,9 +4,15 @@ import {
   getAOProviderCatalog, getBackendConfig, getKoharuEngineCatalog, getKoharuRuntimePaths, getKoharuTranslationCatalog, getRuntimeStatus,
   prepareKoharuRuntime, resetBackendConfig, startKoharuRuntime, stopKoharuRuntime,
   testAOConnection, updateBackendConfig, type AOModelOption, type BackendConfig, type KoharuEngineCatalog,
-  type KoharuEngineOption, type RuntimeStatus,
+  type KoharuEngineOption,
 } from "../api/runtime";
-import { getDesktopInfo, pickDirectory, readSettings, validatePaths, writeSettings } from "../services/desktop_api";
+import {
+  getDesktopInfo, openDesktopPath, pickDirectory, pickFile, readSettings,
+  installAndStartKoharuHost, startKoharuHost, stopKoharuHost, validatePaths, writeSettings,
+} from "../services/desktop_api";
+import { StorageLocations } from "../features/settings/components/StorageLocations";
+import { BackendConnectionSettings } from "../features/settings/components/BackendConnectionSettings";
+import { KoharuHostRuntimeSettings } from "../features/settings/components/KoharuHostRuntimeSettings";
 import { useLanguageStore } from "../stores/language_store";
 import type { DesktopInfo, GuiSettings, PathValidationSummary } from "../types/settings";
 
@@ -75,7 +81,7 @@ export function SettingsPage() {
   const [desktopInfo, setDesktopInfo] = useState<DesktopInfo | null>(null);
   const [pathValidation, setPathValidation] = useState<PathValidationSummary | null>(null);
   const [status, setStatus] = useState(t("settings.status.loading"));
-  const [koharuAction, setKoharuAction] = useState<"start" | "prepare" | "stop" | null>(null);
+  const [koharuAction, setKoharuAction] = useState<"start" | "install" | "prepare" | "stop" | null>(null);
   const [aoModels, setAoModels] = useState<AOModelOption[]>([]);
   const [aoAction, setAoAction] = useState<"connect" | "refresh" | null>(null);
   const [saving, setSaving] = useState(false);
@@ -126,7 +132,7 @@ export function SettingsPage() {
     }
   }, [configQuery.data, isDirty]);
 
-  const updateLocal = (key: "locale" | "outputFolder" | "referenceFolder", value: string) => {
+  const updateLocal = (key: "locale" | "backendBaseUrl" | "koharuExecutablePath" | "outputFolder" | "referenceFolder", value: string) => {
     setSettings((current) => current ? { ...current, [key]: value } as GuiSettings : current);
   };
   const updateApi = (baseUrl: string) => setConfig((current) => current ? { ...current, api: { ...current.api, baseUrl } } : current);
@@ -153,10 +159,20 @@ export function SettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["koharu-translation-catalog"] }),
       queryClient.invalidateQueries({ queryKey: ["koharu-runtime-paths"] }),
     ]);
+    try {
+      setDesktopInfo(await getDesktopInfo());
+    } catch { /* Backend data can still refresh when the desktop bridge is unavailable. */ }
   };
 
   const handleSave = async () => {
     if (!settings || !config) return;
+    try {
+      const backendUrl = new URL(settings.backendBaseUrl);
+      if (!["http:", "https:"].includes(backendUrl.protocol)) throw new TypeError("Unsupported protocol");
+    } catch {
+      setStatus(t("settings.backend.baseUrl.invalid"));
+      return;
+    }
     setSaving(true);
     try {
       const validation = await validatePaths({ sourceFolder: "", outputFolder: settings.outputFolder, referenceFolder: settings.referenceFolder, sourceRequired: false });
@@ -186,7 +202,17 @@ export function SettingsPage() {
       const effective = await resetBackendConfig();
       setConfig(effective);
       setSavedConfig(effective);
-      const local = await writeSettings({ ...settings, locale: "zh-TW", sourceFolder: "", outputFolder: desktopInfo?.shellPaths.downloads || settings.outputFolder, referenceFolder: "", lastPickedSourceFolder: "" });
+      const local = await writeSettings({
+        ...settings,
+        locale: "zh-TW",
+        backendBaseUrl: "http://127.0.0.1:4001",
+        koharuExecutablePath: "",
+        koharuAutoStart: false,
+        sourceFolder: "",
+        outputFolder: desktopInfo?.shellPaths.downloads || settings.outputFolder,
+        referenceFolder: "",
+        lastPickedSourceFolder: "",
+      });
       setSettings(local);
       setSavedSettings(local);
       setLocale(local.locale);
@@ -208,7 +234,32 @@ export function SettingsPage() {
     }
   };
 
-  const runKoharuAction = async (action: "start" | "prepare" | "stop", runner: () => Promise<{ koharu: RuntimeStatus["koharu"] }>) => {
+  const chooseKoharuExecutable = async () => {
+    try {
+      const result = await pickFile({
+        title: t("settings.koharu.host.executable.dialogTitle"),
+        defaultPath: settings?.koharuExecutablePath || undefined,
+        extensions: ["exe"],
+      });
+      if (!result.canceled && result.path) {
+        updateLocal("koharuExecutablePath", result.path);
+        setSettings((current) => current ? { ...current, koharuAutoStart: true } : current);
+      }
+    } catch (error) {
+      setStatus(`${t("settings.koharu.host.executable.pickFailed")}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const openStoragePath = async (targetPath: string) => {
+    try {
+      const result = await openDesktopPath(targetPath);
+      if (!result.ok) setStatus(`${t("settings.storage.openFailed")}: ${result.error || targetPath}`);
+    } catch (error) {
+      setStatus(`${t("settings.storage.openFailed")}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  const runKoharuAction = async (action: "start" | "install" | "prepare" | "stop", runner: () => Promise<unknown>) => {
     setKoharuAction(action);
     setStatus(t(`settings.koharu.status.${action}ing`));
     try {
@@ -218,6 +269,39 @@ export function SettingsPage() {
     } catch (error) {
       setStatus(`${t(`settings.koharu.status.${action}Failed`)}: ${error instanceof Error ? error.message : String(error)}`);
     } finally { setKoharuAction(null); }
+  };
+
+  const startConfiguredKoharu = async () => {
+    if (settings?.koharuExecutablePath.trim()) {
+      return startKoharuHost(settings.koharuExecutablePath);
+    }
+    return startKoharuRuntime();
+  };
+
+  const installConfiguredKoharu = async () => {
+    const processState = await installAndStartKoharuHost();
+    if (!processState.executablePath) throw new Error(t("app.koharuRecovery.downloadMissingPath"));
+    const saved = await writeSettings({
+      koharuExecutablePath: processState.executablePath,
+      koharuAutoStart: true,
+    });
+    setSettings((current) => current ? {
+      ...current,
+      koharuExecutablePath: processState.executablePath || "",
+      koharuAutoStart: true,
+      updatedAt: saved.updatedAt,
+    } : saved);
+    setSavedSettings(saved);
+    return processState;
+  };
+
+  const stopConfiguredKoharu = async () => {
+    const results = await Promise.allSettled([stopKoharuHost(), stopKoharuRuntime()]);
+    if (results.every((result) => result.status === "rejected")) {
+      const reason = results[0].status === "rejected" ? results[0].reason : results[1].status === "rejected" ? results[1].reason : "";
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    }
+    return results;
   };
 
   const connectAO = async () => {
@@ -258,11 +342,22 @@ export function SettingsPage() {
           {runtimeQuery.isLoading && <p>{t("settings.runtime.loading")}</p>}
           {runtimeQuery.isError && <p>{t("settings.runtime.loadFailed")}</p>}
           {runtime && <div className="badge-grid">
-            {badge(t("settings.runtime.backend"), `${runtime.backend.status} - ${runtime.backend.host}:${runtime.backend.port}`, "good")}
+            {badge(t("settings.runtime.backend"), `${t(`settings.runtime.backendMode.${runtime.backend.deploymentMode || "standalone"}`)} - ${runtime.backend.host}:${runtime.backend.port}`, "good")}
             {badge(t("settings.runtime.koharu"), `${runtime.koharu.status} - ${runtime.koharu.baseUrl || config?.api?.baseUrl || t("settings.runtime.unavailable")}`, runtime.koharu.status === "running" ? "good" : "warn")}
             {badge(t("settings.ao.runtimeLabel"), `${runtime.agent.status} - ${runtime.agent.baseUrl || config?.agent?.baseUrl || t("settings.runtime.unavailable")}`, runtime.agent.status === "running" || runtime.agent.status === "ready" || runtime.agent.status === "available" ? "good" : "warn")}
           </div>}
         </article>
+
+        {settings && <article className="card">
+          <Section title={t("settings.backend.title")} description={t("settings.backend.description")}>
+            <BackendConnectionSettings
+              baseUrl={settings.backendBaseUrl}
+              desktopInfo={desktopInfo}
+              onBaseUrlChange={(baseUrl) => updateLocal("backendBaseUrl", baseUrl)}
+              t={t}
+            />
+          </Section>
+        </article>}
 
         {settings && <article className="card">
           <Section title={t("settings.preferences.title")} description={t("settings.preferences.description")}>
@@ -283,8 +378,30 @@ export function SettingsPage() {
           </Section>
         </article>}
 
+        {settings && <article className="card">
+          <Section title={t("settings.storage.title")} description={t("settings.storage.description")}>
+            <StorageLocations
+              backend={pathsQuery.data?.backend}
+              desktopInfo={desktopInfo}
+              koharu={pathsQuery.data?.koharu}
+              onOpen={openStoragePath}
+              settings={settings}
+              t={t}
+            />
+          </Section>
+        </article>}
+
         {config && <article className="card">
           <Section title={t("settings.koharu.translationTitle")} description={t("settings.koharu.translationDescription")}>
+            {settings && <KoharuHostRuntimeSettings
+              autoStart={settings.koharuAutoStart}
+              executablePath={settings.koharuExecutablePath}
+              process={desktopInfo?.koharuProcess || null}
+              onAutoStartChange={(koharuAutoStart) => setSettings((current) => current ? { ...current, koharuAutoStart } : current)}
+              onExecutablePathChange={(value) => updateLocal("koharuExecutablePath", value)}
+              onBrowse={() => void chooseKoharuExecutable()}
+              t={t}
+            />}
             <div className="form-grid">
               <label className="field"><span>{t("settings.koharu.baseUrl.label")}</span><input value={config.api?.baseUrl || ""} onChange={(event) => updateApi(event.currentTarget.value)} /></label>
               <label className="field"><span>{t("settings.koharu.translationProvider.label")}</span>
@@ -320,9 +437,10 @@ export function SettingsPage() {
             </div>
             {catalogQuery.isError && <p className="muted-text">{t("settings.koharu.engineCatalog.failed")}</p>}
             <div className="button-row">
-              <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("start", startKoharuRuntime)}>{t(koharuAction === "start" ? "settings.koharu.starting" : "settings.koharu.start")}</button>
-              <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("prepare", prepareKoharuRuntime)}>{t(koharuAction === "prepare" ? "settings.koharu.preparing" : "settings.koharu.prepare")}</button>
-              <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("stop", stopKoharuRuntime)}>{t(koharuAction === "stop" ? "settings.koharu.stopping" : "settings.koharu.stop")}</button>
+              <button className="primary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("install", installConfiguredKoharu)}>{t(koharuAction === "install" ? "settings.koharu.installing" : "settings.koharu.install")}</button>
+              <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("start", startConfiguredKoharu)}>{t(koharuAction === "start" ? "settings.koharu.starting" : "settings.koharu.start")}</button>
+              {desktopInfo?.backendProcess.deploymentMode !== "docker" && <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("prepare", prepareKoharuRuntime)}>{t(koharuAction === "prepare" ? "settings.koharu.preparing" : "settings.koharu.prepare")}</button>}
+              <button className="secondary-button" disabled={Boolean(koharuAction)} type="button" onClick={() => void runKoharuAction("stop", stopConfiguredKoharu)}>{t(koharuAction === "stop" ? "settings.koharu.stopping" : "settings.koharu.stop")}</button>
             </div>
             <details><summary>{t("settings.koharu.diagnostics.title")}</summary><div className="summary-grid">
               <div><strong>{t("settings.koharu.runtimeVersion")}</strong><span>{runtime?.koharu.version || t("settings.koharu.paths.unknown")}</span></div>

@@ -50,17 +50,6 @@ const DATA_ROOT = path.resolve(
 const PROJECT_CONFIG_PATH = path.resolve(
   process.env.MANGA_TRANSLATION_CONFIG_PATH || defaultConfigPath()
 );
-const LEGACY_PROJECT_CONFIG_PATH = path.join(PROJECT_ROOT, ".opencode", "koharu.json");
-
-function bootstrapUserConfig() {
-  if (process.env.MANGA_TRANSLATION_CONFIG_PATH || fs.existsSync(PROJECT_CONFIG_PATH)) return;
-  if (!fs.existsSync(LEGACY_PROJECT_CONFIG_PATH)) return;
-  fs.mkdirSync(path.dirname(PROJECT_CONFIG_PATH), { recursive: true });
-  fs.copyFileSync(LEGACY_PROJECT_CONFIG_PATH, PROJECT_CONFIG_PATH, fs.constants.COPYFILE_EXCL);
-}
-
-bootstrapUserConfig();
-
 const DEFAULT_CONFIG = {
   api: {
     baseUrl: "http://127.0.0.1:4000",
@@ -83,23 +72,23 @@ const DEFAULT_CONFIG = {
     kbUpdate: 300,
   },
   paths: {
-    knowledgeBase: "knowledge_base/self/my-manga.json",
-    reports: "knowledge_base/reports/extract_report.json",
-    postEditDocuments: "post_edit/",
-    translated: "translated/",
-    references: "references/",
-    referenceImages: "references/other_images/",
-    referenceExtracted: "references/extracted/",
-    legacyReferenceDiagnostics: "references/comparisons/",
-    referenceComparisons: "references/comparisons/",
-    referenceManifests: "references/manifests/",
+    knowledgeRoot: "domains/knowledge/",
+    knowledgeBase: "domains/knowledge/self/default.json",
+    reports: "domains/knowledge/reports/extract_report.json",
+    postEditDocuments: "domains/post-edit/",
+    translated: "outputs/translated/",
+    references: "domains/reference/",
+    referenceImages: "domains/reference/images/",
+    referenceExtracted: "domains/reference/extraction/",
+    referenceComparisons: "domains/reference/comparisons/",
+    referenceManifests: "domains/reference/manifests/",
     sourcePreflight: "cache/source-preflight/",
-    uploads: "uploads/",
+    uploads: "ingress/uploads/",
     translatedImages: "cache/translated-images/",
-    workspaceRoot: "cache/workspaces",
-    logs: "logs/",
-    todoList: "TODO_LIST.md",
-    database: "cache/process-agent.sqlite",
+    workspaceRoot: "workspaces/jobs/",
+    logs: "logs/backend/",
+    todoList: "state/knowledge-tasks.md",
+    database: "state/jobs.sqlite",
   },
   defaults: {
     targetLanguage: "zh-TW",
@@ -134,8 +123,8 @@ const DEFAULT_CONFIG = {
   koharuRuntime: {
     managed: true,
     version: "0.61.2",
-    repository: "mayocream/koharu",
-    installRoot: "cache/koharu-runtime",
+    repository: "koharu-rs/koharu",
+    installRoot: "runtime/koharu",
     host: "127.0.0.1",
     port: 4000,
     portSearchRange: 50,
@@ -202,7 +191,6 @@ const mergedConfig = deepMerge(DEFAULT_CONFIG, loadProjectConfig());
 module.exports = {
   DEFAULT_CONFIG,
   DATA_ROOT,
-  LEGACY_PROJECT_CONFIG_PATH,
   PROJECT_ROOT,
   PROJECT_CONFIG_PATH,
   defaultConfigPath,
@@ -211,6 +199,7 @@ module.exports = {
   config: mergedConfig,
   resolvePath,
   paths: {
+    knowledgeRoot: resolvePath(mergedConfig.paths.knowledgeRoot || "domains/knowledge/"),
     knowledgeBase: resolvePath(mergedConfig.paths.knowledgeBase),
     reports: resolvePath(mergedConfig.paths.reports),
     postEditDocuments: resolvePath(mergedConfig.paths.postEditDocuments),
@@ -218,20 +207,16 @@ module.exports = {
     references: resolvePath(mergedConfig.paths.references),
     referenceImages: resolvePath(mergedConfig.paths.referenceImages),
     referenceExtracted: resolvePath(mergedConfig.paths.referenceExtracted),
-    legacyReferenceDiagnostics: resolvePath(
-      mergedConfig.paths.legacyReferenceDiagnostics ||
-        mergedConfig.paths.referenceComparisons
-    ),
     referenceComparisons: resolvePath(mergedConfig.paths.referenceComparisons),
     referenceManifests: resolvePath(mergedConfig.paths.referenceManifests),
     sourcePreflight: resolvePath(mergedConfig.paths.sourcePreflight),
-    uploads: resolvePath(mergedConfig.paths.uploads || "uploads/"),
+    uploads: resolvePath(mergedConfig.paths.uploads || "ingress/uploads/"),
     translatedImages: resolvePath(mergedConfig.paths.translatedImages || "cache/translated-images/"),
     logs: resolvePath(mergedConfig.paths.logs),
     todoList: resolvePath(mergedConfig.paths.todoList),
     database: resolvePath(mergedConfig.paths.database),
-    workspaceRoot: resolvePath(mergedConfig.paths.workspaceRoot || "cache/workspaces"),
-    koharuRuntimeInstallRoot: resolvePath(mergedConfig.koharuRuntime?.installRoot || "cache/koharu-runtime"),
+    workspaceRoot: resolvePath(mergedConfig.paths.workspaceRoot || "workspaces/jobs/"),
+    koharuRuntimeInstallRoot: resolvePath(mergedConfig.koharuRuntime?.installRoot || "runtime/koharu"),
   },
   runtime: mergedConfig.runtime,
 };

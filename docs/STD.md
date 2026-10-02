@@ -110,7 +110,7 @@ Purpose:
 Primary integration targets:
 - `POST /jobs/translation`
 - `GET /jobs/:jobId`
-- config override behavior from `.opencode/koharu.json`
+- config override behavior from the isolated Backend user configuration
 - script presence/loadability during transition
 
 ### E2E
@@ -147,14 +147,15 @@ Primary e2e targets:
 
 ## Test Artifacts
 The test program may create or inspect:
-- `cache/workspaces/<jobId>/<stage>/`
-- `cache/process-agent.sqlite`
-- `references/extracted/<referenceSetId>/`
-- `references/comparisons/<referenceSetId>/` (legacy diagnostics only)
-- `knowledge_base/self/<mangaId>/`
-- `knowledge_base/reports/<mangaId>/`
+- `workspaces/jobs/<jobId>/<stage>/`
+- `state/jobs.sqlite`
+- `domains/reference/extraction/<referenceSetId>/`
+- `domains/reference/comparisons/<referenceSetId>/` (optional diagnostics)
+- `domains/knowledge/self/<mangaId>/`
+- `domains/knowledge/reports/<mangaId>/`
 
-The `references/comparisons/` subtree remains compatibility-only and should be treated as transitional diagnostics, not a required runtime dependency.
+The Reference comparisons subtree is diagnostic data, not a required runtime dependency. Jest places
+the complete hierarchy under an isolated OS temporary root and removes it after the test run.
 
 Agent-stage audit artifacts explicitly covered:
 - `artifacts/import_manifest.json`

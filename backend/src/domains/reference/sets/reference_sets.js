@@ -57,13 +57,10 @@ function listReferenceImagesInFolder(sourceFolder) {
 }
 
 function referenceSetPaths(referenceSetId) {
-  const legacyDiagnosticsRoot =
-    paths.legacyReferenceDiagnostics || paths.referenceComparisons;
-
   return {
     imagesDir: path.join(paths.referenceImages, referenceSetId),
     extractedDir: path.join(paths.referenceExtracted, referenceSetId),
-    comparisonsDir: path.join(legacyDiagnosticsRoot, referenceSetId),
+    comparisonsDir: path.join(paths.referenceComparisons, referenceSetId),
     manifestPath: path.join(paths.referenceManifests, `${referenceSetId}.json`),
     textsPath: path.join(paths.referenceExtracted, referenceSetId, "texts.json"),
     scenePath: path.join(paths.referenceExtracted, referenceSetId, "scene.json"),
@@ -249,8 +246,8 @@ function importReferenceFolder({
     referenceKind: referenceKind === "source" ? "source" : "translator",
     language: resolvedLanguage,
     pageCount: discoveredImages.length,
-    imageDir: `references/other_images/${referenceSetId}`,
-    extractedDir: `references/extracted/${referenceSetId}`,
+    imageDir: `domains/reference/images/${referenceSetId}`,
+    extractedDir: `domains/reference/extraction/${referenceSetId}`,
     enabled: true,
     importedFrom: sourceFolder,
     mangaId,
@@ -472,8 +469,8 @@ function importPostEditReference({
     referenceKind: referenceKind === "source" ? "source" : "translator",
     language: resolvedLanguage,
     pageCount: normalizedTexts.pages.length,
-    imageDir: `references/other_images/${referenceSetId}`,
-    extractedDir: `references/extracted/${referenceSetId}`,
+    imageDir: `domains/reference/images/${referenceSetId}`,
+    extractedDir: `domains/reference/extraction/${referenceSetId}`,
     enabled: true,
     importedFrom: sourceJobId ? `post_edit:${sourceJobId}` : "post_edit",
     mangaId,

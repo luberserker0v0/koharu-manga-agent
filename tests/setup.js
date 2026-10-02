@@ -2,8 +2,12 @@ const path = require("path");
 
 // Set project root for all tests
 global.PROJECT_ROOT = path.join(__dirname, "..");
-process.env.MANGA_TRANSLATION_DATA_ROOT = global.PROJECT_ROOT;
-process.env.MANGA_TRANSLATION_CONFIG_PATH = path.join(global.PROJECT_ROOT, ".opencode", "koharu.json");
+global.TEST_DATA_ROOT = process.env.MANGA_TRANSLATION_DATA_ROOT;
+global.TEST_CONFIG_PATH = process.env.MANGA_TRANSLATION_CONFIG_PATH;
+
+if (!global.TEST_DATA_ROOT || !global.TEST_CONFIG_PATH) {
+  throw new Error("Jest runtime isolation was not initialized by tests/global_setup.js.");
+}
 
 // Helper to require modules relative to project root
 global.requireFromProject = function (relativePath) {

@@ -62,16 +62,12 @@ describe("config_override.test.js - config override coverage", () => {
       expect(config.TIMEOUTS.sseListen).toBe(koharu.timeouts.sseListen);
     });
 
-    test("config.PATHS are resolved from koharu.json", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-
-      expect(config.PATHS.TRANSLATED).toContain(
-        koharu.paths.translated.replace("/", "").replace("\\", "")
+    test("config.PATHS resolve beneath the isolated backend data root", () => {
+      expect(path.resolve(config.PATHS.TRANSLATED)).toBe(
+        path.join(TEST_DATA_ROOT, "outputs", "translated")
       );
-      expect(config.PATHS.LOGS).toContain(
-        koharu.paths.logs.replace("/", "").replace("\\", "")
+      expect(path.resolve(config.PATHS.LOGS)).toBe(
+        path.join(TEST_DATA_ROOT, "logs", "backend")
       );
     });
 

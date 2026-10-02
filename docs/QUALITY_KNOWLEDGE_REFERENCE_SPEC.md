@@ -57,10 +57,10 @@ Its only job is to turn external translated material into reusable project knowl
 - directly change current translation output
 
 Primary outputs:
-- `knowledge_base/self/<mangaId>/canonical_glossary.json`
-- `knowledge_base/self/<mangaId>/story_context.json`
-- `knowledge_base/self/<mangaId>/style_profile.json`
-- `knowledge_base/self/<mangaId>/translation_context.json`
+- `domains/knowledge/self/<mangaId>/canonical_glossary.json`
+- `domains/knowledge/self/<mangaId>/story_context.json`
+- `domains/knowledge/self/<mangaId>/style_profile.json`
+- `domains/knowledge/self/<mangaId>/translation_context.json`
 
 ### Knowledge
 `knowledge` is the **long-term internal memory layer** for a manga.
@@ -83,9 +83,9 @@ Its job is to accumulate:
 - rerender current output
 
 Primary outputs:
-- `knowledge_base/self/<mangaId>/knowledge.json`
-- `knowledge_base/reports/<mangaId>/extract_report.json`
-- `knowledge_base/index.json`
+- `domains/knowledge/self/<mangaId>/knowledge.json`
+- `domains/knowledge/reports/<mangaId>/extract_report.json`
+- `domains/knowledge/index.json`
 
 ### Quality
 `quality` is a **read-only validation stage** for the current translation result.

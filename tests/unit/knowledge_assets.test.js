@@ -26,10 +26,10 @@ describe("knowledge assets", () => {
       paths: {
         knowledgeBase: path.join(tempRoot, "knowledge_base", "self", "my-manga.json"),
         reports: path.join(tempRoot, "knowledge_base", "reports", "extract_report.json"),
-        referenceImages: path.join(tempRoot, "references", "other_images"),
-        referenceExtracted: path.join(tempRoot, "references", "extracted"),
-        referenceComparisons: path.join(tempRoot, "references", "comparisons"),
-        referenceManifests: path.join(tempRoot, "references", "manifests"),
+        referenceImages: path.join(tempRoot, "domains", "reference", "images"),
+        referenceExtracted: path.join(tempRoot, "domains", "reference", "extraction"),
+        referenceComparisons: path.join(tempRoot, "domains", "reference", "comparisons"),
+        referenceManifests: path.join(tempRoot, "domains", "reference", "manifests"),
       },
     }));
 

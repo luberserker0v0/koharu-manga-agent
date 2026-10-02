@@ -1,11 +1,19 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "../main/ipc/channels";
 
+const backendBaseUrlArgument = process.argv.find((argument) => argument.startsWith("--backend-base-url="));
+const backendBaseUrl = backendBaseUrlArgument
+  ? decodeURIComponent(backendBaseUrlArgument.slice("--backend-base-url=".length))
+  : "http://127.0.0.1:4001";
+
 const desktopApi = {
+  backendBaseUrl,
   readSettings: () => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_READ),
   writeSettings: (settings: unknown) => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_WRITE, settings),
   getDesktopInfo: () => ipcRenderer.invoke(IPC_CHANNELS.DESKTOP_INFO),
   openPath: (targetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.OPEN_PATH, targetPath),
+  pickFile: (options?: { title?: string; defaultPath?: string; extensions?: string[] }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.PICK_FILE, options),
   pickDirectory: (options?: { title?: string; defaultPath?: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.PICK_DIRECTORY, options),
   pickDirectories: (options?: { title?: string; defaultPath?: string }) =>
@@ -31,6 +39,11 @@ const desktopApi = {
     ipcRenderer.invoke(IPC_CHANNELS.OPEN_KOHARU_EDITOR, payload),
   closeKoharuEditor: (sessionId?: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.CLOSE_KOHARU_EDITOR, sessionId),
+  getKoharuHostStatus: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STATUS),
+  installAndStartKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_INSTALL_START),
+  startKoharuHost: (executablePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_START, executablePath),
+  stopKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STOP),
   onKoharuEditorClosed: (callback: (payload: { sessionId: string | null }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: { sessionId: string | null }) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.KOHARU_EDITOR_CLOSED, listener);

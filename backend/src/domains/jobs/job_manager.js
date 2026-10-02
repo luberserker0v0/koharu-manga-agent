@@ -309,7 +309,10 @@ class JobManager {
       return null;
     }
     hooks?.setStage?.("running", "koharu_runtime");
-    const status = await this.koharuRuntimeManager.ensureRunning();
+    const inspected = await this.koharuRuntimeManager.inspect?.();
+    const status = inspected?.status === "running"
+      ? inspected
+      : await this.koharuRuntimeManager.ensureRunning();
     if (status?.baseUrl) {
       this.resolvedConfig.api = {
         ...(this.resolvedConfig.api || {}),
@@ -321,6 +324,79 @@ class JobManager {
     }
     hooks?.emit?.("koharu_runtime.ready", status);
     return status;
+  }
+
+  async inspectKoharuReadiness() {
+    const status = this.koharuRuntimeManager
+      ? await this.koharuRuntimeManager.inspect()
+      : {
+          status: this.resolvedConfig.api?.baseUrl ? "configured" : "unconfigured",
+          mode: "external",
+          baseUrl: this.resolvedConfig.api?.baseUrl || null,
+          lastError: null,
+        };
+    const ready = status.status === "running";
+    return {
+      ready,
+      status: status.status,
+      mode: status.mode || "external",
+      baseUrl: status.baseUrl || this.resolvedConfig.api?.baseUrl || null,
+      error: ready
+        ? null
+        : status.lastError || `Koharu is not reachable at ${status.baseUrl || this.resolvedConfig.api?.baseUrl || "the configured endpoint"}.`,
+    };
+  }
+
+  async assertKoharuAvailableForJobType(type, payload = {}) {
+    if (!KOHARU_JOB_TYPES.has(type)) return null;
+    // Production runtimes always provide the manager. Keep injected test/custom
+    // managers without one backward compatible instead of guessing at a client contract.
+    if (!this.koharuRuntimeManager) return null;
+    try {
+      if (payload.baseUrl) {
+        if (!this.koharuRuntimeManager.isReachable) return null;
+        const ready = await this.koharuRuntimeManager.isReachable(payload.baseUrl);
+        if (ready) return { ready: true, status: "running", mode: "external", baseUrl: payload.baseUrl, error: null };
+        throw new Error(`Koharu is not reachable at ${payload.baseUrl}.`);
+      }
+      if (this.koharuRuntimeManager?.ensureRunning) {
+        const status = await this.koharuRuntimeManager.ensureRunning();
+        const readiness = {
+          ready: status?.status === "running",
+          status: status?.status || "running",
+          mode: status?.mode || "external",
+          baseUrl: status?.baseUrl || this.resolvedConfig.api?.baseUrl || null,
+          error: null,
+        };
+        if (!readiness.ready) {
+          throw new Error(`Koharu did not report a running state (${readiness.status}).`);
+        }
+        return readiness;
+      }
+      const readiness = await this.inspectKoharuReadiness();
+      if (readiness.ready) return readiness;
+      throw new Error(readiness.error);
+    } catch (cause) {
+      const readiness = await this.inspectKoharuReadiness().catch(() => ({
+        ready: false,
+        status: "unavailable",
+        mode: "external",
+        baseUrl: payload.baseUrl || this.resolvedConfig.api?.baseUrl || null,
+        error: cause.message,
+      }));
+      const error = new Error(cause.message || readiness.error || "Koharu is unavailable.");
+      error.statusCode = 503;
+      error.code = "koharu_unavailable";
+      error.details = {
+        service: "koharu",
+        jobType: type,
+        status: readiness.status,
+        mode: readiness.mode,
+        baseUrl: payload.baseUrl || readiness.baseUrl,
+        retrySafe: true,
+      };
+      throw error;
+    }
   }
 
   resolveDependencyState(job) {
@@ -1868,6 +1944,7 @@ class JobManager {
         status: "ready",
         host: this.runtimeConfig.host,
         port: this.runtimeConfig.port,
+        deploymentMode: process.env.MANGA_TRANSLATION_BACKEND_MODE || "standalone",
       },
       koharu: {
         ...koharuStatus,
@@ -1888,6 +1965,50 @@ class JobManager {
       translation: {
         defaultTarget: this.resolvedConfig.translation?.defaultTarget || null,
       },
+    };
+  }
+
+  async getReadiness() {
+    const runtime = await this.getRuntimeStatus();
+    const koharuReady = runtime.koharu.status === "running";
+    const agentReady = runtime.agent.status === "ready";
+    const blockers = koharuReady ? [] : [{
+      service: "koharu",
+      code: "koharu_unavailable",
+      message: runtime.koharu.lastError || `Koharu is not reachable at ${runtime.koharu.baseUrl || "the configured endpoint"}.`,
+    }];
+    const warnings = agentReady ? [] : [{
+      service: "ao",
+      code: "ao_unavailable",
+      message: runtime.agent.lastError || `AO is not ready at ${runtime.agent.baseUrl || "the configured endpoint"}.`,
+    }];
+    return {
+      ok: koharuReady,
+      status: !koharuReady ? "blocked" : agentReady ? "ready" : "degraded",
+      checkedAt: new Date().toISOString(),
+      deploymentMode: runtime.backend.deploymentMode,
+      services: {
+        backend: { required: true, ready: true, status: runtime.backend.status },
+        koharu: {
+          required: true,
+          ready: koharuReady,
+          status: runtime.koharu.status,
+          mode: runtime.koharu.mode,
+          baseUrl: runtime.koharu.baseUrl,
+        },
+        ao: {
+          required: false,
+          ready: agentReady,
+          status: runtime.agent.status,
+          baseUrl: runtime.agent.baseUrl,
+        },
+      },
+      capabilities: {
+        koharuJobs: koharuReady,
+        aoJobs: agentReady,
+      },
+      blockers,
+      warnings,
     };
   }
 

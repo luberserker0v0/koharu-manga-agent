@@ -1,19 +1,35 @@
 import { app } from "electron";
 import { registerIpcHandlers } from "./ipc/handlers";
 import { backendProcessService } from "./services/backend_process";
+import { SettingsStore } from "./services/settings_store";
+import { koharuHostProcessService } from "./services/koharu_host_process";
 import { createMainWindow } from "./windows/main_window";
 
 async function bootstrap(): Promise<void> {
   await app.whenReady();
-  await backendProcessService.ensureStarted();
-  registerIpcHandlers();
-  await createMainWindow();
+  const settingsStore = new SettingsStore();
+  const settings = settingsStore.initialize();
+  try {
+    await koharuHostProcessService.ensureStarted({
+      autoStart: settings.koharuAutoStart,
+      executablePath: settings.koharuExecutablePath,
+    });
+  } catch (error) {
+    console.error("Koharu host startup failed:", error);
+  }
+  try {
+    await backendProcessService.ensureStarted(settings.backendBaseUrl);
+  } catch (error) {
+    console.error("Backend startup failed:", error);
+  }
+  registerIpcHandlers(settingsStore);
+  await createMainWindow(backendProcessService.getState().baseUrl);
 
   app.on("activate", async () => {
     if (process.platform !== "darwin") {
       return;
     }
-    await createMainWindow();
+    await createMainWindow(backendProcessService.getState().baseUrl);
   });
 }
 
@@ -24,6 +40,7 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  void koharuHostProcessService.stopManaged();
   void backendProcessService.stopManaged();
 });
 

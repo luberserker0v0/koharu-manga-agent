@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import {
   createChapter, createPostEditExportJob, createPostEditReferenceSet, createTranslatorProfile,
-  getEditedScene, getJobs, getMangaSeries, getSourcePreflight, saveEditedScene,
-  type EditedSceneDocument, type GuiJob,
+  getEditedScene, getJobs, getMangaSeries, getTranslatedImages, saveEditedScene,
+  type EditedSceneDocument, type GuiJob, type TranslatedImage,
 } from "../api/jobs";
+import { buildApiUrl } from "../api/client";
 import { readSettings, validatePaths } from "../services/desktop_api";
 import { useLanguageStore } from "../stores/language_store";
 import { useUiStore } from "../stores/ui_store";
-import type { GuiSettings, SourcePreflightImage } from "../types/settings";
+import type { GuiSettings } from "../types/settings";
 
 function moveId(ids: string[], draggedId: string, targetId: string) {
   const from = ids.indexOf(draggedId);
@@ -32,12 +33,21 @@ function isEditableJob(job: GuiJob) {
   return publication?.status !== "superseded";
 }
 
-function previewPath(images: SourcePreflightImage[], pageName: string | undefined, pageIndex: number) {
-  const image = pageName
-    ? images.find((item) => item.fileName === pageName || item.orderedName === pageName
-      || item.normalizedPath.endsWith(`\\${pageName}`) || item.previewPath.endsWith(`\\${pageName}`))
+function translatedImageForPage(
+  images: TranslatedImage[],
+  sourcePageOrder: string[],
+  pageId: string
+) {
+  const imageByPageId = images.find((image) => image.fileName.includes(pageId));
+  if (imageByPageId) return imageByPageId;
+  const sourceIndex = sourcePageOrder.indexOf(pageId);
+  return sourceIndex >= 0
+    ? images.find((image) => image.index === sourceIndex) || images[sourceIndex] || null
     : null;
-  return image?.previewPath || images[pageIndex]?.previewPath || null;
+}
+
+function translatedImageUrl(image: TranslatedImage) {
+  return /^https?:\/\//i.test(image.contentUrl) ? image.contentUrl : buildApiUrl(image.contentUrl);
 }
 
 function payloadString(job: GuiJob | null, key: string) {
@@ -65,20 +75,29 @@ export function PostEditPage() {
   const [branchEditorOpen, setBranchEditorOpen] = useState(false);
   const [pageSearch, setPageSearch] = useState("");
   const [previewDimensions, setPreviewDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
 
   const jobsQuery = useQuery({ queryKey: ["jobs"], queryFn: getJobs });
   const mangaQuery = useQuery({ queryKey: ["manga-series"], queryFn: getMangaSeries });
   const jobs = useMemo(() => (jobsQuery.data?.jobs || []).filter(isEditableJob), [jobsQuery.data]);
   const sceneQuery = useQuery({ queryKey: ["edited-scene", selectedJobId], queryFn: () => getEditedScene(selectedJobId as string), enabled: Boolean(selectedJobId) });
   const selectedJob = jobs.find((job) => job.id === selectedJobId) || null;
-  const preflightId = draft?.sourcePreflightId || payloadString(selectedJob, "sourcePreflightId") || null;
-  const preflightQuery = useQuery({ queryKey: ["source-preflight", preflightId], queryFn: () => getSourcePreflight(preflightId as string), enabled: Boolean(preflightId) });
-  const images = preflightQuery.data?.images || [];
+  const translatedImagesQuery = useQuery({
+    queryKey: ["translated-images", selectedJobId],
+    queryFn: () => getTranslatedImages(selectedJobId as string),
+    enabled: Boolean(selectedJobId),
+    retry: 1,
+  });
+  const translatedImages = translatedImagesQuery.data?.images || [];
   const selectedManga = (mangaQuery.data?.series || []).find((item) => item.mangaId === draft?.mangaId) || null;
   const sourceTranslator = selectedManga?.translators.find((item) => item.translatorId === draft?.translatorId) || null;
   const sourceChapter = sourceTranslator?.chapters.find((item) => item.chapterId === draft?.chapterId) || null;
 
   useEffect(() => { readSettings().then(setSettingsSnapshot).catch(() => {}); }, []);
+  useEffect(() => {
+    setFailedImageIds(new Set());
+    setPreviewDimensions(null);
+  }, [selectedJobId]);
   useEffect(() => {
     if (!selectedJobId && jobs[0]) setSelectedJobId(jobs[0].id);
     else if (selectedJobId && !jobs.some((job) => job.id === selectedJobId)) setSelectedJobId(jobs[0]?.id || null);
@@ -151,7 +170,12 @@ export function PostEditPage() {
   const selectedPage = draft && selectedPageId ? draft.pages[selectedPageId] : null;
   const pageIndex = draft ? draft.pageOrder.indexOf(selectedPageId) : -1;
   const selectedNode = selectedPage && selectedNodeId ? selectedPage.nodes[selectedNodeId] || null : null;
-  const selectedImage = selectedPage && pageIndex >= 0 ? previewPath(images, selectedPage.pageName, pageIndex) : null;
+  const selectedTranslatedImage = draft && selectedPage
+    ? translatedImageForPage(translatedImages, draft.sourcePageOrder, selectedPage.pageId)
+    : null;
+  const selectedImage = selectedTranslatedImage && !failedImageIds.has(selectedTranslatedImage.id)
+    ? translatedImageUrl(selectedTranslatedImage)
+    : null;
   const dirty = Boolean(draft && sceneQuery.data?.editedScene && JSON.stringify(draft) !== JSON.stringify(sceneQuery.data.editedScene));
   const visiblePages = (draft?.pageOrder || []).filter((id) => {
     const search = pageSearch.trim().toLowerCase();
@@ -170,6 +194,10 @@ export function PostEditPage() {
     if (!draft) return;
     setSelectedPageId(pageId);
     setSelectedNodeId(draft.pages[pageId]?.nodeOrder[0] || "");
+    setPreviewDimensions(null);
+  };
+  const markImageFailed = (imageId: string) => {
+    setFailedImageIds((current) => new Set(current).add(imageId));
     setPreviewDimensions(null);
   };
   const handleExport = async () => {
@@ -203,12 +231,13 @@ export function PostEditPage() {
           {visiblePages.map((pageId) => {
             const page = draft.pages[pageId];
             const index = draft.pageOrder.indexOf(pageId);
-            const image = previewPath(images, page.pageName, index);
-            return <li key={pageId} className={`post-edit-page-card${selectedPageId === pageId ? " selected" : ""}${draggedPageId === pageId ? " dragging" : ""}`} draggable onClick={() => selectPage(pageId)} onDragStart={() => setDraggedPageId(pageId)} onDragOver={(event: DragEvent<HTMLLIElement>) => { event.preventDefault(); if (draggedPageId && draggedPageId !== pageId) setDraft((current) => current ? { ...current, pageOrder: moveId(current.pageOrder, draggedPageId, pageId) } : current); }} onDrop={() => setDraggedPageId(null)} onDragEnd={() => setDraggedPageId(null)}><div className="post-edit-page-thumb">{image ? <img alt={page.pageName} src={image} /> : <span>{index + 1}</span>}</div><div className="post-edit-page-info"><strong>{t("postEdit.workspace.pageNumber", { page: index + 1 })}</strong><span>{t("postEdit.workspace.nodeCount", { count: page.nodeOrder.length })}</span></div></li>;
+            const image = translatedImageForPage(translatedImages, draft.sourcePageOrder, pageId);
+            const imageAvailable = image && !failedImageIds.has(image.id);
+            return <li key={pageId} className={`post-edit-page-card${selectedPageId === pageId ? " selected" : ""}${draggedPageId === pageId ? " dragging" : ""}`} draggable onClick={() => selectPage(pageId)} onDragStart={() => setDraggedPageId(pageId)} onDragOver={(event: DragEvent<HTMLLIElement>) => { event.preventDefault(); if (draggedPageId && draggedPageId !== pageId) setDraft((current) => current ? { ...current, pageOrder: moveId(current.pageOrder, draggedPageId, pageId) } : current); }} onDrop={() => setDraggedPageId(null)} onDragEnd={() => setDraggedPageId(null)}><div className="post-edit-page-thumb">{imageAvailable ? <img alt={page.pageName} src={translatedImageUrl(image)} onError={() => markImageFailed(image.id)} /> : <span>{index + 1}</span>}</div><div className="post-edit-page-info"><strong>{t("postEdit.workspace.pageNumber", { page: index + 1 })}</strong><span>{t("postEdit.workspace.nodeCount", { count: page.nodeOrder.length })}</span></div></li>;
           })}
         </ul></aside>
 
-        <main className="post-edit-pane post-edit-preview-pane"><div className="post-edit-pane-header"><h2>{t("postEdit.workspace.preview")}</h2>{selectedPage && <span>{t("postEdit.workspace.pagePosition", { page: pageIndex + 1, total: draft.pageOrder.length })}</span>}</div><div className="post-edit-preview-scroll">{selectedImage && selectedPage ? <div className="post-edit-image-stage"><img alt={selectedPage.pageName} src={selectedImage} onLoad={(event) => setPreviewDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />{previewDimensions && selectedPage.nodeOrder.map((nodeId, index) => { const node = selectedPage.nodes[nodeId]; if (!node?.anchor || node.anchor.width <= 0 || node.anchor.height <= 0) return null; return <button key={nodeId} type="button" className={`post-edit-bubble-overlay${selectedNodeId === nodeId ? " selected" : ""}`} style={{ left: `${node.anchor.x / previewDimensions.width * 100}%`, top: `${node.anchor.y / previewDimensions.height * 100}%`, width: `${node.anchor.width / previewDimensions.width * 100}%`, height: `${node.anchor.height / previewDimensions.height * 100}%` }} onClick={() => setSelectedNodeId(nodeId)} title={t("postEdit.workspace.dialogueNumber", { number: index + 1 })}><span>{index + 1}</span></button>; })}</div> : <div className="post-edit-node-preview-empty">{t("postEdit.nodeOrder.noPreview")}</div>}</div></main>
+        <main className="post-edit-pane post-edit-preview-pane"><div className="post-edit-pane-header"><h2>{t("postEdit.workspace.preview")}</h2>{selectedPage && <span>{t("postEdit.workspace.pagePosition", { page: pageIndex + 1, total: draft.pageOrder.length })}</span>}</div><div className="post-edit-preview-scroll">{selectedImage && selectedPage && selectedTranslatedImage ? <div className="post-edit-image-stage"><img alt={selectedPage.pageName} src={selectedImage} onError={() => markImageFailed(selectedTranslatedImage.id)} onLoad={(event) => setPreviewDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} />{previewDimensions && selectedPage.nodeOrder.map((nodeId, index) => { const node = selectedPage.nodes[nodeId]; if (!node?.anchor || node.anchor.width <= 0 || node.anchor.height <= 0) return null; return <button key={nodeId} type="button" className={`post-edit-bubble-overlay${selectedNodeId === nodeId ? " selected" : ""}`} style={{ left: `${node.anchor.x / previewDimensions.width * 100}%`, top: `${node.anchor.y / previewDimensions.height * 100}%`, width: `${node.anchor.width / previewDimensions.width * 100}%`, height: `${node.anchor.height / previewDimensions.height * 100}%` }} onClick={() => setSelectedNodeId(nodeId)} title={t("postEdit.workspace.dialogueNumber", { number: index + 1 })}><span>{index + 1}</span></button>; })}</div> : <div className="post-edit-node-preview-empty">{t(translatedImagesQuery.isPending ? "postEdit.image.loading" : translatedImagesQuery.isError || selectedTranslatedImage && failedImageIds.has(selectedTranslatedImage.id) ? "postEdit.image.loadFailed" : "postEdit.nodeOrder.noPreview")}</div>}</div></main>
 
         <aside className="post-edit-pane post-edit-dialogue-pane"><div className="post-edit-pane-header"><h2>{t("postEdit.workspace.dialogues")}</h2>{selectedPage && <span>{selectedPage.nodeOrder.length}</span>}</div><div className="post-edit-node-list">{!selectedPage && <p>{t("postEdit.nodeOrder.empty")}</p>}{selectedPage?.nodeOrder.map((nodeId, index) => { const node = selectedPage.nodes[nodeId]; return <button key={nodeId} type="button" draggable className={`post-edit-node-card${selectedNodeId === nodeId ? " selected" : ""}${draggedNodeId === nodeId ? " dragging" : ""}`} onClick={() => setSelectedNodeId(nodeId)} onDragStart={() => setDraggedNodeId(nodeId)} onDragOver={(event: DragEvent<HTMLButtonElement>) => { event.preventDefault(); if (!draggedNodeId || draggedNodeId === nodeId) return; setDraft((current) => { if (!current || !selectedPageId) return current; const page = current.pages[selectedPageId]; return { ...current, pages: { ...current.pages, [selectedPageId]: { ...page, nodeOrder: moveId(page.nodeOrder, draggedNodeId, nodeId) } } }; }); }} onDrop={() => setDraggedNodeId(null)} onDragEnd={() => setDraggedNodeId(null)}><span className="preflight-image-order">{index + 1}</span><span className="post-edit-node-copy"><strong>{node.originalText.slice(0, 48) || nodeId}</strong><span>{node.editedTranslation.slice(0, 72) || t("postEdit.nodeOrder.emptyTranslation")}</span></span></button>; })}</div><div className="post-edit-editor-dock"><div className="post-edit-pane-header"><h2>{t("postEdit.editor.title")}</h2>{selectedNode && <span>{t("postEdit.workspace.dialogueNumber", { number: (selectedPage?.nodeOrder.indexOf(selectedNodeId) || 0) + 1 })}</span>}</div>{!selectedNode ? <p>{t("postEdit.editor.empty")}</p> : <><label><span>{t("postEdit.editor.originalText")}</span><textarea readOnly rows={2} value={selectedNode.originalText} /></label><label><span>{t("postEdit.editor.translation")}</span><textarea rows={4} value={selectedNode.editedTranslation} onChange={(event) => updateTranslation(event.currentTarget.value)} /></label><button className="secondary-button" type="button" onClick={() => { updateTranslation(selectedNode.originalTranslation || ""); setStatus(t("postEdit.status.reset")); }}>{t("postEdit.button.reset")}</button></>}</div></aside>
       </div>}

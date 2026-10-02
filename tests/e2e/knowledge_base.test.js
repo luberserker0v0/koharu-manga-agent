@@ -2,8 +2,8 @@ const fs = require("fs");
 const path = require("path");
 
 const PROJECT_ROOT = path.join(__dirname, "../..");
-const KB_PATH = path.join(PROJECT_ROOT, "knowledge_base/self/my-manga.json");
-const REPORTS_PATH = path.join(PROJECT_ROOT, "knowledge_base/reports/extract_report.json");
+const KB_PATH = path.join(TEST_DATA_ROOT, "domains/knowledge/self/default.json");
+const REPORTS_PATH = path.join(TEST_DATA_ROOT, "domains/knowledge/reports/extract_report.json");
 
 describe("knowledge_base.test.js", () => {
   beforeAll(async () => {
@@ -14,8 +14,8 @@ describe("knowledge_base.test.js", () => {
   });
 
   test("knowledge-base directories exist", () => {
-    expect(fs.existsSync(path.join(PROJECT_ROOT, "knowledge_base/self"))).toBe(true);
-    expect(fs.existsSync(path.join(PROJECT_ROOT, "knowledge_base/reports"))).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DATA_ROOT, "domains/knowledge/self"))).toBe(true);
+    expect(fs.existsSync(path.join(TEST_DATA_ROOT, "domains/knowledge/reports"))).toBe(true);
   });
 
   test("manga local config resolves knowledge-base paths", () => {
@@ -25,7 +25,7 @@ describe("knowledge_base.test.js", () => {
     ));
     expect(config.PATHS.KNOWLEDGE_BASE).toBe(KB_PATH);
     expect(config.PATHS.REPORTS).toBe(REPORTS_PATH);
-    expect(config.PATHS.TODO_LIST).toBe(path.join(PROJECT_ROOT, "TODO_LIST.md"));
+    expect(config.PATHS.TODO_LIST).toBe(path.join(TEST_DATA_ROOT, "state/knowledge-tasks.md"));
   });
 
   test("knowledge-base file shape is valid when present", () => {
@@ -57,7 +57,7 @@ describe("knowledge_base.test.js", () => {
     }
   });
 
-  test("TODO_LIST.md exists", () => {
+  test("repository task notes remain source-controlled documentation", () => {
     expect(fs.existsSync(path.join(PROJECT_ROOT, "TODO_LIST.md"))).toBe(true);
   });
 });

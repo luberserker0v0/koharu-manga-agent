@@ -177,27 +177,21 @@ Current implementation note:
 - `delete project`: remove stored project data
 - default workflow allows close only, not delete
 
-## Migration Requirement
-- legacy `.opencode/skills/*`, `.opencode/agents/*`, and `.opencode/opencode.json` may remain temporarily as migration references
-- they are not the official production control plane
-
 ## Reference Asset Requirement
 The system must support this directory structure for comparison-based quality review:
-- `references/other_images/<reference_set_id>/`
-- `references/extracted/<reference_set_id>/`
-- `references/comparisons/<reference_set_id>/` (legacy diagnostics only)
-- `references/manifests/<reference_set_id>.json`
+- `domains/reference/images/<reference_set_id>/`
+- `domains/reference/extraction/<reference_set_id>/`
+- `domains/reference/comparisons/<reference_set_id>/` (optional diagnostics)
+- `domains/reference/manifests/<reference_set_id>.json`
 
-The `references/comparisons/` subtree remains compatibility-only and must not be treated as a required quality-stage dependency.
+The `domains/reference/comparisons/` subtree must not be treated as a required quality-stage dependency.
 
 ## Knowledge Base Requirement
 The system must support:
-- `knowledge_base/index.json`
-- `knowledge_base/self/<mangaId>/knowledge.json` as the primary manga-scoped runtime knowledge artifact
-- `knowledge_base/reports/<mangaId>/extract_report.json` as the primary manga-scoped runtime report artifact
-- `knowledge_base/self/my-manga.json` as a legacy fallback artifact when no `mangaId` is provided
-- `knowledge_base/self/my-manga.schema.example.json` as the v2 target contract reference
-- `knowledge_base/reports/migration_plan_v2.md` as the upgrade reference
+- `domains/knowledge/index.json`
+- `domains/knowledge/self/<mangaId>/knowledge.json` as the primary manga-scoped runtime knowledge artifact
+- `domains/knowledge/reports/<mangaId>/extract_report.json` as the primary manga-scoped runtime report artifact
+- `domains/knowledge/self/default.json` as the default artifact when no `mangaId` is provided
 - manga-scoped `canonical_glossary.json`
 - manga-scoped `story_context.json`
 - manga-scoped `style_profile.json`
@@ -205,7 +199,7 @@ The system must support:
 
 ## Agent Runtime Requirement
 The system must support:
-- isolated per-job stage workspaces under `cache/workspaces/<jobId>/<stage>/`
+- isolated per-job stage workspaces under `workspaces/jobs/<jobId>/<stage>/`
 - allowed input-key and source-path policy enforcement
 - allowed output and artifact file-name policy enforcement
 - `artifacts/import_manifest.json` for materialized input auditing
@@ -399,8 +393,8 @@ Clarified v1 system-managed identifiers in this flow:
 
 Clarified v1 frontend flow:
 1. Prepare the reference set before using the GUI:
-   - `references/manifests/<referenceSetId>.json`
-   - `references/other_images/<referenceSetId>/`
+   - `domains/reference/manifests/<referenceSetId>.json`
+   - `domains/reference/images/<referenceSetId>/`
 2. Open `Reference`
 3. In `Prepare reference material`, select one existing reference set
 4. Start reference extraction
@@ -442,7 +436,7 @@ Authoritative note:
 - ingestion reports are also shown from the `Reference` page before the user returns to translation creation
 
 Expected GUI flow:
-1. Put reference images under `references/other_images/<reference_set_id>/`
+1. Import reference images; the Backend stores them under `domains/reference/images/<reference_set_id>/`
 2. Open `Reference`
 3. Run a `reference extraction` job by selecting an existing reference set
 4. Inspect OCR / extracted outputs and edit or delete them if needed

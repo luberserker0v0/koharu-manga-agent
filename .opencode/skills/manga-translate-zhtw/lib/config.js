@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
 const path = require("path");
+const backendConfig = require("../../../../backend/src/config");
 
 const PROJECT_ROOT = path.join(__dirname, "..", "..", "..", "..");
-const PROJECT_CONFIG_PATH = path.join(PROJECT_ROOT, ".opencode", "koharu.json");
+const PROJECT_CONFIG_PATH = backendConfig.PROJECT_CONFIG_PATH;
 
 const DEFAULT_CONFIG = {
   api: {
@@ -20,13 +20,7 @@ const DEFAULT_CONFIG = {
     qualityCheck: 300,
     kbUpdate: 300,
   },
-  paths: {
-    knowledgeBase: "knowledge_base/self/my-manga.json",
-    reports: "knowledge_base/reports/extract_report.json",
-    translated: "translated/",
-    logs: "logs/",
-    todoList: "TODO_LIST.md",
-  },
+  paths: backendConfig.config.paths,
   defaults: {
     targetLanguage: "zh-TW",
     exportFormat: "rendered",
@@ -42,14 +36,6 @@ const DEFAULT_CONFIG = {
     },
   },
 };
-
-function loadProjectConfig() {
-  try {
-    return JSON.parse(fs.readFileSync(PROJECT_CONFIG_PATH, "utf-8"));
-  } catch {
-    return {};
-  }
-}
 
 function deepMerge(base, override) {
   const result = { ...base };
@@ -70,13 +56,7 @@ function deepMerge(base, override) {
   return result;
 }
 
-function resolvePath(targetPath) {
-  return path.isAbsolute(targetPath)
-    ? targetPath
-    : path.join(PROJECT_ROOT, targetPath);
-}
-
-const projectConfig = loadProjectConfig();
+const projectConfig = backendConfig.config;
 const merged = deepMerge(DEFAULT_CONFIG, projectConfig);
 
 module.exports = {
@@ -86,11 +66,11 @@ module.exports = {
   LLM: merged.llm,
   TIMEOUTS: merged.timeouts,
   PATHS: {
-    KNOWLEDGE_BASE: resolvePath(merged.paths.knowledgeBase),
-    REPORTS: resolvePath(merged.paths.reports),
-    TRANSLATED: resolvePath(merged.paths.translated),
-    LOGS: resolvePath(merged.paths.logs),
-    TODO_LIST: resolvePath(merged.paths.todoList),
+    KNOWLEDGE_BASE: backendConfig.paths.knowledgeBase,
+    REPORTS: backendConfig.paths.reports,
+    TRANSLATED: backendConfig.paths.translated,
+    LOGS: backendConfig.paths.logs,
+    TODO_LIST: backendConfig.paths.todoList,
   },
   DEFAULTS: merged.defaults,
   WORKFLOW: merged.workflow,

@@ -87,6 +87,14 @@ function pathExists(targetPath) {
   return targetPath ? fs.existsSync(targetPath) : false;
 }
 
+function isWindowsPath(targetPath) {
+  return typeof targetPath === "string" && /^[A-Za-z]:[\\/]/.test(targetPath);
+}
+
+function pathApiFor(targetPath) {
+  return isWindowsPath(targetPath) ? path.win32 : path;
+}
+
 class KoharuRuntimeManager {
   constructor({
     config,
@@ -229,9 +237,11 @@ class KoharuRuntimeManager {
       }
     }
 
-    if (!dataRoot && projects[0]?.path) {
-      dataRoot = path.dirname(path.dirname(projects[0].path));
-      configPath = path.join(dataRoot, "config.toml");
+    const discoveredProjectPath = projects[0]?.path || null;
+    if (discoveredProjectPath) {
+      const projectPathApi = pathApiFor(discoveredProjectPath);
+      dataRoot = projectPathApi.dirname(projectPathApi.dirname(discoveredProjectPath));
+      configPath = projectPathApi.join(dataRoot, "config.toml");
     }
     if (!dataRoot) {
       dataRoot = fallbackDataRoot;
@@ -240,10 +250,11 @@ class KoharuRuntimeManager {
       configPath = path.join(dataRoot, "config.toml");
     }
 
-    const projectsRoot = dataRoot ? path.join(dataRoot, "projects") : null;
-    const modelsRoot = dataRoot ? path.join(dataRoot, "models") : null;
-    const runtimeRoot = dataRoot ? path.join(dataRoot, "runtime") : null;
-    const fontsRoot = dataRoot ? path.join(dataRoot, "fonts") : null;
+    const dataPathApi = pathApiFor(dataRoot);
+    const projectsRoot = dataRoot ? dataPathApi.join(dataRoot, "projects") : null;
+    const modelsRoot = dataRoot ? dataPathApi.join(dataRoot, "models") : null;
+    const runtimeRoot = dataRoot ? dataPathApi.join(dataRoot, "runtime") : null;
+    const fontsRoot = dataRoot ? dataPathApi.join(dataRoot, "fonts") : null;
 
     return {
       dataRoot,
@@ -256,6 +267,7 @@ class KoharuRuntimeManager {
       managedInstallRoot: this.installRoot,
       versionDir: this.versionDir,
       baseUrl,
+      hostAccessible: !fs.existsSync("/.dockerenv") || isWindowsPath(discoveredProjectPath),
       exists: {
         dataRoot: pathExists(dataRoot),
         projectsRoot: pathExists(projectsRoot),
@@ -291,7 +303,7 @@ class KoharuRuntimeManager {
     fs.mkdirSync(this.versionDir, { recursive: true });
     const release = await fetchJson(
       this.fetchImpl,
-      defaultReleaseUrl(this.config.repository || "mayocream/koharu", this.version),
+      defaultReleaseUrl(this.config.repository || "koharu-rs/koharu", this.version),
       "Fetch Koharu release"
     );
     const asset = selectReleaseAsset({ assets: release.assets || [] });

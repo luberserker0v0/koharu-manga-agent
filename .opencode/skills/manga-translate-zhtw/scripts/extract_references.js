@@ -5,7 +5,7 @@
  * 從場景提取原文與翻譯對照，生成參考資料與配對報告。
  *
  * 用法:
- *   node extract_references.js [--base-url http://127.0.0.1:9999] [--output ./knowledge_base/self/my-manga.json] [--tolerance 10]
+ *   node extract_references.js [--base-url http://127.0.0.1:9999] [--output ./domains/knowledge/self/default.json] [--tolerance 10]
  */
 
 const fs = require("fs");

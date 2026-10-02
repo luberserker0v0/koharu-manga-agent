@@ -5,6 +5,8 @@ module.exports = {
   testEnvironment: "node",
   roots: ["<rootDir>/tests"],
   testMatch: ["**/*.test.js"],
+  globalSetup: "<rootDir>/tests/global_setup.js",
+  globalTeardown: "<rootDir>/tests/global_teardown.js",
   setupFilesAfterEnv: ["<rootDir>/tests/setup.js"],
   testTimeout: 30000,
   collectCoverageFrom: [

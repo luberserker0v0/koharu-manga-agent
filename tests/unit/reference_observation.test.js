@@ -5,8 +5,8 @@ const path = require("path");
 describe("reference chapter observation", () => {
   test("caches one full chapter observation by extraction and contract fingerprint", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "chapter-observation-"));
-    const manifestsDir = path.join(tempRoot, "references", "manifests");
-    const extractedDir = path.join(tempRoot, "references", "extracted", "ref_1");
+    const manifestsDir = path.join(tempRoot, "domains", "reference", "manifests");
+    const extractedDir = path.join(tempRoot, "domains", "reference", "extraction", "ref_1");
     fs.mkdirSync(manifestsDir, { recursive: true });
     fs.mkdirSync(extractedDir, { recursive: true });
     fs.writeFileSync(path.join(manifestsDir, "ref_1.json"), JSON.stringify({
@@ -17,7 +17,7 @@ describe("reference chapter observation", () => {
       language: "ja-JP",
       pageCount: 1,
       imageDir: "references/images/ref_1",
-      extractedDir: "references/extracted/ref_1",
+      extractedDir: "domains/reference/extraction/ref_1",
       enabled: true,
     }));
     fs.writeFileSync(path.join(extractedDir, "texts.json"), JSON.stringify({
@@ -28,9 +28,9 @@ describe("reference chapter observation", () => {
     jest.doMock("../../backend/src/config", () => ({
       PROJECT_ROOT: tempRoot,
       paths: {
-        referenceImages: path.join(tempRoot, "references", "images"),
-        referenceExtracted: path.join(tempRoot, "references", "extracted"),
-        referenceComparisons: path.join(tempRoot, "references", "comparisons"),
+        referenceImages: path.join(tempRoot, "domains", "reference", "images"),
+        referenceExtracted: path.join(tempRoot, "domains", "reference", "extraction"),
+        referenceComparisons: path.join(tempRoot, "domains", "reference", "comparisons"),
         referenceManifests: manifestsDir,
       },
     }));

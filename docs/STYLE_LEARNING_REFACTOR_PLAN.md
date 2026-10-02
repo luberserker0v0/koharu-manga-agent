@@ -109,7 +109,7 @@ Purpose:
 
 Suggested file:
 
-- `knowledge_base/self/<mangaId>/<translatorId>/style_evidence.json`
+- `domains/knowledge/self/<mangaId>/<translatorId>/style_evidence.json`
 
 Suggested structure:
 
@@ -147,7 +147,7 @@ Purpose:
 
 Existing file retained:
 
-- `knowledge_base/self/<mangaId>/<translatorId>/style_profile.json`
+- `domains/knowledge/self/<mangaId>/<translatorId>/style_profile.json`
 
 But its schema must be upgraded.
 

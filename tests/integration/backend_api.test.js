@@ -341,7 +341,7 @@ describe("backend api", () => {
   test("GET /references returns enabled reference manifest summaries", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "reference-list-"));
     const originalReferenceManifests = paths.referenceManifests;
-    paths.referenceManifests = path.join(tempRoot, "references", "manifests");
+    paths.referenceManifests = path.join(tempRoot, "domains", "reference", "manifests");
     fs.mkdirSync(paths.referenceManifests, { recursive: true });
     fs.writeFileSync(
       path.join(paths.referenceManifests, "ref_test_001.json"),
@@ -351,8 +351,8 @@ describe("backend api", () => {
         source: "imported_folder",
         language: "zh-TW",
         pageCount: 3,
-        imageDir: "references/other_images/ref_test_001",
-        extractedDir: "references/extracted/ref_test_001",
+        imageDir: "domains/reference/images/ref_test_001",
+        extractedDir: "domains/reference/extraction/ref_test_001",
         enabled: true,
       })
     );
@@ -405,9 +405,9 @@ describe("backend api", () => {
     writePng(path.join(importedFolder, "001.png"));
     writePng(path.join(importedFolder, "002.png"));
 
-    paths.referenceImages = path.join(tempRoot, "references", "other_images");
-    paths.referenceExtracted = path.join(tempRoot, "references", "extracted");
-    paths.referenceManifests = path.join(tempRoot, "references", "manifests");
+    paths.referenceImages = path.join(tempRoot, "domains", "reference", "images");
+    paths.referenceExtracted = path.join(tempRoot, "domains", "reference", "extraction");
+    paths.referenceManifests = path.join(tempRoot, "domains", "reference", "manifests");
 
     try {
       const store = new JobStore(createTempDbPath());
@@ -472,9 +472,9 @@ describe("backend api", () => {
     fs.mkdirSync(importedFolder, { recursive: true });
     writePng(path.join(importedFolder, "001.png"));
 
-    paths.referenceImages = path.join(tempRoot, "references", "other_images");
-    paths.referenceExtracted = path.join(tempRoot, "references", "extracted");
-    paths.referenceManifests = path.join(tempRoot, "references", "manifests");
+    paths.referenceImages = path.join(tempRoot, "domains", "reference", "images");
+    paths.referenceExtracted = path.join(tempRoot, "domains", "reference", "extraction");
+    paths.referenceManifests = path.join(tempRoot, "domains", "reference", "manifests");
 
     writeKnowledgeIndex({ series: [] });
     const indexedManga = createMangaRecord({ label: "Bound Series", language: "zh-TW" });
@@ -553,20 +553,18 @@ describe("backend api", () => {
     const originalReferenceImages = paths.referenceImages;
     const originalReferenceExtracted = paths.referenceExtracted;
     const originalReferenceManifests = paths.referenceManifests;
-    const originalLegacyReferenceDiagnostics = paths.legacyReferenceDiagnostics;
     const originalReferenceComparisons = paths.referenceComparisons;
 
-    paths.referenceImages = path.join(tempRoot, "references", "other_images");
-    paths.referenceExtracted = path.join(tempRoot, "references", "extracted");
-    paths.referenceManifests = path.join(tempRoot, "references", "manifests");
-    paths.legacyReferenceDiagnostics = path.join(tempRoot, "references", "comparisons");
-    paths.referenceComparisons = paths.legacyReferenceDiagnostics;
+    paths.referenceImages = path.join(tempRoot, "domains", "reference", "images");
+    paths.referenceExtracted = path.join(tempRoot, "domains", "reference", "extraction");
+    paths.referenceManifests = path.join(tempRoot, "domains", "reference", "manifests");
+    paths.referenceComparisons = path.join(tempRoot, "domains", "reference", "comparisons");
 
     const referenceId = "ref_delete_test";
     const manifestDir = paths.referenceManifests;
     const imageDir = path.join(paths.referenceImages, referenceId);
     const extractedDir = path.join(paths.referenceExtracted, referenceId);
-    const comparisonsDir = path.join(paths.legacyReferenceDiagnostics, referenceId);
+    const comparisonsDir = path.join(paths.referenceComparisons, referenceId);
 
     fs.mkdirSync(manifestDir, { recursive: true });
     fs.mkdirSync(imageDir, { recursive: true });
@@ -580,8 +578,8 @@ describe("backend api", () => {
         source: "imported_folder",
         language: "zh-TW",
         pageCount: 1,
-        imageDir: `references/other_images/${referenceId}`,
-        extractedDir: `references/extracted/${referenceId}`,
+        imageDir: `domains/reference/images/${referenceId}`,
+        extractedDir: `domains/reference/extraction/${referenceId}`,
         enabled: true,
       })
     );
@@ -641,7 +639,6 @@ describe("backend api", () => {
       paths.referenceImages = originalReferenceImages;
       paths.referenceExtracted = originalReferenceExtracted;
       paths.referenceManifests = originalReferenceManifests;
-      paths.legacyReferenceDiagnostics = originalLegacyReferenceDiagnostics;
       paths.referenceComparisons = originalReferenceComparisons;
     }
   });
@@ -653,8 +650,8 @@ describe("backend api", () => {
           mangaId: "phantom_fantasy",
           label: "Phantom Fantasy",
           language: "zh-TW",
-          knowledgePath: "knowledge_base/self/phantom_fantasy/knowledge.json",
-          reportPath: "knowledge_base/reports/phantom_fantasy/extract_report.json",
+          knowledgePath: "domains/knowledge/self/phantom_fantasy/knowledge.json",
+          reportPath: "domains/knowledge/reports/phantom_fantasy/extract_report.json",
           updatedAt: "2026-05-27T10:00:00.000Z",
         },
       ],
@@ -1221,8 +1218,8 @@ describe("backend api", () => {
       language: "ja-JP",
       referenceKind: "source",
       pageCount: 1,
-      imageDir: `references/other_images/${referenceSetId}`,
-      extractedDir: `references/extracted/${referenceSetId}`,
+      imageDir: `domains/reference/images/${referenceSetId}`,
+      extractedDir: `domains/reference/extraction/${referenceSetId}`,
       enabled: true,
     }));
     const extractionPaths = referenceSetPaths(referenceSetId);
@@ -1338,7 +1335,7 @@ describe("backend api", () => {
 
   test("GET /knowledge/:mangaId endpoints expose stored assets and honor translatorId", async () => {
     const mangaId = "test_api_series";
-    const seriesDir = path.join(PROJECT_ROOT, "knowledge_base", "self", mangaId);
+    const seriesDir = path.join(TEST_DATA_ROOT, "domains", "knowledge", "self", mangaId);
     const translatorDir = path.join(seriesDir, "translator_alpha");
     fs.mkdirSync(seriesDir, { recursive: true });
     fs.mkdirSync(translatorDir, { recursive: true });

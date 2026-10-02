@@ -214,4 +214,23 @@ describe("KoharuRuntimeManager", () => {
       await closeServer(blocker);
     }
   });
+
+  test("preserves Windows paths reported by an external Koharu service", async () => {
+    const manager = new KoharuRuntimeManager({
+      config: { managed: false, host: "host.docker.internal", port: 4000 },
+      installRoot: tempInstallRoot(),
+    });
+    jest.spyOn(manager, "isReachable").mockResolvedValue(true);
+    const client = {
+      listProjects: jest.fn().mockResolvedValue([
+        { id: "chapter", path: "C:\\Users\\tester\\AppData\\Local\\Koharu\\projects\\chapter" },
+      ]),
+    };
+
+    const paths = await manager.inspectPaths({ client, baseUrl: "http://host.docker.internal:4000" });
+
+    expect(paths.dataRoot).toBe("C:\\Users\\tester\\AppData\\Local\\Koharu");
+    expect(paths.projectsRoot).toBe("C:\\Users\\tester\\AppData\\Local\\Koharu\\projects");
+    expect(paths.hostAccessible).toBe(true);
+  });
 });

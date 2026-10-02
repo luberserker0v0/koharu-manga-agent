@@ -5,6 +5,7 @@ export const IPC_CHANNELS = {
   OPEN_PATH: "desktop:open-path",
   VALIDATE_PATHS: "desktop:validate-paths",
   PICK_DIRECTORY: "desktop:pick-directory",
+  PICK_FILE: "desktop:pick-file",
   PICK_DIRECTORIES: "desktop:pick-directories",
   CONFIRM_DIALOG: "desktop:confirm-dialog",
   READ_JSON_FILE: "desktop:read-json-file",
@@ -13,4 +14,8 @@ export const IPC_CHANNELS = {
   OPEN_KOHARU_EDITOR: "koharu-editor:open",
   CLOSE_KOHARU_EDITOR: "koharu-editor:close",
   KOHARU_EDITOR_CLOSED: "koharu-editor:closed",
+  KOHARU_HOST_STATUS: "koharu-host:status",
+  KOHARU_HOST_INSTALL_START: "koharu-host:install-start",
+  KOHARU_HOST_START: "koharu-host:start",
+  KOHARU_HOST_STOP: "koharu-host:stop",
 } as const;

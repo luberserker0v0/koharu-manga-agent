@@ -52,10 +52,10 @@ describe("workflow contracts", () => {
 
     expect(runtimeConfig.runtime.host).toBe("127.0.0.1");
     expect(runtimeConfig.runtime.port).toBe(4001);
-    expect(runtimeConfig.paths.database).toContain("process-agent.sqlite");
+    expect(runtimeConfig.paths.database).toContain(path.join("state", "jobs.sqlite"));
   });
 
-  test("legacy workflow policy still covers all four config branches during migration", () => {
+  test("workflow policy covers all four config branches", () => {
     const policy = require(WORKFLOW_POLICY_PATH);
 
     const scenarios = [

@@ -22,8 +22,8 @@ beforeAll(() => {
     referenceKind: "source",
     language: "ja-JP",
     pageCount: 1,
-    imageDir: `references/other_images/${fixtureReferenceId}`,
-    extractedDir: `references/extracted/${fixtureReferenceId}`,
+    imageDir: `domains/reference/images/${fixtureReferenceId}`,
+    extractedDir: `domains/reference/extraction/${fixtureReferenceId}`,
     enabled: true,
   }));
 });
@@ -33,12 +33,17 @@ afterAll(() => {
 });
 
 describe("reference sets", () => {
-  test("example manifest contains required keys", () => {
-    const manifestPath = path.join(
-      __dirname,
-      "../../references/manifests/_schema.example.json"
-    );
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+  test("manifest contract contains required keys", () => {
+    const manifest = {
+      id: "ref_001",
+      label: "Contract fixture",
+      source: "test",
+      language: "ja-JP",
+      pageCount: 1,
+      imageDir: "domains/reference/images/ref_001",
+      extractedDir: "domains/reference/extraction/ref_001",
+      enabled: true,
+    };
 
     expect(() => validateReferenceManifest(manifest)).not.toThrow();
     expect(manifest.id).toBe("ref_001");
@@ -47,10 +52,10 @@ describe("reference sets", () => {
   test("referenceSetPaths resolves all derived paths", () => {
     const paths = referenceSetPaths("ref_123");
 
-    expect(paths.imagesDir).toContain(path.join("references", "other_images", "ref_123"));
-    expect(paths.textsPath).toContain(path.join("references", "extracted", "ref_123", "texts.json"));
-    expect(paths.scenePath).toContain(path.join("references", "extracted", "ref_123", "scene.json"));
-    expect(paths.comparisonsDir).toContain(path.join("references", "comparisons", "ref_123"));
+    expect(paths.imagesDir).toContain(path.join("domains", "reference", "images", "ref_123"));
+    expect(paths.textsPath).toContain(path.join("domains", "reference", "extraction", "ref_123", "texts.json"));
+    expect(paths.scenePath).toContain(path.join("domains", "reference", "extraction", "ref_123", "scene.json"));
+    expect(paths.comparisonsDir).toContain(path.join("domains", "reference", "comparisons", "ref_123"));
   });
 
   test("reference manifests no longer require a comparison directory", () => {
@@ -61,8 +66,8 @@ describe("reference sets", () => {
         source: "provided_by_user",
         language: "zh-TW",
         pageCount: 4,
-        imageDir: "references/other_images/ref_optional_comparison",
-        extractedDir: "references/extracted/ref_optional_comparison",
+        imageDir: "domains/reference/images/ref_optional_comparison",
+        extractedDir: "domains/reference/extraction/ref_optional_comparison",
         enabled: true,
       })
     ).not.toThrow();
@@ -72,12 +77,8 @@ describe("reference sets", () => {
     expect(path.isAbsolute(backendConfig.paths.references)).toBe(true);
     expect(path.isAbsolute(backendConfig.paths.referenceImages)).toBe(true);
     expect(path.isAbsolute(backendConfig.paths.referenceExtracted)).toBe(true);
-    expect(path.isAbsolute(backendConfig.paths.legacyReferenceDiagnostics)).toBe(true);
     expect(path.isAbsolute(backendConfig.paths.referenceComparisons)).toBe(true);
     expect(path.isAbsolute(backendConfig.paths.referenceManifests)).toBe(true);
-    expect(backendConfig.paths.legacyReferenceDiagnostics).toBe(
-      backendConfig.paths.referenceComparisons
-    );
   });
 
   test("normalizeSceneTexts builds extracted reference text structure", () => {
