@@ -288,5 +288,6 @@ GUI design notes:
 - the current GUI direction treats artifacts as job-scoped detail tabs inside `Job List`
 - the current `Job List` workspace includes terminal-job delete-to-trash, restore/undo protection, permanent delete from Trash, checkbox batch actions, filtering, keyword search, sorting controls, and a collapsible/resizable list pane
 - trashed jobs are automatically cleaned after the configured retention window (default: 30 days)
+- file cleanup covers `logs`, translated output, job workspaces, and post-edit documents via `GET /maintenance/cleanup/preview` and `POST /maintenance/cleanup` (dry-run by default in preview, scheduled run hourly when `cleanup.enabled` is true); see `docs/API.md`
 - `Job List` now uses `GET /jobs` for initial hydrate and `GET /jobs/stream` as the primary live sync channel, with fallback polling only when SSE is unavailable
 - the `Job List` header shows a live-sync badge so users can tell whether list updates are flowing live, reconnecting, or falling back to polling

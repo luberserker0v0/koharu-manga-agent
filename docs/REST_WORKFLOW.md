@@ -178,6 +178,22 @@ When the chapter no longer needs those operations, delete it explicitly:
 DELETE /api/v1/uploads/{uploadId}
 ```
 
+### 11. File retention (maintenance cleanup)
+
+Translated output (`outputs/translated/`), preview caches (`cache/translated-images/`), per-job
+workspaces (`workspaces/jobs/`), post-edit documents (`domains/post-edit/`), and backend logs
+(`logs/backend/`) grow with every job. They are governed by `defaults.*RetentionDays` in backend
+config (0 disables an item) and can be previewed or executed on demand:
+
+```http
+GET /maintenance/cleanup/preview?target=all
+POST /maintenance/cleanup
+```
+
+Uploads are intentionally excluded from automatic cleanup because post-edit and re-export depend
+on the preflight source images (see section 10). Koharu server-side stored projects are never
+deleted by cleanup. Full endpoint details are in `docs/API.md`.
+
 ## Executable CLI Workflow
 
 The repository includes a zero-dependency Node client implementing the sequence above, including SSE progress, polling reconciliation, event retrieval, and artifact downloads:

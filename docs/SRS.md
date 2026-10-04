@@ -103,6 +103,8 @@ The system must:
 - support trash-based delete protection and job restore in the GUI
 - support permanent deletion for trashed jobs
 - support automatic cleanup of expired trashed jobs
+- support retention-based file cleanup for logs, translated output, job workspaces, and post-edit documents, with preview (dry-run) before execution
+- never delete running jobs, paths outside the backend data root, or Koharu server-side stored projects during automatic cleanup
 
 ### FR-09 Agent provider integration
 The system must:

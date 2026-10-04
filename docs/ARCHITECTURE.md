@@ -131,7 +131,10 @@ Current implementation note:
 ### Non-Workflow Modules
 - `backend/src/domains/jobs/lifecycle/admin.js`
   - list projects
-  - log maintenance
+  - log maintenance (delegates to the maintenance cleanup service)
+- `backend/src/domains/maintenance/cleanup_service.js`
+  - owns the file cleanup policy for `logs`, translated output, job workspaces, and post-edit documents
+  - exposes preview/execute runs; the hourly scheduler is started from `backend/src/runtime.js` and stopped with the API server
 
 ### Agent Integration Modules
 - `backend/src/integrations/ao/client/ao_client.js`
