@@ -88,6 +88,18 @@ export type BackendConfig = {
     modelSilenceTimeoutMs?: number;
   };
   engines?: Record<string, string> | null;
+  defaults?: {
+    trashRetentionDays?: number;
+    logRetentionDays?: number;
+    logMaxFiles?: number;
+    translatedRetentionDays?: number;
+    workspaceRetentionDays?: number;
+    postEditRetentionDays?: number;
+  };
+  cleanup?: {
+    enabled?: boolean;
+    intervalMs?: number;
+  };
   koharuRuntime?: {
     managed?: boolean;
     version?: string;
@@ -250,4 +262,34 @@ export function prepareKoharuRuntime(): Promise<{ koharu: RuntimeStatus["koharu"
 
 export function stopKoharuRuntime(): Promise<{ koharu: RuntimeStatus["koharu"] }> {
   return apiFetch("/runtime/koharu/stop", { method: "POST", timeoutMs: 30000 });
+}
+
+export type MaintenanceCleanupTarget = "logs" | "translated" | "workspaces" | "postedit";
+
+export type MaintenanceCleanupResult = {
+  dryRun: boolean;
+  results: Partial<Record<MaintenanceCleanupTarget, {
+    target: string;
+    deleted: number;
+    freedBytes: number;
+    dryRun: boolean;
+    files?: string[];
+    dirs?: string[];
+  }>>;
+};
+
+export function previewMaintenanceCleanup(target: MaintenanceCleanupTarget | "all" = "all"): Promise<MaintenanceCleanupResult> {
+  return apiFetch(`/maintenance/cleanup/preview?target=${encodeURIComponent(target)}`, { timeoutMs: 30000 });
+}
+
+export function executeMaintenanceCleanup(payload: {
+  targets?: Array<MaintenanceCleanupTarget | "all">;
+  dryRun?: boolean;
+  logRetentionDays?: number;
+  logMaxFiles?: number;
+  translatedRetentionDays?: number;
+  workspaceRetentionDays?: number;
+  postEditRetentionDays?: number;
+}): Promise<MaintenanceCleanupResult> {
+  return apiFetch("/maintenance/cleanup", { method: "POST", body: JSON.stringify(payload), timeoutMs: 60000 });
 }

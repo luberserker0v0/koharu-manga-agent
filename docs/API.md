@@ -345,11 +345,54 @@ Current stream event categories:
 - `job.batch_restored`
 - `job.batch_purged`
 - `job.trash_cleanup`
+- `maintenance.cleanup_completed`
 
 Notes:
 - this stream carries job-summary level updates, not full persisted job event history
 - `GET /jobs/{jobId}/stream` remains the selected-job detail stream
 - GUI should use `GET /jobs` as initial hydrate and `/jobs/stream` as the live-first update channel
+
+### Preview maintenance cleanup
+```http
+GET /maintenance/cleanup/preview?target=all
+```
+
+`target` accepts `logs`, `translated`, `workspaces`, `postedit`, or `all`. Always a dry run;
+returns per-target `{ deleted, freedBytes, dryRun: true }` without deleting anything.
+
+### Run maintenance cleanup
+```http
+POST /maintenance/cleanup
+```
+
+Body:
+
+```json
+{
+  "targets": ["logs", "translated", "workspaces", "postedit"],
+  "dryRun": false,
+  "translatedRetentionDays": 30
+}
+```
+
+`"targets": ["all"]` expands to all four targets. `dryRun: true` previews without deleting.
+Optional per-call retention overrides (`logRetentionDays`, `logMaxFiles`,
+`translatedRetentionDays`, `workspaceRetentionDays`, `postEditRetentionDays`, `olderThanDays`)
+fall back to `defaults.*` in backend config. Running jobs are never deleted, paths outside
+`DATA_ROOT` are never removed, and Koharu server-side stored projects are never touched.
+A non-dry run emits `maintenance.cleanup_completed` on the job stream.
+
+Retention defaults (`GET /config`, editable via `PATCH /config`):
+
+| key | default | meaning |
+|---|---|---|
+| `defaults.trashRetentionDays` | `30` | trashed DB rows (plus their local dirs, best-effort) |
+| `defaults.logRetentionDays` | `14` | `logs/backend/` by file mtime |
+| `defaults.logMaxFiles` | `200` | max log files kept (union with age rule) |
+| `defaults.translatedRetentionDays` | `30` | `outputs/translated/` + `cache/translated-images/` |
+| `defaults.workspaceRetentionDays` | `30` | `workspaces/jobs/<jobId>/` |
+| `defaults.postEditRetentionDays` | `30` | `domains/post-edit/<jobId>/` |
+| `cleanup.enabled` / `cleanup.intervalMs` | `true` / `3600000` | hourly scheduled `targets: ["all"]` run (skipped when disabled) |
 
 ### Read persisted job events
 ```http

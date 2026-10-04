@@ -12,6 +12,15 @@ const EDITABLE_KEYS = {
   workflow: new Set(["qualityCheck"]),
   agent: new Set(["baseUrl", "apiKey", "model", "agentName", ...TIMEOUT_KEYS]),
   engines: ENGINE_KEYS,
+  defaults: new Set([
+    "trashRetentionDays",
+    "logRetentionDays",
+    "logMaxFiles",
+    "translatedRetentionDays",
+    "workspaceRetentionDays",
+    "postEditRetentionDays",
+  ]),
+  cleanup: new Set(["enabled", "intervalMs"]),
 };
 
 function invalid(message) {
@@ -52,6 +61,22 @@ function validateConfigPatch(patch) {
           throw invalid("workflow.qualityCheck only accepts enabled.");
         }
         if (typeof value.enabled !== "boolean") throw invalid("workflow.qualityCheck.enabled must be a boolean.");
+      } else if (section === "defaults") {
+        if (key === "logMaxFiles") {
+          if (!Number.isInteger(value) || value < 0) throw invalid("defaults.logMaxFiles must be an integer >= 0.");
+        } else if (["trashRetentionDays", "logRetentionDays", "translatedRetentionDays", "workspaceRetentionDays", "postEditRetentionDays"].includes(key)) {
+          if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw invalid(`defaults.${key} must be a number >= 0 (0 disables).`);
+        } else {
+          throw invalid(`Unsupported config field: ${section}.${key}.`);
+        }
+      } else if (section === "cleanup") {
+        if (key === "enabled") {
+          if (typeof value !== "boolean") throw invalid("cleanup.enabled must be a boolean.");
+        } else if (key === "intervalMs") {
+          if (!Number.isInteger(value) || value < 60000) throw invalid("cleanup.intervalMs must be an integer >= 60000.");
+        } else {
+          throw invalid(`Unsupported config field: ${section}.${key}.`);
+        }
       } else if ((section === "api" || section === "agent") && key === "baseUrl") {
         assertHttpUrl(value, `${section}.${key}`);
       } else if (section === "agent" && TIMEOUT_KEYS.has(key)) {

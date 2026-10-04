@@ -977,12 +977,39 @@ class JobManager {
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
     const purgedIds = this.store.purgeDeletedBefore(cutoff);
     if (purgedIds.length > 0) {
+      try {
+        const { deleteJobDirectories } = require("../maintenance/cleanup_service");
+        deleteJobDirectories({ jobIds: purgedIds, paths });
+      } catch {
+        // Filesystem cleanup is best-effort; DB purge already succeeded.
+      }
       this.publishSystem("job.trash_cleanup", {
         purgedIds,
         retentionDays,
       });
     }
     return purgedIds;
+  }
+
+  runMaintenanceCleanup({ targets = ["logs", "translated", "workspaces", "postedit"], dryRun = true, overrides = {} } = {}) {
+    const { runCleanup } = require("../maintenance/cleanup_service");
+    const results = runCleanup({
+      targets,
+      options: {
+        dryRun,
+        logRetentionDays: overrides.logRetentionDays ?? this.resolvedConfig.defaults?.logRetentionDays,
+        logMaxFiles: overrides.logMaxFiles ?? this.resolvedConfig.defaults?.logMaxFiles,
+        translatedRetentionDays: overrides.translatedRetentionDays ?? this.resolvedConfig.defaults?.translatedRetentionDays,
+        workspaceRetentionDays: overrides.workspaceRetentionDays ?? this.resolvedConfig.defaults?.workspaceRetentionDays,
+        postEditRetentionDays: overrides.postEditRetentionDays ?? this.resolvedConfig.defaults?.postEditRetentionDays,
+        olderThanDays: overrides.olderThanDays,
+      },
+      context: { paths, config: this.resolvedConfig, store: this.store },
+    });
+    if (!dryRun) {
+      this.publishSystem("maintenance.cleanup_completed", { targets, results });
+    }
+    return results;
   }
 
   async runJob(jobId) {

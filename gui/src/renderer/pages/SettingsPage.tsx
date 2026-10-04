@@ -11,6 +11,7 @@ import {
   installAndStartKoharuHost, startKoharuHost, stopKoharuHost, validatePaths, writeSettings,
 } from "../services/desktop_api";
 import { StorageLocations } from "../features/settings/components/StorageLocations";
+import { MaintenanceCleanup } from "../features/settings/components/MaintenanceCleanup";
 import { BackendConnectionSettings } from "../features/settings/components/BackendConnectionSettings";
 import { KoharuHostRuntimeSettings } from "../features/settings/components/KoharuHostRuntimeSettings";
 import { useLanguageStore } from "../stores/language_store";
@@ -67,6 +68,18 @@ function buildConfigPatch(config: BackendConfig): BackendConfig {
       ...Object.fromEntries(TIMEOUT_KEYS.filter((key) => config.agent?.[key] != null).map((key) => [key, config.agent?.[key]])),
     },
     engines: Object.fromEntries(Object.entries(config.engines || {}).filter(([, value]) => Boolean(value))),
+    defaults: {
+      trashRetentionDays: config.defaults?.trashRetentionDays,
+      logRetentionDays: config.defaults?.logRetentionDays,
+      logMaxFiles: config.defaults?.logMaxFiles,
+      translatedRetentionDays: config.defaults?.translatedRetentionDays,
+      workspaceRetentionDays: config.defaults?.workspaceRetentionDays,
+      postEditRetentionDays: config.defaults?.postEditRetentionDays,
+    },
+    cleanup: {
+      enabled: config.cleanup?.enabled,
+      intervalMs: config.cleanup?.intervalMs,
+    },
   };
 }
 
@@ -150,6 +163,12 @@ export function SettingsPage() {
     } : current);
   const updateAgent = (key: "baseUrl" | "model" | "apiKey" | "agentName" | TimeoutKey, value: string | number) =>
     setConfig((current) => current ? { ...current, agent: { ...current.agent, [key]: value } } : current);
+  const updateMaintenance = (patch: BackendConfig) =>
+    setConfig((current) => current ? {
+      ...current,
+      defaults: patch.defaults ? { ...current.defaults, ...patch.defaults } : current.defaults,
+      cleanup: patch.cleanup ? { ...current.cleanup, ...patch.cleanup } : current.cleanup,
+    } : current);
 
   const refresh = async () => {
     await Promise.allSettled([
@@ -463,6 +482,12 @@ export function SettingsPage() {
               <label className="field"><span>{t("settings.ao.agentName.label")}</span><input value={config.agent?.agentName || ""} onChange={(event) => updateAgent("agentName", event.currentTarget.value)} /></label>
               {TIMEOUT_KEYS.map((key) => <label className="field" key={key}><span>{t(`settings.ao.timeout.${key}`)}</span><input min={1} type="number" value={config.agent?.[key] || ""} onChange={(event) => updateAgent(key, Number(event.currentTarget.value))} /></label>)}
             </div></details>
+          </Section>
+        </article>}
+
+        {config && <article className="card">
+          <Section title={t("settings.maintenance.title")} description={t("settings.maintenance.description")}>
+            <MaintenanceCleanup config={config} onConfigChange={updateMaintenance} t={t} />
           </Section>
         </article>}
 

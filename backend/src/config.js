@@ -96,6 +96,15 @@ const DEFAULT_CONFIG = {
     tolerance: 10,
     autoDeleteProject: false,
     trashRetentionDays: 30,
+    logRetentionDays: 14,
+    logMaxFiles: 200,
+    translatedRetentionDays: 30,
+    workspaceRetentionDays: 30,
+    postEditRetentionDays: 30,
+  },
+  cleanup: {
+    enabled: true,
+    intervalMs: 3600000,
   },
   workflow: {
     qualityCheck: {

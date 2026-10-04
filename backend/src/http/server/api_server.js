@@ -269,6 +269,46 @@ function createApiServer({
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/maintenance/cleanup/preview") {
+        const target = url.searchParams.get("target") || "all";
+        const targets = target === "all" ? ["logs", "translated", "workspaces", "postedit"] : [target];
+        for (const entry of targets) {
+          if (!["logs", "translated", "workspaces", "postedit"].includes(entry)) {
+            sendJson(res, 400, { error: `Unsupported cleanup target: ${entry}.` });
+            return;
+          }
+        }
+        sendJson(res, 200, {
+          dryRun: true,
+          results: jobManager.runMaintenanceCleanup({ targets, dryRun: true }),
+        });
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/maintenance/cleanup") {
+        const body = await readJsonBody(req).catch(() => ({}));
+        const rawTargets = Array.isArray(body.targets)
+          ? body.targets
+          : typeof body.targets === "string"
+            ? [body.targets]
+            : body.target
+              ? [body.target]
+              : ["logs", "translated", "workspaces", "postedit"];
+        const targets = rawTargets.includes("all") ? ["logs", "translated", "workspaces", "postedit"] : rawTargets;
+        for (const entry of targets) {
+          if (!["logs", "translated", "workspaces", "postedit"].includes(entry)) {
+            sendJson(res, 400, { error: `Unsupported cleanup target: ${entry}.` });
+            return;
+          }
+        }
+        const dryRun = body.dryRun !== undefined ? Boolean(body.dryRun) : false;
+        sendJson(res, 200, {
+          dryRun,
+          results: jobManager.runMaintenanceCleanup({ targets, dryRun, overrides: body || {} }),
+        });
+        return;
+      }
+
       const publicationMatch = url.pathname.match(/^\/translation-publications\/([^/]+)$/);
       if (req.method === "GET" && publicationMatch) {
         const translatorId = url.searchParams.get("translatorId");

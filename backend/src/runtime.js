@@ -24,6 +24,7 @@ const { JobManager } = require("./domains/jobs/job_manager");
 const { UploadService } = require("./domains/uploads/upload_service");
 const { TranslatedImageService } = require("./domains/translation/exports/translated_image_service");
 const { createApiServer } = require("./http/server/api_server");
+const { startCleanupScheduler } = require("./domains/maintenance/cleanup_service");
 
 function applyKoharuRuntimeStatus(runtime, status) {
   if (!status?.baseUrl) {
@@ -141,8 +142,13 @@ function createRuntime(overrides = {}) {
     serverConfig: config.server || {},
   });
   const closeApi = api.close.bind(api);
+  const cleanupTimer = startCleanupScheduler({
+    jobManager,
+    getConfig: () => config,
+  });
   api.close = async () => {
     try {
+      if (cleanupTimer) clearInterval(cleanupTimer);
       if (config.koharuRuntime?.stopWithBackend !== false) {
         await koharuRuntimeManager.stopManaged();
       }
