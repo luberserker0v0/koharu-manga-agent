@@ -1,3 +1,5 @@
+name: koharu-manga-agent
+
 services:
   backend:
     build:
