@@ -27,13 +27,15 @@ describe("workflow engine manga-management binding sync", () => {
     };
     const engine = new WorkflowEngine({
       sourcePreflightModule: {
-        get: jest.fn().mockReturnValue({
-          preflightId: "preflight_001",
-          sourceFolder: "C:\\source",
-          summary: { acceptedCount: 1, convertedCount: 0 },
-          orderChanged: false,
+        resolveSourceSelection: jest.fn().mockReturnValue({
+          manifest: {
+            preflightId: "preflight_001",
+            sourceFolder: "C:\\source",
+            summary: { acceptedCount: 1, convertedCount: 0 },
+            orderChanged: false,
+          },
+          images: [{ id: "source-image-1", orderedPath: "C:\\source\\001.png", orderIndex: 0 }],
         }),
-        resolveSourceImages: jest.fn().mockReturnValue(["C:\\source\\001.png"]),
       },
       projectSetup: {
         run: jest.fn().mockResolvedValue({

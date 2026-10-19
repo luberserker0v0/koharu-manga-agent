@@ -1,0 +1,385 @@
+openapi: 3.1.0
+info:
+  title: Koharu Manga Agent page revision API
+  version: 0.2.0
+  description: >-
+    Versioned REST contract for selective page retranslation, translated-image
+    source mapping, and explicit active-revision management. Other backend
+    endpoints are documented in docs/API.md.
+servers:
+  - url: http://127.0.0.1:4001/api/v1
+security:
+  - bearerAuth: []
+paths:
+  /jobs/{jobId}/retranslations:
+    post:
+      summary: Create a selective page retranslation Job
+      operationId: createSelectiveRetranslation
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelectiveRetranslationRequest'
+      responses:
+        '202':
+          description: Retranslation queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /jobs/{jobId}/translated-images:
+    get:
+      summary: List translated images with source and revision identity
+      operationId: listTranslatedImages
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Ordered images inside this Job
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranslatedImageManifest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /jobs/{rootJobId}/page-revisions:
+    get:
+      summary: List every immutable page revision and active selection
+      operationId: listPageRevisions
+      parameters:
+        - $ref: '#/components/parameters/RootJobId'
+      responses:
+        '200':
+          description: Chapter page revision family
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageRevisionManifest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /jobs/{rootJobId}/page-revisions/activate:
+    post:
+      summary: Atomically activate selected page revisions
+      operationId: activatePageRevisions
+      parameters:
+        - $ref: '#/components/parameters/RootJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [selections]
+              properties:
+                selections:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: '#/components/schemas/PageRevisionSelection'
+      responses:
+        '200':
+          description: Updated active revision manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageRevisionManifest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    JobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+    RootJobId:
+      name: rootJobId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  responses:
+    BadRequest:
+      description: Invalid request shape
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Job or revision root not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Retained source data or revision relationship is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Provider, language, instruction, or source selection is unsupported
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unavailable:
+      description: Koharu or a required provider catalog is unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    TranslationTarget:
+      type: object
+      additionalProperties: false
+      required: [providerId, modelId]
+      properties:
+        providerId:
+          type: string
+          minLength: 1
+        modelId:
+          type: string
+          minLength: 1
+    SelectiveRetranslationRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceImageIds]
+      properties:
+        sourceImageIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        translationTarget:
+          $ref: '#/components/schemas/TranslationTarget'
+        sourceLanguage:
+          type: string
+          minLength: 1
+        targetLanguage:
+          type: string
+          minLength: 1
+        instructions:
+          type: string
+          minLength: 1
+    RevisionLineage:
+      type: object
+      required: [rootJobId, parentJobId, reason, sourceImageIds]
+      properties:
+        rootJobId:
+          type: string
+        parentJobId:
+          type: string
+        reason:
+          const: selective_retranslation
+        sourceImageIds:
+          type: array
+          items:
+            type: string
+    Job:
+      type: object
+      required: [id, type, status, stage]
+      properties:
+        id:
+          type: string
+        type:
+          const: translation
+        status:
+          type: string
+          enum: [queued, waiting_dependency, running, succeeded, failed, canceled, blocked]
+        stage:
+          type: string
+        revision:
+          $ref: '#/components/schemas/RevisionLineage'
+        payload:
+          type: object
+    TranslatedImage:
+      type: object
+      required:
+        - id
+        - index
+        - sourceImageId
+        - sourceOrderIndex
+        - revisionId
+        - revisionNumber
+        - active
+        - fileName
+        - mediaType
+        - size
+        - encodedUrl
+        - contentUrl
+      properties:
+        id:
+          type: string
+        index:
+          type: integer
+          minimum: 0
+        sourceImageId:
+          type: string
+        sourceOrderIndex:
+          type: integer
+          minimum: 0
+        revisionId:
+          type: string
+        revisionNumber:
+          type: integer
+          minimum: 1
+        active:
+          type: boolean
+        fileName:
+          type: string
+        mediaType:
+          type: string
+        size:
+          type: integer
+          minimum: 0
+        encodedUrl:
+          type: string
+        contentUrl:
+          type: string
+    TranslatedImageManifest:
+      type: object
+      required: [jobId, rootJobId, count, images]
+      properties:
+        jobId:
+          type: string
+        rootJobId:
+          type: string
+        artifactId:
+          type: integer
+        sourceFormat:
+          type: string
+          enum: [image, zip]
+        count:
+          type: integer
+          minimum: 1
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/TranslatedImage'
+    PageRevisionSelection:
+      type: object
+      additionalProperties: false
+      required: [sourceImageId, revisionId]
+      properties:
+        sourceImageId:
+          type: string
+          minLength: 1
+        revisionId:
+          type: string
+          minLength: 1
+    PageRevision:
+      type: object
+      required: [revisionId, revisionNumber, active, jobId, createdAt, image]
+      properties:
+        revisionId:
+          type: string
+        revisionNumber:
+          type: integer
+          minimum: 1
+        active:
+          type: boolean
+        jobId:
+          type: string
+        parentJobId:
+          type: [string, 'null']
+        translationTarget:
+          oneOf:
+            - $ref: '#/components/schemas/TranslationTarget'
+            - type: 'null'
+        sourceLanguage:
+          type: [string, 'null']
+        targetLanguage:
+          type: [string, 'null']
+        instructions:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        image:
+          type: object
+          required: [id, index, fileName, mediaType, size, encodedUrl, contentUrl]
+          properties:
+            id:
+              type: string
+            index:
+              type: integer
+            fileName:
+              type: string
+            mediaType:
+              type: string
+            size:
+              type: integer
+            encodedUrl:
+              type: string
+            contentUrl:
+              type: string
+    PageRevisionManifest:
+      type: object
+      required: [rootJobId, sourcePreflightId, pageCount, pages]
+      properties:
+        rootJobId:
+          type: string
+        sourcePreflightId:
+          type: string
+        pageCount:
+          type: integer
+        pages:
+          type: array
+          items:
+            type: object
+            required: [sourceImageId, sourceOrderIndex, activeRevisionId, revisions]
+            properties:
+              sourceImageId:
+                type: string
+              sourceOrderIndex:
+                type: integer
+              sourceFileName:
+                type: string
+              activeRevisionId:
+                type: [string, 'null']
+              revisions:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PageRevision'
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object

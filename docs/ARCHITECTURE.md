@@ -20,6 +20,10 @@ The local HTTP API is the single control surface for future CLI and GUI clients.
 
 Current endpoints:
 - `POST /jobs/translation`
+- `POST /jobs/:jobId/retranslations`
+- `GET /jobs/:rootJobId/page-revisions`
+- `POST /jobs/:rootJobId/page-revisions/activate`
+- `GET /jobs/:jobId/translated-images`
 - `POST /jobs/reference-extraction`
 - `POST /jobs/reference-ingestion`
 - `GET /jobs/:jobId`
@@ -44,6 +48,13 @@ Persistence tables:
 - `job_events`
 - `job_artifacts`
 - `job_errors`
+- `translation_page_revisions`
+- `translation_page_active_revisions`
+
+Selective retranslations are ordinary Translation Jobs and therefore reuse the existing queue,
+SSE, events, diagnostics, cancellation, and artifact lifecycle. Their payload contains immutable
+root/parent/source-image lineage. Successful output is registered as inactive per-page revisions;
+the active mapping changes only through one SQLite transaction in the activation endpoint.
 
 ### Workflow Engine
 The workflow engine owns all translation control flow.

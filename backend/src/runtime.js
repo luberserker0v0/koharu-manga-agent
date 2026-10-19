@@ -23,6 +23,7 @@ const { WorkflowEngine } = require("./domains/jobs/workflows/workflow_engine");
 const { JobManager } = require("./domains/jobs/job_manager");
 const { UploadService } = require("./domains/uploads/upload_service");
 const { TranslatedImageService } = require("./domains/translation/exports/translated_image_service");
+const { PageRevisionService } = require("./domains/translation/revisions/page_revision_service");
 const { createApiServer } = require("./http/server/api_server");
 const { startCleanupScheduler } = require("./domains/maintenance/cleanup_service");
 
@@ -74,6 +75,11 @@ function createRuntime(overrides = {}) {
   });
   const translationPublicationService =
     overrides.translationPublicationService || new TranslationPublicationService();
+  const pageRevisionService = overrides.pageRevisionService || new PageRevisionService({
+    store,
+    translatedImageService,
+    sourcePreflightModule,
+  });
   const koharuRuntimeManager =
     overrides.koharuRuntimeManager ||
     new KoharuRuntimeManager({
@@ -109,6 +115,7 @@ function createRuntime(overrides = {}) {
     resolvedConfig: config,
     koharuRuntimeManager,
     aoClient,
+    pageRevisionService,
   });
   const extractionReviewService =
     overrides.extractionReviewService ||
@@ -135,6 +142,7 @@ function createRuntime(overrides = {}) {
     extractionReviewService,
     uploadService,
     translatedImageService,
+    pageRevisionService,
     configService,
     translationPublicationService,
     host,
@@ -166,6 +174,7 @@ function createRuntime(overrides = {}) {
     extractionReviewService,
     uploadService,
     translatedImageService,
+    pageRevisionService,
     store,
     client,
     aoClient,

@@ -303,6 +303,8 @@ class WorkflowEngine {
     );
     const effectiveQualityRequested = payload.qualityCheck === true || machineTranslationPostEdit;
     const translationPolicy = resolveTranslationModePolicy(translationMode, effectiveQualityRequested);
+    const selectiveRetranslation = payload.revision?.reason === "selective_retranslation";
+    const shouldCommitKnowledge = translationPolicy.commitKnowledge && !selectiveRetranslation;
     const resume = payload.resumeFromTranslation || null;
     let sourcePreflight = null;
     let sourceImagePaths = null;
@@ -327,14 +329,19 @@ class WorkflowEngine {
       }
     } else {
       if (payload.sourcePreflightId && this.sourcePreflightModule) {
-        sourcePreflight = this.sourcePreflightModule.get(payload.sourcePreflightId);
-        sourceImagePaths = this.sourcePreflightModule.resolveSourceImages(payload.sourcePreflightId);
+        const sourceSelection = this.sourcePreflightModule.resolveSourceSelection(
+          payload.sourcePreflightId,
+          selectiveRetranslation ? payload.sourceImageIds : null
+        );
+        sourcePreflight = sourceSelection.manifest;
+        sourceImagePaths = sourceSelection.images.map((image) => image.orderedPath);
         hooks.emit("source_preflight.resolved", {
           preflightId: sourcePreflight.preflightId,
           sourceFolder: sourcePreflight.sourceFolder,
-          acceptedCount: sourcePreflight.summary.acceptedCount,
+          acceptedCount: sourceImagePaths.length,
           convertedCount: sourcePreflight.summary.convertedCount,
           orderChanged: sourcePreflight.orderChanged,
+          sourceImageIds: sourceSelection.images.map((image) => image.id),
         });
       } else if (Array.isArray(payload.sourceImagePaths) && payload.sourceImagePaths.length > 0) {
         sourceImagePaths = payload.sourceImagePaths;
@@ -379,7 +386,10 @@ class WorkflowEngine {
         });
       }
     }
-    const systemPrompt = formatTranslationMemoryPrompt(translationMemory);
+    const baseSystemPrompt = formatTranslationMemoryPrompt(translationMemory);
+    const systemPrompt = payload.instructions
+      ? `${baseSystemPrompt}\n\nUser retranslation instructions:\n${payload.instructions}`
+      : baseSystemPrompt;
     const translationWorkspace = path.join(paths.workspaceRoot, hooks.jobId || `translation_${Date.now()}`, "translation");
     const translationMemorySnapshotPath = path.join(translationWorkspace, "translation_memory_snapshot.json");
     writeJsonAtomic(translationMemorySnapshotPath, translationMemory);
@@ -452,8 +462,8 @@ class WorkflowEngine {
       hooks.setStage("waiting_pipeline", "monitor_pipeline");
       const pipelinePlan = buildPipelinePlan(setup.engines);
       const totalPagesHint =
-        typeof sourcePreflight?.summary?.acceptedCount === "number"
-          ? sourcePreflight.summary.acceptedCount
+        Array.isArray(sourceImagePaths)
+          ? sourceImagePaths.length
           : null;
       pipeline = await this.pipelineMonitor.run({
         operationId: setup.operationId,
@@ -669,7 +679,7 @@ class WorkflowEngine {
 
     let learningEvidenceSnapshotPath = null;
     let learningEvidence = null;
-    if (translationPolicy.commitKnowledge) {
+    if (shouldCommitKnowledge) {
       learningEvidence = buildLearningEvidenceSnapshot({
         sourceTranslationJobId: hooks.jobId || null,
         chapterId: payload.chapterId || null,
@@ -740,7 +750,7 @@ class WorkflowEngine {
       });
     }
 
-    const publication = this.translationPublicationService?.publish({
+    const publication = selectiveRetranslation ? null : this.translationPublicationService?.publish({
       mangaId: payload.mangaId || null,
       translatorId: payload.translatorId || null,
       chapterId: payload.chapterId || null,
@@ -818,7 +828,7 @@ class WorkflowEngine {
       qualityObservationPath: quality?.qualityObservationPath || null,
       qualityReportPath: quality?.reportPath || null,
       knowledge: null,
-      knowledgePayload: translationPolicy.commitKnowledge ? {
+      knowledgePayload: shouldCommitKnowledge ? {
         sourceTranslationJobId: hooks.jobId || null,
         learningEvidenceSnapshotPath,
         mangaId: payload.mangaId || null,

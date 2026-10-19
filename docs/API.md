@@ -8,7 +8,10 @@ This document now covers two API layers:
 
 Browser clients should use the versioned `/api/v1` prefix. Existing unversioned routes remain available during the backend-client migration.
 
-For the complete upload, preflight, Translation Job, SSE, and artifact-download lifecycle, see `docs/REST_WORKFLOW.md`. The executable reference client is `scripts/rest_translation_workflow.mjs`.
+For the complete upload, preflight, Translation Job, SSE, artifact-download, and selective
+retranslation lifecycle, see `docs/REST_WORKFLOW.md`. The executable reference client is
+`scripts/rest_translation_workflow.mjs`. The versioned machine-readable contract for page revisions
+is `docs/openapi.yaml`.
 
 ### Browser upload sessions
 
@@ -66,7 +69,10 @@ extracted into a backend-owned cache; direct image exports use the same response
 GET /api/v1/jobs/{jobId}/translated-images
 ```
 
-Each image entry contains stable `encodedUrl` and `contentUrl` fields. Read one image as Base64 JSON:
+For succeeded Translation Jobs, every entry also contains `sourceImageId`, `sourceOrderIndex`,
+`revisionId`, `revisionNumber`, and `active`. This is the authoritative source-to-output mapping;
+clients must not infer it from a ZIP entry name or output order. Each image entry contains stable
+`encodedUrl` and `contentUrl` fields. Read one image as Base64 JSON:
 
 ```http
 GET /api/v1/jobs/{jobId}/translated-images/{imageId}
@@ -81,6 +87,94 @@ GET /api/v1/jobs/{jobId}/translated-images/{imageId}/content
 
 The binary response uses the image media type and an inline `Content-Disposition`. Clients must start
 from the list response and must not derive cache paths or inspect ZIP contents themselves.
+
+### Selectively retranslate source pages
+
+Create a new Translation Job for an ordered subset of the retained source preflight:
+
+```http
+POST /api/v1/jobs/{parentJobId}/retranslations
+Content-Type: application/json
+
+{
+  "sourceImageIds": ["source-image-3", "source-image-7"],
+  "translationTarget": {
+    "providerId": "openai",
+    "modelId": "gpt-5"
+  },
+  "targetLanguage": "zh-TW",
+  "sourceLanguage": "ja",
+  "instructions": "Keep the character name Koharu untranslated."
+}
+```
+
+`sourceImageIds` is required, non-empty, and unique. Every ID must belong to the exact retained
+preflight used by the root Translation Job, and the retained upload and normalized image must still
+be available. The backend restores chapter order even if the request sends IDs in another order.
+
+The four other fields are optional overrides. Omitted settings inherit from the selected parent Job.
+Provider, model, target-language support, and BCP 47 language tags are validated before persistence.
+`instructions` is supported for LLM targets and is preserved with revision metadata. Machine
+Translation providers reject it with `422 unsupported_retranslation_instructions`; the backend never
+pretends that an unsupported instruction was applied.
+
+The response is `202 Accepted` with a normal queued Job. Its immutable `revision` member contains:
+
+```json
+{
+  "rootJobId": "job-original",
+  "parentJobId": "job-original",
+  "reason": "selective_retranslation",
+  "sourceImageIds": ["source-image-3", "source-image-7"]
+}
+```
+
+Monitor the Job through the existing Job GET, SSE, events, diagnostics, child Job, and artifact APIs.
+Only the selected source images are uploaded to Koharu and exported. A successful selective Job
+creates inactive page revisions; it does not replace the chapter publication or any active page.
+Failed, blocked, or canceled Jobs create no revisions and are never retried automatically.
+
+Missing source data returns `409` with one of `source_preflight_unavailable`,
+`source_upload_unavailable`, or `source_image_unavailable`. These errors do not disclose filesystem
+paths. Unknown or duplicated selections return `400`/`422` validation errors.
+
+### List and activate page revisions
+
+Read the revision family from its root Job:
+
+```http
+GET /api/v1/jobs/{rootJobId}/page-revisions
+```
+
+The response contains the source preflight ID, every source page in chapter order, its immutable
+revisions, producing Job and translation settings, optional instructions, content URLs, and the
+current `activeRevisionId`. The initial successful Translation Job is active by default. Later
+selective retranslations remain inactive until explicitly selected.
+
+Atomically activate one or more revisions:
+
+```http
+POST /api/v1/jobs/{rootJobId}/page-revisions/activate
+Content-Type: application/json
+
+{
+  "selections": [
+    {
+      "sourceImageId": "source-image-3",
+      "revisionId": "page_revision_abc123"
+    },
+    {
+      "sourceImageId": "source-image-7",
+      "revisionId": "page_revision_def456"
+    }
+  ]
+}
+```
+
+The operation validates every pair before opening its SQLite transaction, then changes every
+selection or none. Repeating the same request is idempotent. A revision from another root or source
+page returns `409 page_revision_mismatch`. Selecting an older revision performs a rollback without
+deleting newer history.
 
 ### Base Convention
 - Host: `127.0.0.1`

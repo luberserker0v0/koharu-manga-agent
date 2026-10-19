@@ -166,6 +166,7 @@ function createApiServer({
   translationMemoryComposer = composeTranslationMemory,
   uploadService = null,
   translatedImageService = null,
+  pageRevisionService = null,
   host,
   port,
   serverConfig = {},
@@ -966,6 +967,64 @@ function createApiServer({
         return;
       }
 
+      const retranslationMatch = url.pathname.match(/^\/jobs\/([^/]+)\/retranslations$/);
+      if (req.method === "POST" && retranslationMatch) {
+        const body = await readJsonBody(req);
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          badRequest(res, "Selective retranslation body must be a JSON object.");
+          return;
+        }
+        const allowedFields = new Set([
+          "sourceImageIds",
+          "translationTarget",
+          "targetLanguage",
+          "sourceLanguage",
+          "instructions",
+        ]);
+        const unknownFields = Object.keys(body).filter((field) => !allowedFields.has(field));
+        if (unknownFields.length > 0) {
+          badRequest(res, `Unsupported selective retranslation fields: ${unknownFields.join(", ")}.`);
+          return;
+        }
+        if (Object.prototype.hasOwnProperty.call(body, "translationTarget")) {
+          body.translationTarget = validateTranslationTargetShape(body.translationTarget);
+        }
+        const job = await jobManager.createSelectiveRetranslationJob(retranslationMatch[1], body);
+        sendJson(res, 202, job);
+        return;
+      }
+
+      const pageRevisionActivateMatch = url.pathname.match(/^\/jobs\/([^/]+)\/page-revisions\/activate$/);
+      if (req.method === "POST" && pageRevisionActivateMatch) {
+        if (!pageRevisionService) {
+          throw Object.assign(new Error("Page revision service is unavailable."), { statusCode: 503 });
+        }
+        const body = await readJsonBody(req);
+        if (!body || typeof body !== "object" || Array.isArray(body)) {
+          badRequest(res, "Page revision activation body must be a JSON object.");
+          return;
+        }
+        const unknownFields = Object.keys(body).filter((field) => field !== "selections");
+        if (unknownFields.length > 0) {
+          badRequest(res, `Unsupported page revision activation fields: ${unknownFields.join(", ")}.`);
+          return;
+        }
+        sendJson(res, 200, await pageRevisionService.activate(
+          pageRevisionActivateMatch[1],
+          body.selections
+        ));
+        return;
+      }
+
+      const pageRevisionsMatch = url.pathname.match(/^\/jobs\/([^/]+)\/page-revisions$/);
+      if (req.method === "GET" && pageRevisionsMatch) {
+        if (!pageRevisionService) {
+          throw Object.assign(new Error("Page revision service is unavailable."), { statusCode: 503 });
+        }
+        sendJson(res, 200, await pageRevisionService.list(pageRevisionsMatch[1]));
+        return;
+      }
+
       const deepAuditMatch = url.pathname.match(/^\/jobs\/([^/]+)\/deep-audit$/);
       if (req.method === "POST" && deepAuditMatch) {
         const job = jobManager.createTranslationDeepAuditJob(deepAuditMatch[1]);
@@ -1639,10 +1698,14 @@ function createApiServer({
         if (!translatedImageService) throw Object.assign(new Error("Translated image service is unavailable."), { statusCode: 503 });
         const artifacts = jobManager.getJobArtifacts(translatedImagesMatch[1]);
         if (!artifacts) { notFound(res); return; }
-        sendJson(res, 200, await translatedImageService.list({
+        let response = await translatedImageService.list({
           jobId: translatedImagesMatch[1],
           artifacts,
-        }));
+        });
+        if (pageRevisionService) {
+          response = await pageRevisionService.enrichTranslatedImages(translatedImagesMatch[1], response);
+        }
+        sendJson(res, 200, response);
         return;
       }
 

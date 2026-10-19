@@ -300,14 +300,59 @@ class SourcePreflightModule {
   }
 
   resolveSourceImages(preflightId) {
-    const manifest = this.get(preflightId);
-    if (!manifest.ready) {
-      throw new Error(`Source preflight is not ready: ${preflightId}`);
+    return this.resolveSourceSelection(preflightId).images.map((image) => image.orderedPath);
+  }
+
+  resolveSourceSelection(preflightId, sourceImageIds = null) {
+    let manifest;
+    try {
+      manifest = this.get(preflightId);
+    } catch {
+      const error = new Error("The retained source preflight is unavailable.");
+      error.statusCode = 409;
+      error.code = "source_preflight_unavailable";
+      throw error;
     }
-    return manifest.images
-      .slice()
-      .sort((left, right) => left.orderIndex - right.orderIndex)
-      .map((image) => image.orderedPath);
+    if (!manifest.ready) {
+      const error = new Error("The retained source preflight is not ready.");
+      error.statusCode = 409;
+      error.code = "source_preflight_unavailable";
+      throw error;
+    }
+    if (!manifest.sourceFolder || !fs.existsSync(manifest.sourceFolder)) {
+      const error = new Error("The retained source upload is unavailable; create a new source preflight before retranslating.");
+      error.statusCode = 409;
+      error.code = "source_upload_unavailable";
+      throw error;
+    }
+    const ordered = manifest.images.slice().sort((left, right) => left.orderIndex - right.orderIndex);
+    const selectedIds = sourceImageIds == null ? null : new Set(sourceImageIds);
+    const images = selectedIds ? ordered.filter((image) => selectedIds.has(image.id)) : ordered;
+    if (selectedIds && images.length !== selectedIds.size) {
+      const error = new Error("One or more selected sourceImageIds do not belong to the retained source preflight.");
+      error.statusCode = 422;
+      error.code = "invalid_source_image_selection";
+      throw error;
+    }
+    for (const image of images) {
+      let available = false;
+      try {
+        available = Boolean(
+          image.orderedPath &&
+          fs.existsSync(image.orderedPath) &&
+          fs.statSync(image.orderedPath).isFile()
+        );
+      } catch {
+        available = false;
+      }
+      if (!available) {
+        const error = new Error(`Retained source image ${image.id} is unavailable; recreate the source preflight.`);
+        error.statusCode = 409;
+        error.code = "source_image_unavailable";
+        throw error;
+      }
+    }
+    return { manifest, images };
   }
 }
 

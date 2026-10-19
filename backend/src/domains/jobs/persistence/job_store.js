@@ -78,6 +78,37 @@ class JobStore {
         created_at TEXT NOT NULL,
         stale_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS translation_page_revisions (
+        revision_id TEXT PRIMARY KEY,
+        root_job_id TEXT NOT NULL,
+        parent_job_id TEXT,
+        job_id TEXT NOT NULL,
+        source_preflight_id TEXT NOT NULL,
+        source_image_id TEXT NOT NULL,
+        source_order_index INTEGER NOT NULL,
+        job_image_id TEXT NOT NULL,
+        job_image_index INTEGER NOT NULL,
+        file_name TEXT NOT NULL,
+        media_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        revision_number INTEGER NOT NULL,
+        translation_target_json TEXT,
+        source_language TEXT,
+        target_language TEXT,
+        instructions TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(root_job_id, source_image_id, revision_number),
+        UNIQUE(job_id, source_image_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS translation_page_active_revisions (
+        root_job_id TEXT NOT NULL,
+        source_image_id TEXT NOT NULL,
+        revision_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(root_job_id, source_image_id)
+      );
     `);
 
     const jobColumns = this.db.prepare(`PRAGMA table_info(jobs)`).all();
@@ -108,6 +139,10 @@ class JobStore {
         ON knowledge_revisions(manga_id, translator_id, sequence_number, created_at);
       CREATE INDEX IF NOT EXISTS idx_knowledge_revisions_workflow
         ON knowledge_revisions(workflow_id);
+      CREATE INDEX IF NOT EXISTS idx_translation_page_revisions_root
+        ON translation_page_revisions(root_job_id, source_order_index, revision_number);
+      CREATE INDEX IF NOT EXISTS idx_translation_page_revisions_job
+        ON translation_page_revisions(job_id);
     `);
   }
 
@@ -226,12 +261,14 @@ class JobStore {
   }
 
   mapJobRow(row) {
+    const payload = JSON.parse(row.payload_json);
     return {
       id: row.id,
       type: row.type,
       status: row.status,
       stage: row.stage,
-      payload: JSON.parse(row.payload_json),
+      payload,
+      revision: payload?.revision || null,
       result: row.result_json ? JSON.parse(row.result_json) : null,
       error: row.error_text,
       retryOf: row.retry_of,
@@ -249,6 +286,181 @@ class JobStore {
       diagnostics: row.diagnostics_json ? JSON.parse(row.diagnostics_json) : null,
       resumeMetadata: row.resume_metadata_json ? JSON.parse(row.resume_metadata_json) : null,
     };
+  }
+
+  upsertTranslationPageRevision(revision) {
+    this.db.prepare(`
+      INSERT INTO translation_page_revisions (
+        revision_id, root_job_id, parent_job_id, job_id, source_preflight_id,
+        source_image_id, source_order_index, job_image_id, job_image_index,
+        file_name, media_type, size, revision_number, translation_target_json,
+        source_language, target_language, instructions, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(revision_id) DO NOTHING
+    `).run(
+      revision.revisionId,
+      revision.rootJobId,
+      revision.parentJobId || null,
+      revision.jobId,
+      revision.sourcePreflightId,
+      revision.sourceImageId,
+      revision.sourceOrderIndex,
+      revision.jobImageId,
+      revision.jobImageIndex,
+      revision.fileName,
+      revision.mediaType,
+      revision.size,
+      revision.revisionNumber,
+      revision.translationTarget == null ? null : JSON.stringify(revision.translationTarget),
+      revision.sourceLanguage || null,
+      revision.targetLanguage || null,
+      revision.instructions || null,
+      revision.createdAt || new Date().toISOString()
+    );
+    return this.getTranslationPageRevision(revision.revisionId);
+  }
+
+  mapTranslationPageRevisionRow(row) {
+    return {
+      revisionId: row.revision_id,
+      rootJobId: row.root_job_id,
+      parentJobId: row.parent_job_id,
+      jobId: row.job_id,
+      sourcePreflightId: row.source_preflight_id,
+      sourceImageId: row.source_image_id,
+      sourceOrderIndex: row.source_order_index,
+      jobImageId: row.job_image_id,
+      jobImageIndex: row.job_image_index,
+      fileName: row.file_name,
+      mediaType: row.media_type,
+      size: row.size,
+      revisionNumber: row.revision_number,
+      translationTarget: row.translation_target_json ? JSON.parse(row.translation_target_json) : null,
+      sourceLanguage: row.source_language,
+      targetLanguage: row.target_language,
+      instructions: row.instructions,
+      createdAt: row.created_at,
+    };
+  }
+
+  getTranslationPageRevision(revisionId) {
+    const row = this.db.prepare(`
+      SELECT * FROM translation_page_revisions WHERE revision_id = ?
+    `).get(revisionId);
+    return row ? this.mapTranslationPageRevisionRow(row) : null;
+  }
+
+  listTranslationPageRevisions(rootJobId) {
+    return this.db.prepare(`
+      SELECT * FROM translation_page_revisions
+      WHERE root_job_id = ?
+      ORDER BY source_order_index ASC, revision_number ASC, created_at ASC
+    `).all(rootJobId).map((row) => this.mapTranslationPageRevisionRow(row));
+  }
+
+  listActiveTranslationPageRevisions(rootJobId) {
+    return this.db.prepare(`
+      SELECT root_job_id, source_image_id, revision_id, updated_at
+      FROM translation_page_active_revisions
+      WHERE root_job_id = ?
+      ORDER BY source_image_id ASC
+    `).all(rootJobId).map((row) => ({
+      rootJobId: row.root_job_id,
+      sourceImageId: row.source_image_id,
+      revisionId: row.revision_id,
+      updatedAt: row.updated_at,
+    }));
+  }
+
+  activateTranslationPageRevisions(rootJobId, selections) {
+    const lookup = this.db.prepare(`
+      SELECT revision_id, root_job_id, source_image_id
+      FROM translation_page_revisions WHERE revision_id = ?
+    `);
+    const validated = selections.map((selection) => {
+      const row = lookup.get(selection.revisionId);
+      if (!row || row.root_job_id !== rootJobId || row.source_image_id !== selection.sourceImageId) {
+        const error = new Error(
+          `Revision ${selection.revisionId} does not belong to source image ${selection.sourceImageId} in root Job ${rootJobId}.`
+        );
+        error.statusCode = 409;
+        error.code = "page_revision_mismatch";
+        throw error;
+      }
+      return selection;
+    });
+    const update = this.db.prepare(`
+      INSERT INTO translation_page_active_revisions (
+        root_job_id, source_image_id, revision_id, updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(root_job_id, source_image_id) DO UPDATE SET
+        revision_id = excluded.revision_id,
+        updated_at = excluded.updated_at
+    `);
+    const now = new Date().toISOString();
+    try {
+      this.db.exec("BEGIN");
+      for (const selection of validated) {
+        update.run(rootJobId, selection.sourceImageId, selection.revisionId, now);
+      }
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+    return this.listActiveTranslationPageRevisions(rootJobId);
+  }
+
+  initializeActiveTranslationPageRevision(rootJobId, sourceImageId, revisionId, updatedAt = new Date().toISOString()) {
+    this.db.prepare(`
+      INSERT INTO translation_page_active_revisions (
+        root_job_id, source_image_id, revision_id, updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(root_job_id, source_image_id) DO NOTHING
+    `).run(rootJobId, sourceImageId, revisionId, updatedAt);
+  }
+
+  registerTranslationPageRevisions(revisions, { initializeActive = false } = {}) {
+    try {
+      this.db.exec("BEGIN");
+      const registered = revisions.map((revision) => {
+        const entry = this.upsertTranslationPageRevision(revision);
+        if (initializeActive) {
+          this.initializeActiveTranslationPageRevision(
+            revision.rootJobId,
+            revision.sourceImageId,
+            revision.revisionId,
+            revision.createdAt
+          );
+        }
+        return entry;
+      });
+      this.db.exec("COMMIT");
+      return registered;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  deleteTranslationPageRevisionsForJob(jobId) {
+    try {
+      this.db.exec("BEGIN");
+      this.db.prepare(`
+        DELETE FROM translation_page_active_revisions
+        WHERE revision_id IN (
+          SELECT revision_id FROM translation_page_revisions WHERE job_id = ?
+        )
+      `).run(jobId);
+      const changes = this.db.prepare(`
+        DELETE FROM translation_page_revisions WHERE job_id = ?
+      `).run(jobId).changes;
+      this.db.exec("COMMIT");
+      return changes;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   listJobs({ includeDeleted = false, onlyDeleted = false } = {}) {
@@ -458,6 +670,21 @@ class JobStore {
     const deleteEvents = this.db.prepare(`DELETE FROM job_events WHERE job_id = ?`);
     const deleteArtifacts = this.db.prepare(`DELETE FROM job_artifacts WHERE job_id = ?`);
     const deleteErrors = this.db.prepare(`DELETE FROM job_errors WHERE job_id = ?`);
+    const deleteActiveForProducedRevisions = this.db.prepare(`
+      DELETE FROM translation_page_active_revisions
+      WHERE revision_id IN (
+        SELECT revision_id FROM translation_page_revisions WHERE job_id = ?
+      )
+    `);
+    const deleteProducedPageRevisions = this.db.prepare(`
+      DELETE FROM translation_page_revisions WHERE job_id = ?
+    `);
+    const deleteRootPageActives = this.db.prepare(`
+      DELETE FROM translation_page_active_revisions WHERE root_job_id = ?
+    `);
+    const deleteRootPageRevisions = this.db.prepare(`
+      DELETE FROM translation_page_revisions WHERE root_job_id = ?
+    `);
     const deleteJob = this.db.prepare(`DELETE FROM jobs WHERE id = ?`);
 
     try {
@@ -465,6 +692,10 @@ class JobStore {
       deleteEvents.run(jobId);
       deleteArtifacts.run(jobId);
       deleteErrors.run(jobId);
+      deleteActiveForProducedRevisions.run(jobId);
+      deleteProducedPageRevisions.run(jobId);
+      deleteRootPageActives.run(jobId);
+      deleteRootPageRevisions.run(jobId);
       deleteJob.run(jobId);
       this.db.exec("COMMIT");
     } catch (error) {

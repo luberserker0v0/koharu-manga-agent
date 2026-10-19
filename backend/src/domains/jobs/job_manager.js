@@ -10,20 +10,32 @@ const { listChapterRegistry } = require("../knowledge/registry/knowledge_paths")
 const { loadReferenceManifest } = require("../reference/sets/reference_sets");
 const { ensureLegacyReviewMetadata } = require("../reference/review/reference_extraction_review");
 const { resolveTranslationModePolicy } = require("../translation/modes/translation_modes");
-const { isMachineTranslationTarget } = require("../../integrations/koharu/translation/translation_targets");
+const {
+  isMachineTranslationTarget,
+  resolveTranslationTarget,
+} = require("../../integrations/koharu/translation/translation_targets");
 const { assertJobType, assertJobStatus } = require("./contracts/job_contracts");
 const { buildAoFailureDiagnostics } = require("../../integrations/ao/errors/ao_error_classifier");
 const { summarizeJobOutcome } = require("../../integrations/ao/contracts/semantic_result");
 const { collectQualityCheckpoints, collectWorkspaceManifestArtifacts } = require("./artifacts/job_artifact_collection");
 
 class JobManager {
-  constructor({ store, engine, runtimeConfig, resolvedConfig, koharuRuntimeManager = null, aoClient = null }) {
+  constructor({
+    store,
+    engine,
+    runtimeConfig,
+    resolvedConfig,
+    koharuRuntimeManager = null,
+    aoClient = null,
+    pageRevisionService = null,
+  }) {
     this.store = store;
     this.engine = engine;
     this.runtimeConfig = runtimeConfig;
     this.resolvedConfig = resolvedConfig;
     this.koharuRuntimeManager = koharuRuntimeManager;
     this.aoClient = aoClient;
+    this.pageRevisionService = pageRevisionService;
     this.events = new EventEmitter();
     this.cancellations = new Set();
     this.activeJobs = new Set();
@@ -58,6 +70,7 @@ class JobManager {
         ) {
           this.engine.referenceBilingualEnrichmentModule?.markRunStopped(job.payload);
         }
+        this.store.deleteTranslationPageRevisionsForJob?.(job.id);
         this.store.updateJob({ id: job.id, status: "canceled", stage: "canceled", error: null });
         this.store.addEvent(job.id, "job.canceled", {
           jobId: job.id,
@@ -74,6 +87,7 @@ class JobManager {
       if (!["running", "cancel_requested"].includes(job.status)) {
         continue;
       }
+      this.store.deleteTranslationPageRevisionsForJob?.(job.id);
       this.store.updateJob({ id: job.id, status: "canceled", stage: "canceled", error: null });
       this.store.addEvent(job.id, "job.canceled", {
         jobId: job.id,
@@ -522,6 +536,7 @@ class JobManager {
       status: job.status,
       stage: job.stage,
       payload: job.payload,
+      revision: job.revision || job.payload?.revision || null,
       result: job.result ?? null,
       error: job.error ?? null,
       retryOf: job.retryOf ?? null,
@@ -556,6 +571,163 @@ class JobManager {
       ...payload,
       ...(translationTarget ? { translationTarget } : {}),
     });
+  }
+
+  normalizeLanguage(value, fieldName) {
+    if (value == null) return null;
+    if (typeof value !== "string" || !value.trim()) {
+      const error = new Error(`${fieldName} must be a non-empty BCP 47 language tag.`);
+      error.statusCode = 400;
+      error.code = "invalid_language";
+      throw error;
+    }
+    try {
+      return Intl.getCanonicalLocales(value.trim())[0];
+    } catch {
+      const error = new Error(`${fieldName} must be a valid BCP 47 language tag.`);
+      error.statusCode = 422;
+      error.code = "invalid_language";
+      throw error;
+    }
+  }
+
+  async createSelectiveRetranslationJob(sourceJobId, request = {}) {
+    const sourceJob = this.store.getJob(sourceJobId);
+    if (!sourceJob || sourceJob.type !== "translation") {
+      const error = new Error("Selective retranslation requires a Translation Job.");
+      error.statusCode = sourceJob ? 409 : 404;
+      error.code = sourceJob ? "invalid_retranslation_source" : "translation_job_not_found";
+      throw error;
+    }
+    if (sourceJob.status !== "succeeded") {
+      const error = new Error("Selective retranslation requires a succeeded Translation Job.");
+      error.statusCode = 409;
+      error.code = "translation_job_not_completed";
+      throw error;
+    }
+    if (!Array.isArray(request.sourceImageIds) || request.sourceImageIds.length === 0) {
+      const error = new Error("sourceImageIds must be a non-empty array.");
+      error.statusCode = 400;
+      error.code = "invalid_source_image_selection";
+      throw error;
+    }
+    const sourceImageIds = request.sourceImageIds.map((value) =>
+      typeof value === "string" ? value.trim() : ""
+    );
+    if (sourceImageIds.some((value) => !value)) {
+      const error = new Error("Every sourceImageId must be a non-empty string.");
+      error.statusCode = 400;
+      error.code = "invalid_source_image_selection";
+      throw error;
+    }
+    if (new Set(sourceImageIds).size !== sourceImageIds.length) {
+      const error = new Error("sourceImageIds must be unique.");
+      error.statusCode = 400;
+      error.code = "duplicate_source_image_selection";
+      throw error;
+    }
+
+    const rootJobId = sourceJob.payload?.revision?.rootJobId || sourceJob.id;
+    const rootJob = this.store.getJob(rootJobId);
+    const sourcePreflightId = rootJob?.payload?.sourcePreflightId;
+    if (!rootJob || rootJob.type !== "translation" || !sourcePreflightId) {
+      const error = new Error("The translation revision root no longer retains a source preflight.");
+      error.statusCode = 409;
+      error.code = "source_preflight_unavailable";
+      throw error;
+    }
+    const sourceSelection = this.engine.sourcePreflightModule?.resolveSourceSelection(
+      sourcePreflightId,
+      sourceImageIds
+    );
+    if (!sourceSelection) {
+      const error = new Error("Source preflight support is unavailable.");
+      error.statusCode = 503;
+      error.code = "source_preflight_service_unavailable";
+      throw error;
+    }
+
+    const payload = {
+      ...sourceJob.payload,
+      sourcePreflightId,
+      sourceImageIds: sourceSelection.images.map((image) => image.id),
+      revision: {
+        rootJobId,
+        parentJobId: sourceJob.id,
+        reason: "selective_retranslation",
+        sourceImageIds: sourceSelection.images.map((image) => image.id),
+      },
+    };
+    delete payload.outputDir;
+    delete payload.baseUrl;
+    delete payload.resumeFromTranslation;
+    delete payload.sourceImagePaths;
+
+    for (const field of ["translationTarget", "targetLanguage", "sourceLanguage", "instructions"]) {
+      if (Object.prototype.hasOwnProperty.call(request, field)) payload[field] = request[field];
+    }
+    for (const field of ["targetLanguage", "sourceLanguage"]) {
+      if (Object.prototype.hasOwnProperty.call(request, field) && request[field] == null) {
+        const error = new Error(`${field} must be a non-empty BCP 47 language tag.`);
+        error.statusCode = 400;
+        error.code = "invalid_language";
+        throw error;
+      }
+    }
+    if (payload.instructions != null || Object.prototype.hasOwnProperty.call(request, "instructions")) {
+      if (typeof payload.instructions !== "string" || !payload.instructions.trim()) {
+        const error = new Error("instructions must be a non-empty string when provided.");
+        error.statusCode = 400;
+        error.code = "invalid_retranslation_instructions";
+        throw error;
+      }
+      payload.instructions = payload.instructions.trim();
+    }
+    payload.sourceLanguage = this.normalizeLanguage(payload.sourceLanguage, "sourceLanguage");
+    payload.targetLanguage = this.normalizeLanguage(
+      payload.targetLanguage || this.resolvedConfig.defaults?.targetLanguage,
+      "targetLanguage"
+    );
+    const translationTarget = payload.translationTarget || this.resolvedConfig.translation?.defaultTarget || null;
+    const client = this.engine?.projectLifecycle?.client;
+    if (!client?.getTranslationCatalog) {
+      const error = new Error("Koharu translation-provider validation is unavailable.");
+      error.statusCode = 503;
+      error.code = "translation_provider_catalog_unavailable";
+      throw error;
+    }
+    let catalog;
+    try {
+      catalog = await client.getTranslationCatalog(payload.baseUrl || this.resolvedConfig.api?.baseUrl);
+    } catch (cause) {
+      const error = new Error("Koharu translation-provider catalog is unavailable.");
+      error.statusCode = 503;
+      error.code = "translation_provider_catalog_unavailable";
+      error.cause = cause;
+      throw error;
+    }
+    const resolvedTarget = resolveTranslationTarget({
+      catalog,
+      requestedTarget: translationTarget,
+      defaultTarget: this.resolvedConfig.translation?.defaultTarget || null,
+      targetLanguage: payload.targetLanguage,
+    });
+    if (payload.instructions && resolvedTarget.kind === "machine_translation") {
+      const error = new Error(
+        `Translation target ${resolvedTarget.providerId}/${resolvedTarget.modelId} does not support retranslation instructions.`
+      );
+      error.statusCode = 422;
+      error.code = "unsupported_retranslation_instructions";
+      throw error;
+    }
+    payload.translationTarget = {
+      providerId: resolvedTarget.providerId,
+      modelId: resolvedTarget.modelId,
+    };
+
+    await this.assertAgentAvailableForTranslation(payload);
+    await this.assertKoharuAvailableForJobType("translation", payload);
+    return this.createJob("translation", payload, { parentJobId: sourceJob.id });
   }
 
   async assertAgentAvailableForTranslation(payload) {
@@ -1075,6 +1247,24 @@ class JobManager {
         degradedStages: outcomeSummary.degradedStages,
         warnings: outcomeSummary.warnings,
       };
+      this.store.updateJob({ id: jobId, status: "running", stage: "finalizing" });
+      this.persistArtifacts(jobId, result);
+      if (job.type === "translation" && this.pageRevisionService) {
+        try {
+          await this.pageRevisionService.synchronizeJob(jobId, { allowRunning: true });
+        } catch (error) {
+          if (job.payload?.revision?.reason === "selective_retranslation") throw error;
+          diagnostics.warningCount += 1;
+          diagnostics.warnings.push({
+            code: error.code || "page_revision_index_unavailable",
+            message: error.message,
+          });
+          this.publish(jobId, "page_revisions.unavailable", {
+            code: error.code || "page_revision_index_unavailable",
+            message: error.message,
+          });
+        }
+      }
       this.store.updateJob({
         id: jobId,
         status: "succeeded",
@@ -1085,7 +1275,6 @@ class JobManager {
         diagnostics,
         resumeMetadata: null,
       });
-      this.persistArtifacts(jobId, result);
       if (["translation", "translation_quality_repair", "translation_deep_audit_apply"].includes(job.type) && result?.knowledgePayload) {
         const knowledgeJob = this.createJob("translation_knowledge_commit", result.knowledgePayload, {
           parentJobId: jobId,
@@ -1191,6 +1380,7 @@ class JobManager {
       const canceled = this.cancellations.has(jobId);
       const status = canceled ? "canceled" : "failed";
       const current = this.store.getJob(jobId);
+      this.store.deleteTranslationPageRevisionsForJob?.(jobId);
       const checkpointPaths = this.store.getEvents(jobId)
         .map((event) => event.payload?.checkpointPath)
         .filter((checkpointPath) => typeof checkpointPath === "string" && fs.existsSync(checkpointPath));
@@ -1721,6 +1911,18 @@ class JobManager {
         translatorId: parent.payload.translatorId,
         trigger: "retry",
         retryOf: parent.id,
+      });
+    }
+    if (current.type === "translation" && current.payload?.revision?.reason === "selective_retranslation") {
+      return this.createJob("translation", {
+        ...current.payload,
+        revision: {
+          ...current.payload.revision,
+          parentJobId: current.id,
+        },
+      }, {
+        retryOf: jobId,
+        parentJobId: current.id,
       });
     }
     if (current.executionKind === "workflow" && current.type === "reference_ingestion") {

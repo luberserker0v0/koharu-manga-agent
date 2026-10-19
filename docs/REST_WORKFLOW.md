@@ -167,8 +167,54 @@ GET /api/v1/jobs/{jobId}/translated-images
 
 Use each returned `contentUrl` for efficient binary preview/download. Use `encodedUrl` only when a
 Base64 JSON value is specifically required. The backend extracts ZIP pages once and reuses the cache.
+For Translation Jobs, bind pages by `sourceImageId`; never guess from `index`, `fileName`, or ZIP
+order. `revisionId`, `revisionNumber`, and `active` identify the exact translated version.
 
-### 10. Upload retention
+### 10. Selectively retranslate and activate pages
+
+When the user selects unsatisfactory pages, submit their source preflight image IDs to the completed
+Translation Job whose settings should be inherited:
+
+```http
+POST /api/v1/jobs/{parentJobId}/retranslations
+Content-Type: application/json
+
+{
+  "sourceImageIds":["source-image-3","source-image-7"],
+  "instructions":"Keep Koharu untranslated."
+}
+```
+
+The optional `translationTarget`, `sourceLanguage`, and `targetLanguage` fields override the parent.
+Instructions are accepted only when the selected target can consume them. A `202` response is queued,
+so use the same SSE and GET reconciliation loop as a normal Translation Job. Do not automatically
+retry a failed selective Job.
+
+After success, compare the new inactive revisions with the active pages:
+
+```http
+GET /api/v1/jobs/{rootJobId}/page-revisions
+```
+
+Only after explicit user confirmation, activate the chosen pages:
+
+```http
+POST /api/v1/jobs/{rootJobId}/page-revisions/activate
+Content-Type: application/json
+
+{
+  "selections":[
+    {"sourceImageId":"source-image-3","revisionId":"page_revision_abc123"},
+    {"sourceImageId":"source-image-7","revisionId":"page_revision_def456"}
+  ]
+}
+```
+
+Activation is atomic and idempotent. Use the same endpoint with an older `revisionId` to roll back.
+The extension should persist `rootJobId` and backend revision IDs, but the backend remains the
+authoritative active-version store.
+
+### 11. Upload retention
 
 Do not delete the source upload immediately after Translation. Post-edit and re-export operations can still depend on the original source images referenced by the preflight record.
 
@@ -178,7 +224,7 @@ When the chapter no longer needs those operations, delete it explicitly:
 DELETE /api/v1/uploads/{uploadId}
 ```
 
-### 11. File retention (maintenance cleanup)
+### 12. File retention (maintenance cleanup)
 
 Translated output (`outputs/translated/`), preview caches (`cache/translated-images/`), per-job
 workspaces (`workspaces/jobs/`), post-edit documents (`domains/post-edit/`), and backend logs
@@ -191,7 +237,7 @@ POST /maintenance/cleanup
 ```
 
 Uploads are intentionally excluded from automatic cleanup because post-edit and re-export depend
-on the preflight source images (see section 10). Koharu server-side stored projects are never
+on the preflight source images (see section 11). Koharu server-side stored projects are never
 deleted by cleanup. Full endpoint details are in `docs/API.md`.
 
 ## Executable CLI Workflow
@@ -234,6 +280,7 @@ The extension should persist only backend identifiers and user-facing metadata:
 - `uploadId`
 - `preflightId`
 - `jobId`
+- `rootJobId` and selected `revisionId` values
 - manga, translator, and chapter bindings
 
 It must not persist or depend on `/data/...` paths. Use SSE for progress and the artifact-content endpoint for downloads. Keep the Bearer token in extension-local protected storage and restrict backend CORS to the installed extension origin for non-development deployments.
