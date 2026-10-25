@@ -63,7 +63,8 @@ function normalizeSettings(value: Partial<GuiSettings> | null | undefined): GuiS
     sourceFolder: typeof value.sourceFolder === "string" ? value.sourceFolder : defaults.sourceFolder,
     outputFolder: typeof value.outputFolder === "string" ? value.outputFolder : defaults.outputFolder,
     referenceFolder: typeof value.referenceFolder === "string" ? value.referenceFolder : defaults.referenceFolder,
-    lastPickedSourceFolder: typeof value.lastPickedSourceFolder === "string" ? value.lastPickedSourceFolder : defaults.lastPickedSourceFolder,
+    lastPickedSourceFolder:
+      typeof value.lastPickedSourceFolder === "string" ? value.lastPickedSourceFolder : defaults.lastPickedSourceFolder,
     lastSelectedPage: typeof value.lastSelectedPage === "string" ? value.lastSelectedPage : defaults.lastSelectedPage,
     lastSelectedJobId: typeof value.lastSelectedJobId === "string" ? value.lastSelectedJobId : null,
     lastSelectedMangaId: typeof value.lastSelectedMangaId === "string" ? value.lastSelectedMangaId : null,
@@ -94,7 +95,9 @@ export class SettingsStore {
     const settings = this.read();
     if (!fs.existsSync(this.filePath)) return this.write(settings);
     try {
-      const persisted = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as { schemaVersion?: number };
+      const persisted = JSON.parse(fs.readFileSync(this.filePath, "utf-8")) as {
+        schemaVersion?: number;
+      };
       if (persisted.schemaVersion !== 4) return this.write(settings);
     } catch {
       // Preserve an unreadable file for diagnosis instead of overwriting it automatically.

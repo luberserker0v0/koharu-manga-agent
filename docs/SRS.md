@@ -13,7 +13,7 @@ MangaTranslationAgent provides a process-trigger backend for Koharu-based manga 
 - reference extraction and reference ingestion
 - export and close behavior
 - persistence of jobs, events, artifacts, and errors
-- provider-based agent runtime integration
+- AO HTTP runtime integration
 
 ## Out of Scope
 - Koharu implementation itself
@@ -55,8 +55,8 @@ The system must:
 - validate the current translation against project knowledge assets
 - use canonical glossary, story context, style profile, and accumulated project knowledge when available
 - return a structured validation report
-- use Agent SDK only for high-level quality judgments
-- validate provider results before importing them into workflow state
+- use AO only through its HTTP conversation API for semantic judgments
+- validate AO results before importing them into workflow state
 - not apply fixes, mutate scene history, or trigger rerender as part of `quality`
 
 ### FR-04A Future repair stage
@@ -71,7 +71,7 @@ The system must:
 - decide whether to run knowledge update from config or explicit request
 - extract translation pairs
 - update knowledge-base artifacts
-- use Agent SDK only for high-level enrichment judgments
+- use AO HTTP tasks only for high-level enrichment judgments
 - preserve a clear boundary between fact-layer translation pairs and inferred knowledge
 - support v2-compatible knowledge-base metadata, chapter provenance, and inferred knowledge fields
 - support manga-scoped knowledge-base storage keyed by `mangaId`
@@ -106,13 +106,15 @@ The system must:
 - support retention-based file cleanup for logs, translated output, job workspaces, and post-edit documents, with preview (dry-run) before execution
 - never delete running jobs, paths outside the backend data root, or Koharu server-side stored projects during automatic cleanup
 
-### FR-09 Agent provider integration
+### FR-09 AO integration
 The system must:
-- support a provider-based agent integration boundary
-- support `opencode` as the first provider target
-- send only structured task payloads to agent providers
-- normalize provider results before they reach workflow modules
-- support both managed-runtime SDK mode and heuristic fallback mode under the same contract
+- use the AO HTTP API as the only LLM execution boundary
+- create, configure, start, poll, message, and delete temporary AO conversations
+- wait for `ready === true` before sending a task message
+- upload only backend-owned AO assets and structured task inputs
+- validate task-specific AO output before it reaches workflow or persistence modules
+- never access the AgentOrchestrator project workspace at runtime
+- never restore `agent_sdk`, provider registries, or generic provider adapters
 
 ### FR-10 Agent workspace isolation
 The system must:
@@ -153,8 +155,8 @@ The system must:
 - backend returns structured status and error data
 - `QQ` remains an outer agent response policy, not a backend payload
 - persistence uses local SQLite
-- external agent sessions must not get unrestricted write access to repo root
-- invalid agent result schemas must fail the current stage before import
+- AO conversations must not get unrestricted write access to repo root
+- invalid AO result schemas must fail the current stage before import
 
 ## Workflow Requirements
 - the official runtime entrypoint is `backend/server.js`
@@ -206,6 +208,7 @@ The system must support:
 - allowed output and artifact file-name policy enforcement
 - `artifacts/import_manifest.json` for materialized input auditing
 - `artifacts/export_manifest.json` for accepted and rejected output auditing
+- temporary AO conversations that are deleted after task completion unless explicitly preserved for debugging
 
 ## User Stories
 
@@ -221,7 +224,7 @@ Expected GUI flow:
 4. Fill:
    - output folder
    - optional reference folder
-   - opencode runtime mode and connection fields
+   - AO connection, model, agent, polling, and timeout fields
    - quality LLM fields
    - translation LLM fields
    - Koharu base URL

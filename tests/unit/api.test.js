@@ -1,15 +1,10 @@
-const path = require("path");
-
 const {
   ENDPOINTS,
   buildUrl,
   apiFetch,
-} = require(path.join(
-  __dirname,
-  "../../.opencode/skills/manga-translate-zhtw/lib/api"
-));
+} = require("../../backend/src/integrations/koharu/client/koharu_client");
 
-describe("manga api helper", () => {
+describe("Koharu HTTP client helpers", () => {
   test("exports expected endpoints", () => {
     expect(ENDPOINTS.PROJECTS).toBe("/api/v1/projects");
     expect(ENDPOINTS.PROJECTS_CURRENT).toBe("/api/v1/projects/current");

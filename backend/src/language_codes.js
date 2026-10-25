@@ -8,26 +8,33 @@ const SUPPORTED_LANGUAGE_OPTIONS = [
   { value: "ko-KR", label: "Korean" },
 ];
 
-const LANGUAGE_ALIASES = new Map(
-  [
-    ["zh-tw", "zh-TW"],
-    ["zh-hant", "zh-TW"],
-    ["zh-hant-tw", "zh-TW"],
-    ["zh-cn", "zh-CN"],
-    ["zh-hans", "zh-CN"],
-    ["zh-hans-cn", "zh-CN"],
-    ["ja", "ja-JP"],
-    ["ja-jp", "ja-JP"],
-    ["en", "en-US"],
-    ["en-us", "en-US"],
-    ["ko", "ko-KR"],
-    ["ko-kr", "ko-KR"],
-  ]
-);
+const LANGUAGE_ALIASES = new Map([
+  ["zh-tw", "zh-TW"],
+  ["zh-hant", "zh-TW"],
+  ["zh-hant-tw", "zh-TW"],
+  ["zh-cn", "zh-CN"],
+  ["zh-hans", "zh-CN"],
+  ["zh-hans-cn", "zh-CN"],
+  ["ja", "ja-JP"],
+  ["ja-jp", "ja-JP"],
+  ["en", "en-US"],
+  ["en-us", "en-US"],
+  ["ko", "ko-KR"],
+  ["ko-kr", "ko-KR"],
+]);
 
 function normalizeLanguageTag(value, fallback = DEFAULT_LANGUAGE_TAG) {
-  const normalizedFallback = LANGUAGE_ALIASES.get(String(fallback || "").trim().toLowerCase()) || DEFAULT_LANGUAGE_TAG;
-  const normalizedValue = LANGUAGE_ALIASES.get(String(value || "").trim().toLowerCase());
+  const normalizedFallback =
+    LANGUAGE_ALIASES.get(
+      String(fallback || "")
+        .trim()
+        .toLowerCase(),
+    ) || DEFAULT_LANGUAGE_TAG;
+  const normalizedValue = LANGUAGE_ALIASES.get(
+    String(value || "")
+      .trim()
+      .toLowerCase(),
+  );
   return normalizedValue || normalizedFallback;
 }
 

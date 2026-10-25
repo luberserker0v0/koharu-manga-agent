@@ -60,7 +60,8 @@ function collectFilesRecursive(rootDir, maxDepth = 3) {
 
 function collectChildDirs(rootDir) {
   try {
-    return fs.readdirSync(rootDir, { withFileTypes: true })
+    return fs
+      .readdirSync(rootDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
       .map((entry) => path.join(rootDir, entry.name));
   } catch {
@@ -69,35 +70,40 @@ function collectChildDirs(rootDir) {
 }
 
 function dirMtimeMs(dirPath) {
-  let newest = 0;
-  let seenFile = false;
+  const state = { newest: 0, seenFile: false };
   const stack = [dirPath];
   while (stack.length > 0) {
     const current = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    const entries = readDirEntries(current);
     for (const entry of entries) {
-      const fullPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-        continue;
-      }
-      const fileStat = statSafe(fullPath);
-      if (fileStat) {
-        seenFile = true;
-        if (fileStat.mtimeMs > newest) newest = fileStat.mtimeMs;
-      }
+      updateMtimeState(entry, current, stack, state);
     }
   }
-  if (!seenFile) {
+  if (!state.seenFile) {
     const stat = statSafe(dirPath);
     return stat ? stat.mtimeMs : 0;
   }
-  return newest;
+  return state.newest;
+}
+
+function readDirEntries(dirPath) {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
+function updateMtimeState(entry, current, stack, state) {
+  const fullPath = path.join(current, entry.name);
+  if (entry.isDirectory()) {
+    stack.push(fullPath);
+    return;
+  }
+  const fileStat = statSafe(fullPath);
+  if (!fileStat) return;
+  state.seenFile = true;
+  if (fileStat.mtimeMs > state.newest) state.newest = fileStat.mtimeMs;
 }
 
 function dirSizeBytes(dirPath) {
@@ -140,9 +146,7 @@ function getActiveJobIds(store) {
   if (!store || typeof store.listJobs !== "function") return new Set();
   try {
     const jobs = store.listJobs({ includeDeleted: true }) || [];
-    return new Set(
-      jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status)).map((job) => job.id)
-    );
+    return new Set(jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status)).map((job) => job.id));
   } catch {
     return new Set();
   }
@@ -160,13 +164,28 @@ function getKnownJobIds(store) {
 
 function cleanupLogs({ logsDir, olderThanDays = null, maxFiles = null, dryRun = true } = {}) {
   if (!logsDir || !fs.existsSync(logsDir)) {
-    return { target: "logs", deleted: 0, remaining: 0, freedBytes: 0, dryRun, files: [] };
+    return {
+      target: "logs",
+      deleted: 0,
+      remaining: 0,
+      freedBytes: 0,
+      dryRun,
+      files: [],
+    };
   }
   const files = collectFilesRecursive(logsDir, 3);
-  const cutoff = olderThanDays != null && Number.isFinite(Number(olderThanDays)) && Number(olderThanDays) > 0
-    ? Date.now() - Number(olderThanDays) * 24 * 60 * 60 * 1000
-    : null;
+  const cutoff = computeCleanupCutoff(olderThanDays);
+  const matched = collectMatchedLogPaths(files, cutoff, maxFiles);
+  const candidates = files.filter((file) => matched.has(file.path));
+  return deleteMatchedLogs(candidates, logsDir, dryRun, files.length);
+}
 
+function computeCleanupCutoff(days) {
+  if (days == null || !Number.isFinite(Number(days)) || Number(days) <= 0) return null;
+  return Date.now() - Number(days) * 24 * 60 * 60 * 1000;
+}
+
+function collectMatchedLogPaths(files, cutoff, maxFiles) {
   const matched = new Set();
   if (cutoff != null) {
     for (const file of files) {
@@ -176,8 +195,10 @@ function cleanupLogs({ logsDir, olderThanDays = null, maxFiles = null, dryRun = 
   if (maxFiles != null && Number.isFinite(Number(maxFiles)) && Number(maxFiles) >= 0) {
     for (const file of files.slice(Number(maxFiles))) matched.add(file.path);
   }
-  const candidates = files.filter((file) => matched.has(file.path));
+  return matched;
+}
 
+function deleteMatchedLogs(candidates, logsDir, dryRun, totalFiles) {
   let freedBytes = 0;
   const deletedFiles = [];
   for (const file of candidates) {
@@ -191,7 +212,7 @@ function cleanupLogs({ logsDir, olderThanDays = null, maxFiles = null, dryRun = 
   return {
     target: "logs",
     deleted: deletedFiles.length,
-    remaining: Math.max(files.length - deletedFiles.length, 0),
+    remaining: Math.max(totalFiles - deletedFiles.length, 0),
     freedBytes,
     dryRun,
     files: deletedFiles,
@@ -226,106 +247,94 @@ function cleanupTranslated({
   dryRun = true,
   store = null,
 } = {}) {
-  const deleted = [];
-  let freedBytes = 0;
-
-  const cutoff = olderThanDays != null && Number.isFinite(Number(olderThanDays)) && Number(olderThanDays) > 0
-    ? Date.now() - Number(olderThanDays) * 24 * 60 * 60 * 1000
-    : null;
-
+  const state = { deleted: [], freedBytes: 0 };
+  const cutoff =
+    olderThanDays != null && Number.isFinite(Number(olderThanDays)) && Number(olderThanDays) > 0
+      ? Date.now() - Number(olderThanDays) * 24 * 60 * 60 * 1000
+      : null;
   const activeIds = getActiveJobIds(store);
   const knownIds = getKnownJobIds(store);
+  const context = { cutoff, activeIds, knownIds, dryRun, state };
 
-  const considerDir = (dirPath, rootDir) => {
-    if (!isInsideRoot(dirPath, rootDir)) return;
-    const newest = dirMtimeMs(dirPath);
-    if (cutoff != null && newest >= cutoff) return;
-    const base = path.basename(dirPath);
-    for (const activeId of activeIds) {
-      if (base.endsWith(`-${activeId}`) || base === activeId) return;
-    }
-    if (knownIds && cutoff == null) {
-      const referenced = [...knownIds].some((id) => base.endsWith(`-${id}`) || base === id);
-      if (referenced) return;
-    }
-    const size = dirSizeBytes(dirPath);
-    if (!dryRun) {
-      const result = removeSafe(dirPath, rootDir);
-      if (!result.removed) return;
-    }
-    freedBytes += size;
-    deleted.push(dirPath);
+  processTranslatedRoots(translatedRoot, translatedImagesRoot, (dirPath, rootDir) => {
+    considerTranslatedDir(dirPath, rootDir, context);
+  });
+
+  return {
+    target: "translated",
+    deleted: state.deleted.length,
+    freedBytes: state.freedBytes,
+    dryRun,
+    dirs: state.deleted,
   };
+}
 
+function considerTranslatedDir(dirPath, rootDir, context) {
+  const { cutoff, activeIds, knownIds, dryRun, state } = context;
+  if (!isInsideRoot(dirPath, rootDir)) return;
+  const newest = dirMtimeMs(dirPath);
+  if (cutoff != null && newest >= cutoff) return;
+  const base = path.basename(dirPath);
+  for (const activeId of activeIds) {
+    if (base.endsWith(`-${activeId}`) || base === activeId) return;
+  }
+  if (knownIds && cutoff == null) {
+    const referenced = [...knownIds].some((id) => base.endsWith(`-${id}`) || base === id);
+    if (referenced) return;
+  }
+  const size = dirSizeBytes(dirPath);
+  if (!dryRun) {
+    const result = removeSafe(dirPath, rootDir);
+    if (!result.removed) return;
+  }
+  state.freedBytes += size;
+  state.deleted.push(dirPath);
+}
+
+function processTranslatedRoots(translatedRoot, translatedImagesRoot, considerDir) {
   if (translatedRoot && fs.existsSync(translatedRoot)) {
     for (const leaf of iterTranslatedLeafDirs(translatedRoot)) {
       considerDir(leaf, translatedRoot);
     }
   }
-
   if (translatedImagesRoot && fs.existsSync(translatedImagesRoot)) {
     for (const child of collectChildDirs(translatedImagesRoot)) {
       considerDir(child, translatedImagesRoot);
     }
   }
+}
 
-  return { target: "translated", deleted: deleted.length, freedBytes, dryRun, dirs: deleted };
+function retentionCutoff(olderThanDays) {
+  const days = Number(olderThanDays);
+  return olderThanDays != null && Number.isFinite(days) && days > 0
+    ? Date.now() - days * 24 * 60 * 60 * 1000
+    : null;
+}
+
+function cleanupJobOwnedDirs(target, rootDir, olderThanDays, dryRun, store) {
+  if (!rootDir || !fs.existsSync(rootDir)) {
+    return { target, deleted: 0, freedBytes: 0, dryRun, dirs: [] };
+  }
+  const cutoff = retentionCutoff(olderThanDays);
+  const activeIds = getActiveJobIds(store);
+  const state = { freedBytes: 0, deleted: [] };
+  for (const child of collectChildDirs(rootDir)) {
+    if (activeIds.has(path.basename(child)) || !isInsideRoot(child, rootDir)) continue;
+    if (cutoff != null && dirMtimeMs(child) >= cutoff) continue;
+    const size = dirSizeBytes(child);
+    if (!dryRun && !removeSafe(child, rootDir).removed) continue;
+    state.freedBytes += size;
+    state.deleted.push(child);
+  }
+  return { target, deleted: state.deleted.length, freedBytes: state.freedBytes, dryRun, dirs: state.deleted };
 }
 
 function cleanupWorkspaces({ workspaceRoot, olderThanDays = 30, dryRun = true, store = null } = {}) {
-  if (!workspaceRoot || !fs.existsSync(workspaceRoot)) {
-    return { target: "workspaces", deleted: 0, freedBytes: 0, dryRun, dirs: [] };
-  }
-  const cutoff = olderThanDays != null && Number.isFinite(Number(olderThanDays)) && Number(olderThanDays) > 0
-    ? Date.now() - Number(olderThanDays) * 24 * 60 * 60 * 1000
-    : null;
-  const activeIds = getActiveJobIds(store);
-  const deleted = [];
-  let freedBytes = 0;
-
-  for (const child of collectChildDirs(workspaceRoot)) {
-    const base = path.basename(child);
-    if (activeIds.has(base)) continue;
-    if (!isInsideRoot(child, workspaceRoot)) continue;
-    const newest = dirMtimeMs(child);
-    if (cutoff != null && newest >= cutoff) continue;
-    const size = dirSizeBytes(child);
-    if (!dryRun) {
-      const result = removeSafe(child, workspaceRoot);
-      if (!result.removed) continue;
-    }
-    freedBytes += size;
-    deleted.push(child);
-  }
-  return { target: "workspaces", deleted: deleted.length, freedBytes, dryRun, dirs: deleted };
+  return cleanupJobOwnedDirs("workspaces", workspaceRoot, olderThanDays, dryRun, store);
 }
 
 function cleanupPostEdit({ postEditRoot, olderThanDays = 30, dryRun = true, store = null } = {}) {
-  if (!postEditRoot || !fs.existsSync(postEditRoot)) {
-    return { target: "postedit", deleted: 0, freedBytes: 0, dryRun, dirs: [] };
-  }
-  const cutoff = olderThanDays != null && Number.isFinite(Number(olderThanDays)) && Number(olderThanDays) > 0
-    ? Date.now() - Number(olderThanDays) * 24 * 60 * 60 * 1000
-    : null;
-  const activeIds = getActiveJobIds(store);
-  const deleted = [];
-  let freedBytes = 0;
-
-  for (const child of collectChildDirs(postEditRoot)) {
-    const base = path.basename(child);
-    if (activeIds.has(base)) continue;
-    if (!isInsideRoot(child, postEditRoot)) continue;
-    const newest = dirMtimeMs(child);
-    if (cutoff != null && newest >= cutoff) continue;
-    const size = dirSizeBytes(child);
-    if (!dryRun) {
-      const result = removeSafe(child, postEditRoot);
-      if (!result.removed) continue;
-    }
-    freedBytes += size;
-    deleted.push(child);
-  }
-  return { target: "postedit", deleted: deleted.length, freedBytes, dryRun, dirs: deleted };
+  return cleanupJobOwnedDirs("postedit", postEditRoot, olderThanDays, dryRun, store);
 }
 
 function deleteJobDirectories({ jobIds = [], paths = {} } = {}) {
@@ -362,40 +371,55 @@ function runCleanup({ targets = ["logs", "translated", "workspaces", "postedit"]
     for (const target of CLEANUP_TARGETS) wanted.add(target);
   }
   const results = {};
-  if (wanted.has("logs")) {
-    results.logs = cleanupLogs({
-      logsDir: context.paths?.logs,
-      olderThanDays: options.logRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.logRetentionDays ?? 14,
-      maxFiles: options.logMaxFiles ?? context.config?.defaults?.logMaxFiles ?? 200,
-      dryRun: options.dryRun ?? true,
-    });
-  }
-  if (wanted.has("translated")) {
-    results.translated = cleanupTranslated({
-      translatedRoot: context.paths?.translated,
-      translatedImagesRoot: context.paths?.translatedImages,
-      olderThanDays: options.translatedRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.translatedRetentionDays ?? 30,
-      dryRun: options.dryRun ?? true,
-      store: context.store || null,
-    });
-  }
-  if (wanted.has("workspaces")) {
-    results.workspaces = cleanupWorkspaces({
-      workspaceRoot: context.paths?.workspaceRoot,
-      olderThanDays: options.workspaceRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.workspaceRetentionDays ?? 30,
-      dryRun: options.dryRun ?? true,
-      store: context.store || null,
-    });
-  }
-  if (wanted.has("postedit")) {
-    results.postedit = cleanupPostEdit({
-      postEditRoot: context.paths?.postEditDocuments,
-      olderThanDays: options.postEditRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.postEditRetentionDays ?? 30,
-      dryRun: options.dryRun ?? true,
-      store: context.store || null,
-    });
-  }
+  if (wanted.has("logs")) results.logs = runLogsCleanup(options, context);
+  if (wanted.has("translated")) results.translated = runTranslatedCleanup(options, context);
+  if (wanted.has("workspaces")) results.workspaces = runWorkspaceCleanup(options, context);
+  if (wanted.has("postedit")) results.postedit = runPostEditCleanup(options, context);
   return results;
+}
+
+function runLogsCleanup(options, context) {
+  return cleanupLogs({
+    logsDir: context.paths?.logs,
+    olderThanDays:
+      options.logRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.logRetentionDays ?? 14,
+    maxFiles: options.logMaxFiles ?? context.config?.defaults?.logMaxFiles ?? 200,
+    dryRun: options.dryRun ?? true,
+  });
+}
+
+function runTranslatedCleanup(options, context) {
+  return cleanupTranslated({
+    translatedRoot: context.paths?.translated,
+    translatedImagesRoot: context.paths?.translatedImages,
+    olderThanDays:
+      options.translatedRetentionDays ??
+      options.olderThanDays ??
+      context.config?.defaults?.translatedRetentionDays ??
+      30,
+    dryRun: options.dryRun ?? true,
+    store: context.store || null,
+  });
+}
+
+function runWorkspaceCleanup(options, context) {
+  return cleanupWorkspaces({
+    workspaceRoot: context.paths?.workspaceRoot,
+    olderThanDays:
+      options.workspaceRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.workspaceRetentionDays ?? 30,
+    dryRun: options.dryRun ?? true,
+    store: context.store || null,
+  });
+}
+
+function runPostEditCleanup(options, context) {
+  return cleanupPostEdit({
+    postEditRoot: context.paths?.postEditDocuments,
+    olderThanDays:
+      options.postEditRetentionDays ?? options.olderThanDays ?? context.config?.defaults?.postEditRetentionDays ?? 30,
+    dryRun: options.dryRun ?? true,
+    store: context.store || null,
+  });
 }
 
 function startCleanupScheduler({ jobManager, getConfig, onError = null } = {}) {

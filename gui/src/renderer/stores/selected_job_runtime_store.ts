@@ -2,12 +2,7 @@ import { create } from "zustand";
 import { isGuiJobStatus } from "../api/jobs";
 import type { GuiArtifact, GuiJob, GuiJobEvent } from "../api/jobs";
 
-export type StreamConnectionState =
-  | "idle"
-  | "connecting"
-  | "live"
-  | "reconnecting"
-  | "closed";
+export type StreamConnectionState = "idle" | "connecting" | "live" | "reconnecting" | "closed";
 
 type SelectedJobRuntimeState = {
   jobId: string | null;
@@ -59,59 +54,83 @@ function mergeEvents(baseEvents: GuiJobEvent[], incomingEvents: GuiJobEvent[]) {
   return merged;
 }
 
-function reduceJobFromEvent(job: GuiJob | null, event: GuiJobEvent): GuiJob | null {
-  if (!job) {
-    return job;
-  }
-
-  const payload = isRecord(event.payload) ? event.payload : null;
-  const updatedAt = event.createdAt ?? job.updatedAt;
-
-  if (event.type === "job.stage") {
-    const nextStatus = isGuiJobStatus(payload?.status) ? payload.status : job.status;
-    const nextStage = typeof payload?.stage === "string" ? payload.stage : job.stage;
-    return {
-      ...job,
-      status: nextStatus,
-      stage: nextStage,
-      updatedAt,
-    };
-  }
-
-  if (event.type === "job.completed") {
-    return {
-      ...job,
-      status: "succeeded",
-      stage: "succeeded",
-      result: event.payload,
-      error: null,
-      updatedAt,
-    };
-  }
-
-  if (event.type === "job.failed") {
-    return {
-      ...job,
-      status: isGuiJobStatus(payload?.status) ? payload.status : "failed",
-      stage: typeof payload?.status === "string" ? payload.status : "failed",
-      error: typeof payload?.error === "string" ? payload.error : job.error,
-      updatedAt,
-    };
-  }
-
-  if (event.type === "job.canceled") {
-    return {
-      ...job,
-      status: "canceled",
-      stage: "canceled",
-      error: typeof payload?.error === "string" ? payload.error : job.error,
-      updatedAt,
-    };
-  }
-
+function stageJob(job: GuiJob, payload: Record<string, unknown> | null, updatedAt: string): GuiJob {
   return {
     ...job,
+    status: isGuiJobStatus(payload?.status) ? payload.status : job.status,
+    stage: typeof payload?.stage === "string" ? payload.stage : job.stage,
     updatedAt,
+  };
+}
+
+function completedJob(job: GuiJob, event: GuiJobEvent, updatedAt: string): GuiJob {
+  return {
+    ...job,
+    status: "succeeded",
+    stage: "succeeded",
+    result: event.payload,
+    error: null,
+    updatedAt,
+  };
+}
+
+function failedJob(job: GuiJob, payload: Record<string, unknown> | null, updatedAt: string): GuiJob {
+  return {
+    ...job,
+    status: isGuiJobStatus(payload?.status) ? payload.status : "failed",
+    stage: typeof payload?.status === "string" ? payload.status : "failed",
+    error: typeof payload?.error === "string" ? payload.error : job.error,
+    updatedAt,
+  };
+}
+
+function canceledJob(job: GuiJob, payload: Record<string, unknown> | null, updatedAt: string): GuiJob {
+  return {
+    ...job,
+    status: "canceled",
+    stage: "canceled",
+    error: typeof payload?.error === "string" ? payload.error : job.error,
+    updatedAt,
+  };
+}
+
+function reduceJobFromEvent(job: GuiJob | null, event: GuiJobEvent): GuiJob | null {
+  if (!job) return job;
+  const payload = isRecord(event.payload) ? event.payload : null;
+  const updatedAt = event.createdAt ?? job.updatedAt;
+  if (event.type === "job.stage") return stageJob(job, payload, updatedAt);
+  if (event.type === "job.completed") return completedJob(job, event, updatedAt);
+  if (event.type === "job.failed") return failedJob(job, payload, updatedAt);
+  if (event.type === "job.canceled") return canceledJob(job, payload, updatedAt);
+  return { ...job, updatedAt };
+}
+
+function resetState(state: SelectedJobRuntimeState, jobId: string | null) {
+  if (state.jobId === jobId) return state;
+  return {
+    jobId,
+    snapshotLoaded: false,
+    connectionState: jobId ? ("connecting" as const) : ("idle" as const),
+    job: null,
+    rawEvents: [],
+    artifacts: [],
+    lastEventAt: null,
+  };
+}
+
+function hydrateJobState(state: SelectedJobRuntimeState, job: GuiJob) {
+  const current = state.job?.id === job.id ? state.job : null;
+  return {
+    jobId: job.id,
+    snapshotLoaded: true,
+    job: {
+      ...current,
+      ...job,
+      events: job.events || current?.events || [],
+      artifacts: job.artifacts || current?.artifacts || [],
+      children: job.children ?? current?.children,
+    },
+    connectionState: state.connectionState === "idle" && job.id ? ("connecting" as const) : state.connectionState,
   };
 }
 
@@ -123,41 +142,12 @@ export const useSelectedJobRuntimeStore = create<SelectedJobRuntimeState>((set) 
   rawEvents: [],
   artifacts: [],
   lastEventAt: null,
-  resetForJob: (jobId) =>
-    set((state) =>
-      state.jobId === jobId
-        ? state
-        : {
-            jobId,
-            snapshotLoaded: false,
-            connectionState: jobId ? "connecting" : "idle",
-            job: null,
-            rawEvents: [],
-            artifacts: [],
-            lastEventAt: null,
-          }
-    ),
-  hydrateJob: (job) =>
-    set((state) => {
-      const current = state.job?.id === job.id ? state.job : null;
-      return {
-        jobId: job.id,
-        snapshotLoaded: true,
-        job: {
-          ...current,
-          ...job,
-          events: job.events || current?.events || [],
-          artifacts: job.artifacts || current?.artifacts || [],
-          children: job.children ?? current?.children,
-        },
-        connectionState:
-          state.connectionState === "idle" && job.id ? "connecting" : state.connectionState,
-      };
-    }),
+  resetForJob: (jobId) => set((state) => resetState(state, jobId)),
+  hydrateJob: (job) => set((state) => hydrateJobState(state, job)),
   hydrateEvents: (events) =>
     set((state) => ({
       rawEvents: mergeEvents(events, state.rawEvents),
-      lastEventAt: events.length > 0 ? events[events.length - 1].createdAt ?? state.lastEventAt : state.lastEventAt,
+      lastEventAt: events.length > 0 ? (events[events.length - 1].createdAt ?? state.lastEventAt) : state.lastEventAt,
     })),
   hydrateArtifacts: (artifacts) => set({ artifacts }),
   appendEvent: (event) =>

@@ -2,7 +2,7 @@
 
 ## Current Test Focus
 - `backend/` is now the official runtime surface
-- legacy `.opencode` scripts remain covered as migration adapters
+- root `.opencode` migration scripts have been removed
 - workflow behavior is validated at unit, integration, and backend API levels
 
 ## Unit Tests
@@ -50,14 +50,12 @@ Covered scenarios:
 - runtime host/port
 - database path resolution
 
-### Legacy migration coverage
-- `one_click_translate.js`
-  - original page validation
-  - provider/local LLM fallback behavior
-  - upload fallback behavior
-  - engine resolution
-- `listen_events.js`
-  - recovery helpers still behave as expected while the new backend absorbs the logic
+### Koharu integration coverage
+- `project_orchestrator.test.js`
+  - source-page validation and upload behavior
+  - engine and pipeline request construction
+- `pipeline_monitor.test.js`
+  - operation progress, recovery, and completion behavior
 
 ## Integration Tests
 - `backend_api.test.js`
@@ -65,9 +63,8 @@ Covered scenarios:
   - `GET /jobs/:jobId`
   - successful backend execution path
 - `config_override.test.js`
-  - config values still come from `koharu.json`
-- `script_load.test.js`
-  - migration scripts still exist and remain loadable during transition
+  - selected user config overrides backend defaults
+  - relative paths resolve under the selected data root
 
 ## E2E Coverage
 - `backend_job_flow.test.js`

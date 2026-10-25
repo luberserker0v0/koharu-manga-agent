@@ -79,14 +79,10 @@ type JobsPageState = {
   preflightDraftFingerprint: string | null;
   setTranslationDraft: (updater: TranslationDraft | ((current: TranslationDraft) => TranslationDraft)) => void;
   setReferenceExtractionDraft: (
-    updater:
-      | ReferenceExtractionDraft
-      | ((current: ReferenceExtractionDraft) => ReferenceExtractionDraft)
+    updater: ReferenceExtractionDraft | ((current: ReferenceExtractionDraft) => ReferenceExtractionDraft),
   ) => void;
   setReferenceIngestionDraft: (
-    updater:
-      | ReferenceIngestionDraft
-      | ((current: ReferenceIngestionDraft) => ReferenceIngestionDraft)
+    updater: ReferenceIngestionDraft | ((current: ReferenceIngestionDraft) => ReferenceIngestionDraft),
   ) => void;
   setTranslationPathValidation: (value: PathValidationSummary | null) => void;
   setPreflightResult: (value: SourcePreflightResult | null) => void;
@@ -101,7 +97,7 @@ function resolveUpdater<T>(current: T, updater: T | ((current: T) => T)): T {
   return typeof updater === "function" ? (updater as (current: T) => T)(current) : updater;
 }
 
-export const useJobsPageStore = create<JobsPageState>((set) => ({
+const INITIAL_JOBS_STATE = {
   translationDraft: DEFAULT_TRANSLATION_DRAFT,
   referenceExtractionDraft: DEFAULT_REFERENCE_EXTRACTION_DRAFT,
   referenceIngestionDraft: DEFAULT_REFERENCE_INGESTION_DRAFT,
@@ -111,6 +107,19 @@ export const useJobsPageStore = create<JobsPageState>((set) => ({
   status: "Ready.",
   lastPickedSourceFolder: "",
   preflightDraftFingerprint: null,
+};
+
+function clearPreflightState() {
+  return {
+    preflightResult: null,
+    orderedImageIds: [],
+    translationPathValidation: null,
+    preflightDraftFingerprint: null,
+  };
+}
+
+export const useJobsPageStore = create<JobsPageState>((set) => ({
+  ...INITIAL_JOBS_STATE,
   setTranslationDraft: (updater) =>
     set((state) => ({
       translationDraft: resolveUpdater(state.translationDraft, updater),
@@ -132,11 +141,5 @@ export const useJobsPageStore = create<JobsPageState>((set) => ({
   setStatus: (status) => set({ status }),
   setLastPickedSourceFolder: (lastPickedSourceFolder) => set({ lastPickedSourceFolder }),
   setPreflightDraftFingerprint: (preflightDraftFingerprint) => set({ preflightDraftFingerprint }),
-  clearPreflightState: () =>
-    set({
-      preflightResult: null,
-      orderedImageIds: [],
-      translationPathValidation: null,
-      preflightDraftFingerprint: null,
-    }),
+  clearPreflightState: () => set(clearPreflightState()),
 }));

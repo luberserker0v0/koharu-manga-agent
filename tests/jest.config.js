@@ -11,8 +11,6 @@ module.exports = {
   testTimeout: 30000,
   collectCoverageFrom: [
     "backend/**/*.js",
-    ".opencode/skills/*/scripts/*.js",
-    ".opencode/skills/*/lib/*.js",
     "!**/node_modules/**",
   ],
   coverageDirectory: "<rootDir>/tests/coverage",

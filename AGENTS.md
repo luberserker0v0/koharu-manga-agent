@@ -98,8 +98,9 @@ Config precedence is always:
 2. `MANGA_TRANSLATION_CONFIG_PATH`, or the OS user config path when unset
 3. backend defaults
 
-`.opencode/koharu.json` is the legacy repository config and is copied to the OS user config path on
-first native startup when no user config exists.
+The repository does not contain an active `.opencode` runtime. When no user config exists, the
+backend uses `backend/src/config.js` defaults until settings are persisted through the backend API.
+Docker initializes its persistent config from `docker/koharu.json`.
 
 Important runtime settings include:
 - Koharu API base URL and timeouts

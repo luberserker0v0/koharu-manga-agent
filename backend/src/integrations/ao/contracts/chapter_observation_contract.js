@@ -7,24 +7,9 @@ const {
   quarantineRecord,
 } = require("./semantic_result");
 
-const TEXT_ROLES = new Set([
-  "dialogue",
-  "monologue",
-  "narration",
-  "label_or_system",
-  "sfx_like",
-  "mixed",
-  "uncertain",
-]);
+const TEXT_ROLES = new Set(["dialogue", "monologue", "narration", "label_or_system", "sfx_like", "mixed", "uncertain"]);
 const SPEAKER_TYPES = new Set(["character", "narrator", "none", "uncertain"]);
-const STYLE_CHANNELS = new Set([
-  "character_voice",
-  "inner_voice",
-  "narrator_voice",
-  "label_text",
-  "sfx",
-  "unknown",
-]);
+const STYLE_CHANNELS = new Set(["character_voice", "inner_voice", "narrator_voice", "label_text", "sfx", "unknown"]);
 const ENTITY_TYPES = new Set([
   "character",
   "title",
@@ -117,126 +102,172 @@ function parseEvidenceNodeKeys(value, expectedNodes, fieldName) {
   return [...new Set(keys)];
 }
 
-function parseLineBasedChapterObservation(content, input) {
-  const expectedNodes = collectExpectedNodes(input);
-  const nodes = [];
-  const mentions = [];
-  const storyCues = [];
-  const notes = [];
-  const seenNodeKeys = new Set();
-  const seenIds = new Set();
-  const collector = createSemanticCollector();
-  let completed = false;
+function createObservationParseState(input) {
+  return {
+    expectedNodes: collectExpectedNodes(input),
+    nodes: [],
+    mentions: [],
+    storyCues: [],
+    notes: [],
+    seenNodeKeys: new Set(),
+    seenIds: new Set(),
+    collector: createSemanticCollector(),
+    completed: false,
+    observedNodeCount: 0,
+    warnings: [],
+  };
+}
 
-  for (const [index, rawLine] of String(content || "").split(/\r?\n/).entries()) {
+function handleObservationDoneRecord(state, parts) {
+  if (parts.length !== 1) throw new Error("OBSERVATION_DONE must not contain fields.");
+  state.completed = true;
+}
+
+function handleNodeRecord(state, parts) {
+  const record = parseNode(parts, state.expectedNodes);
+  const key = nodeKey(record.pageName, record.nodeId);
+  if (state.seenNodeKeys.has(key)) throw new Error(`Duplicate NODE ${record.pageName}/${record.nodeId}.`);
+  state.seenNodeKeys.add(key);
+  state.nodes.push(record);
+  acceptRecord(state.collector);
+}
+
+function handleMentionRecord(state, parts) {
+  if (parts.length < 7) throw new Error("MENTION requires 7 fields.");
+  const [, mentionId, evidenceValue, surfaceForm, entityType, confidenceValue] = parts;
+  if (!mentionId || state.seenIds.has(mentionId)) throw new Error(`Duplicate or empty id ${mentionId}.`);
+  if (!ENTITY_TYPES.has(entityType)) throw new Error(`Unknown entityType ${entityType}.`);
+  state.seenIds.add(mentionId);
+  state.mentions.push({
+    mentionId,
+    evidenceNodeKeys: parseEvidenceNodeKeys(evidenceValue, state.expectedNodes, "MENTION"),
+    surfaceForm,
+    entityType,
+    confidence: parseConfidence(confidenceValue, "mention confidence"),
+    reason: parts.slice(6).join("|").trim(),
+  });
+  acceptRecord(state.collector);
+}
+
+function handleStoryCueRecord(state, parts) {
+  if (parts.length < 6) throw new Error("STORY_CUE requires 6 fields.");
+  const [, cueId, evidenceValue, cueType, confidenceValue] = parts;
+  if (!cueId || state.seenIds.has(cueId)) throw new Error(`Duplicate or empty id ${cueId}.`);
+  if (!STORY_CUE_TYPES.has(cueType)) throw new Error(`Unknown cueType ${cueType}.`);
+  state.seenIds.add(cueId);
+  state.storyCues.push({
+    cueId,
+    evidenceNodeKeys: parseEvidenceNodeKeys(evidenceValue, state.expectedNodes, "STORY_CUE"),
+    cueType,
+    confidence: parseConfidence(confidenceValue, "story cue confidence"),
+    reason: parts.slice(5).join("|").trim(),
+  });
+  acceptRecord(state.collector);
+}
+
+function handleNotesRecord(state, parts) {
+  state.notes.push(parts.slice(1).join("|").trim());
+  acceptRecord(state.collector);
+}
+
+function dispatchObservationRecord(state, parts) {
+  if (state.completed) throw new Error("OBSERVATION_DONE must be the final record.");
+  const kind = parts[0];
+  if (kind === "OBSERVATION_DONE") return handleObservationDoneRecord(state, parts);
+  if (kind === "NODE") return handleNodeRecord(state, parts);
+  if (kind === "MENTION") return handleMentionRecord(state, parts);
+  if (kind === "STORY_CUE") return handleStoryCueRecord(state, parts);
+  if (kind === "NOTES") return handleNotesRecord(state, parts);
+  throw new Error(`Unsupported record ${kind || "empty"}.`);
+}
+
+function addMissingObservationNodes(state) {
+  const missing = [...state.expectedNodes.entries()].filter(([key]) => !state.seenNodeKeys.has(key));
+  if (missing.length === 0) return;
+  addSemanticWarning(state.collector, `Chapter observation omitted ${missing.length} node(s).`);
+  for (const [, expected] of missing) {
+    state.nodes.push({
+      ...expected,
+      textRole: "uncertain",
+      speakerType: "uncertain",
+      speakerRef: null,
+      styleChannel: "unknown",
+      roleConfidence: 0,
+      speakerConfidence: 0,
+      reason: "AO did not return a valid observation for this node.",
+    });
+  }
+}
+
+function applyStoryCueBudgetWarning(state) {
+  if (state.storyCues.length <= 12) return [];
+  const warning = `story_cue_budget_exceeded:${state.storyCues.length}/12`;
+  addSemanticWarning(state.collector, warning);
+  return [warning];
+}
+
+function sortObservationNodes(state) {
+  const orderByKey = new Map([...state.expectedNodes.keys()].map((key, index) => [key, index]));
+  state.nodes.sort(
+    (left, right) =>
+      orderByKey.get(nodeKey(left.pageName, left.nodeId)) - orderByKey.get(nodeKey(right.pageName, right.nodeId)),
+  );
+}
+
+function finalizeObservationParse(state) {
+  if (!state.completed) {
+    const error = new Error("Chapter observation is missing OBSERVATION_DONE.");
+    error.code = "AO_OUTPUT_INCOMPLETE";
+    throw error;
+  }
+  state.observedNodeCount = state.nodes.length;
+  addMissingObservationNodes(state);
+  state.warnings = applyStoryCueBudgetWarning(state);
+  sortObservationNodes(state);
+}
+
+function buildObservationResult(state) {
+  return {
+    schemaVersion: 1,
+    nodes: state.nodes,
+    mentions: state.mentions,
+    storyCues: state.storyCues,
+    notes: state.notes,
+    warnings: state.warnings,
+    coverage: {
+      expected: state.expectedNodes.size,
+      observed: state.observedNodeCount,
+      uncertain: state.nodes.filter((node) => node.textRole === "uncertain").length,
+      invalid: state.collector.quarantinedRecords.length,
+    },
+    semanticResult: finalizeSemanticResult(state.collector, {
+      expectedRecords: state.expectedNodes.size,
+      observedRecords: state.observedNodeCount,
+    }),
+  };
+}
+
+function parseLineBasedChapterObservation(content, input) {
+  const state = createObservationParseState(input);
+  const rawLines = String(content || "").split(/\r?\n/);
+  for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
+    const rawLine = rawLines[lineIndex];
     const line = rawLine.trim();
     if (!line) continue;
     const parts = line.split("|").map((part) => part.trim());
     try {
-      if (completed) throw new Error("OBSERVATION_DONE must be the final record.");
-      if (parts[0] === "OBSERVATION_DONE") {
-        if (parts.length !== 1) throw new Error("OBSERVATION_DONE must not contain fields.");
-        completed = true;
-      } else if (parts[0] === "NODE") {
-        const record = parseNode(parts, expectedNodes);
-        const key = nodeKey(record.pageName, record.nodeId);
-        if (seenNodeKeys.has(key)) throw new Error(`Duplicate NODE ${record.pageName}/${record.nodeId}.`);
-        seenNodeKeys.add(key);
-        nodes.push(record);
-        acceptRecord(collector);
-      } else if (parts[0] === "MENTION") {
-        if (parts.length < 7) throw new Error("MENTION requires 7 fields.");
-        const [, mentionId, evidenceValue, surfaceForm, entityType, confidenceValue] = parts;
-        if (!mentionId || seenIds.has(mentionId)) throw new Error(`Duplicate or empty id ${mentionId}.`);
-        if (!ENTITY_TYPES.has(entityType)) throw new Error(`Unknown entityType ${entityType}.`);
-        seenIds.add(mentionId);
-        mentions.push({
-          mentionId,
-          evidenceNodeKeys: parseEvidenceNodeKeys(evidenceValue, expectedNodes, "MENTION"),
-          surfaceForm,
-          entityType,
-          confidence: parseConfidence(confidenceValue, "mention confidence"),
-          reason: parts.slice(6).join("|").trim(),
-        });
-        acceptRecord(collector);
-      } else if (parts[0] === "STORY_CUE") {
-        if (parts.length < 6) throw new Error("STORY_CUE requires 6 fields.");
-        const [, cueId, evidenceValue, cueType, confidenceValue] = parts;
-        if (!cueId || seenIds.has(cueId)) throw new Error(`Duplicate or empty id ${cueId}.`);
-        if (!STORY_CUE_TYPES.has(cueType)) throw new Error(`Unknown cueType ${cueType}.`);
-        seenIds.add(cueId);
-        storyCues.push({
-          cueId,
-          evidenceNodeKeys: parseEvidenceNodeKeys(evidenceValue, expectedNodes, "STORY_CUE"),
-          cueType,
-          confidence: parseConfidence(confidenceValue, "story cue confidence"),
-          reason: parts.slice(5).join("|").trim(),
-        });
-        acceptRecord(collector);
-      } else if (parts[0] === "NOTES") {
-        notes.push(parts.slice(1).join("|").trim());
-        acceptRecord(collector);
-      } else {
-        throw new Error(`Unsupported record ${parts[0] || "empty"}.`);
-      }
+      dispatchObservationRecord(state, parts);
     } catch (error) {
-      quarantineRecord(collector, {
-        lineNumber: index + 1,
+      quarantineRecord(state.collector, {
+        lineNumber: lineIndex + 1,
         raw: rawLine,
         kind: parts[0] || null,
         reason: error.message,
       });
     }
   }
-
-  if (!completed) {
-    const error = new Error("Chapter observation is missing OBSERVATION_DONE.");
-    error.code = "AO_OUTPUT_INCOMPLETE";
-    throw error;
-  }
-
-  const observedNodeCount = nodes.length;
-  const missing = [...expectedNodes.entries()].filter(([key]) => !seenNodeKeys.has(key));
-  if (missing.length > 0) {
-    addSemanticWarning(collector, `Chapter observation omitted ${missing.length} node(s).`);
-    for (const [, expected] of missing) {
-      nodes.push({
-        ...expected,
-        textRole: "uncertain",
-        speakerType: "uncertain",
-        speakerRef: null,
-        styleChannel: "unknown",
-        roleConfidence: 0,
-        speakerConfidence: 0,
-        reason: "AO did not return a valid observation for this node.",
-      });
-    }
-  }
-  const warnings = [];
-  if (storyCues.length > 12) {
-    warnings.push(`story_cue_budget_exceeded:${storyCues.length}/12`);
-    addSemanticWarning(collector, warnings[warnings.length - 1]);
-  }
-  const orderByKey = new Map([...expectedNodes.keys()].map((key, index) => [key, index]));
-  nodes.sort((left, right) => orderByKey.get(nodeKey(left.pageName, left.nodeId)) - orderByKey.get(nodeKey(right.pageName, right.nodeId)));
-  return {
-    schemaVersion: 1,
-    nodes,
-    mentions,
-    storyCues,
-    notes,
-    warnings,
-    coverage: {
-      expected: expectedNodes.size,
-      observed: observedNodeCount,
-      uncertain: nodes.filter((node) => node.textRole === "uncertain").length,
-      invalid: collector.quarantinedRecords.length,
-    },
-    semanticResult: finalizeSemanticResult(collector, {
-      expectedRecords: expectedNodes.size,
-      observedRecords: observedNodeCount,
-    }),
-  };
+  finalizeObservationParse(state);
+  return buildObservationResult(state);
 }
 
 function validateChapterObservation(result) {

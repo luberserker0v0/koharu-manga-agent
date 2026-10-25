@@ -87,7 +87,7 @@ Merge policy is backend-owned:
 - style profile is incrementally merged, not wholesale replaced
 
 ## Config Contract
-`.opencode/koharu.json` now uses AO-specific agent keys:
+The resolved backend configuration uses AO-specific agent keys:
 
 ```json
 {
@@ -107,9 +107,14 @@ Merge policy is backend-owned:
 ```
 
 Config precedence remains:
-- HTTP request overrides
-- `.opencode/koharu.json`
-- backend defaults
+1. HTTP request overrides
+2. `MANGA_TRANSLATION_CONFIG_PATH`, or the OS user config path when unset
+3. backend defaults
+
+There is no repository-local runtime configuration. When the selected user config file does not
+exist, the backend uses `backend/src/config.js` defaults until settings are persisted through the
+backend API. `backend/ao/opencode/opencode.json` is user-owned AO workspace content; the backend
+uploads it but must not generate or overwrite it.
 
 ## Acceptance Criteria
 - AO is the only LLM boundary

@@ -1,7 +1,7 @@
 import type { GuiJob } from "../../../api/jobs";
 
 const INGESTION_STAGE_LABELS: Record<string, string> = {
-  "reference_ingestion": "Ingestion",
+  reference_ingestion: "Ingestion",
   "reference_ingestion.memory": "Load memory",
   "reference_ingestion.ao_start": "Start AO",
   "reference_ingestion.observation": "Observe chapter",
@@ -15,12 +15,76 @@ const INGESTION_STAGE_LABELS: Record<string, string> = {
 };
 
 function latestIngestionProgress(job: GuiJob) {
-  const event = [...(job.events || [])]
-    .reverse()
-    .find((item) => item.type === "reference_ingestion.progress");
-  return event?.payload && typeof event.payload === "object"
-    ? event.payload as Record<string, unknown>
-    : null;
+  const event = [...(job.events || [])].reverse().find((item) => item.type === "reference_ingestion.progress");
+  return event?.payload && typeof event.payload === "object" ? (event.payload as Record<string, unknown>) : null;
+}
+
+type SummaryItem = { label: string; value: string };
+
+function stageSummary(job: GuiJob): SummaryItem[] {
+  if (!job.stage) return [];
+  const progress = latestIngestionProgress(job);
+  const batch =
+    Number(progress?.batches || 0) > 0 ? ` ${String(progress?.batch || 0)}/${String(progress?.batches)}` : "";
+  const percent = Number.isFinite(Number(progress?.percent)) ? ` (${String(progress?.percent)}%)` : "";
+  return [
+    {
+      label: "Current stage",
+      value: `${INGESTION_STAGE_LABELS[job.stage] || job.stage}${batch}${percent}`,
+    },
+  ];
+}
+
+function translatorSummary(job: GuiJob): SummaryItem[] {
+  const items: SummaryItem[] = [];
+  if (typeof job.payload.translatorLabel === "string" && job.payload.translatorLabel)
+    items.push({ label: "譯者", value: job.payload.translatorLabel });
+  else if (typeof job.payload.translatorId === "string" && job.payload.translatorId)
+    items.push({ label: "譯者 ID", value: job.payload.translatorId });
+  if (typeof job.payload.translator === "string" && job.payload.translator)
+    items.push({ label: "譯者", value: job.payload.translator });
+  return items;
+}
+
+function resultIdentitySummary(job: GuiJob, result: Record<string, unknown>): SummaryItem[] {
+  const items: SummaryItem[] = [];
+  if (typeof result.manifestLabel === "string" && result.manifestLabel)
+    items.push({ label: "Reference", value: result.manifestLabel });
+  if (typeof result.mangaId === "string" && result.mangaId) items.push({ label: "漫畫 ID", value: result.mangaId });
+  if (typeof result.chapterId === "string" && result.chapterId)
+    items.push({ label: "章節 ID", value: result.chapterId });
+  if (typeof job.payload.chapterTitle === "string" && job.payload.chapterTitle)
+    items.push({ label: "章節標題", value: job.payload.chapterTitle });
+  if (typeof result.translatorId === "string" && result.translatorId)
+    items.push({ label: "譯者 ID", value: result.translatorId });
+  return items;
+}
+
+function resultDetailSummary(job: GuiJob, result: Record<string, unknown>): SummaryItem[] {
+  const items: SummaryItem[] = [];
+  if (result.candidateSummary && typeof result.candidateSummary === "object") {
+    const summary = result.candidateSummary as Record<string, unknown>;
+    items.push({
+      label: "摘要",
+      value: `專有名詞 ${String(summary.terminology || 0)} / 角色 ${String(summary.characters || 0)}`,
+    });
+  }
+  if (job.type === "reference_ingestion") {
+    const uses = [
+      job.payload.useForTerminology === false ? null : "專有名詞",
+      job.payload.useForStyle === false ? null : "翻譯風格",
+    ];
+    items.push({
+      label: "Reference 用途",
+      value: uses.filter(Boolean).join(" + ") || "未設定",
+    });
+  }
+  if (typeof result.systemPrompt === "string" && result.systemPrompt.trim())
+    items.push({
+      label: "系統 Prompt",
+      value: result.systemPrompt.trim().slice(0, 120),
+    });
+  return items;
 }
 
 export function displayJobType(type: string) {
@@ -43,83 +107,11 @@ export function displayJobType(type: string) {
 }
 
 export function selectedJobSummary(job: GuiJob | null) {
-  if (!job) {
-    return [];
-  }
-
-  const items: Array<{ label: string; value: string }> = [];
-  if (job.stage) {
-    const progress = latestIngestionProgress(job);
-    const batchDetail = Number(progress?.batches || 0) > 0
-      ? ` ${String(progress?.batch || 0)}/${String(progress?.batches)}`
-      : "";
-    const percentDetail = Number.isFinite(Number(progress?.percent))
-      ? ` (${String(progress?.percent)}%)`
-      : "";
-    items.push({
-      label: "Current stage",
-      value: `${INGESTION_STAGE_LABELS[job.stage] || job.stage}${batchDetail}${percentDetail}`,
-    });
-  }
-  if (typeof job.payload.translatorLabel === "string" && job.payload.translatorLabel) {
-    items.push({ label: "譯者", value: job.payload.translatorLabel });
-  } else if (typeof job.payload.translatorId === "string" && job.payload.translatorId) {
-    items.push({ label: "譯者 ID", value: job.payload.translatorId });
-  }
-  if (typeof job.payload.translator === "string" && job.payload.translator) {
-    items.push({ label: "譯者", value: job.payload.translator });
-  }
-  if (!job.result || typeof job.result !== "object") {
-    return items;
-  }
-
+  if (!job) return [];
+  const items = [...stageSummary(job), ...translatorSummary(job)];
+  if (!job.result || typeof job.result !== "object") return items;
   const result = job.result as Record<string, unknown>;
-
-  if (typeof result.manifestLabel === "string" && result.manifestLabel) {
-    items.push({ label: "Reference", value: result.manifestLabel });
-  }
-  if (typeof result.mangaId === "string" && result.mangaId) {
-    items.push({ label: "漫畫 ID", value: result.mangaId });
-  }
-  if (typeof result.chapterId === "string" && result.chapterId) {
-    items.push({ label: "章節 ID", value: result.chapterId });
-  }
-  if (typeof job.payload.chapterTitle === "string" && job.payload.chapterTitle) {
-    items.push({ label: "章節標題", value: job.payload.chapterTitle });
-  }
-  if (typeof result.translatorId === "string" && result.translatorId) {
-    items.push({ label: "譯者 ID", value: result.translatorId });
-  }
-  if (
-    result.candidateSummary &&
-    typeof result.candidateSummary === "object" &&
-    result.candidateSummary !== null
-  ) {
-    const candidateSummary = result.candidateSummary as Record<string, unknown>;
-    items.push({
-      label: "摘要",
-      value: "專有名詞 " + String(candidateSummary.terminology || 0) + " / 角色 " + String(candidateSummary.characters || 0),
-    });
-  }
-  if (job.type === "reference_ingestion") {
-    items.push({
-      label: "Reference 用途",
-      value:
-        [
-          job.payload.useForTerminology === false ? null : "專有名詞",
-          job.payload.useForStyle === false ? null : "翻譯風格",
-        ]
-          .filter(Boolean)
-          .join(" + ") || "未設定",
-    });
-  }
-  if (typeof result.systemPrompt === "string" && result.systemPrompt.trim()) {
-    items.push({
-      label: "系統 Prompt",
-      value: result.systemPrompt.trim().slice(0, 120),
-    });
-  }
-  return items;
+  return [...items, ...resultIdentitySummary(job, result), ...resultDetailSummary(job, result)];
 }
 
 export function ingestionResultSummary(job: GuiJob | null) {

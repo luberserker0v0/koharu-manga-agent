@@ -99,7 +99,8 @@ Primary unit targets:
 - `backend/src/integrations/ao/assets/ao_assets.js`
 - `backend/src/integrations/ao/tasks/ao_tasks.js`
 - `backend/src/integrations/ao/contracts/ao_contracts.js`
-- legacy migration scripts that still remain under `.opencode/`
+- `backend/src/integrations/koharu/client/koharu_client.js`
+- `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
 
 ### Integration
 Purpose:
@@ -111,7 +112,7 @@ Primary integration targets:
 - `POST /jobs/translation`
 - `GET /jobs/:jobId`
 - config override behavior from the isolated Backend user configuration
-- script presence/loadability during transition
+- Koharu and AO HTTP boundary behavior
 
 ### E2E
 Purpose:
@@ -124,8 +125,8 @@ Primary e2e targets:
 - translation job orchestration
 - cancel / retry / stream behavior
 - live backend smoke against Koharu
-- opencode SDK managed-runtime smoke
-- agent-in-the-loop quality and knowledge stages
+- AO HTTP conversation smoke
+- AO-assisted quality and knowledge stages
 
 ## Test Environment
 
@@ -168,7 +169,7 @@ Agent-stage audit artifacts explicitly covered:
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\api.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/api.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\process_runtime.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/process_runtime.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\reference_sets.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/reference_sets.test.js)
-- [C:\Users\berserker\Desktop\comics\1\tests\unit\reference_ingestion.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/reference_ingestion.test.js)
+- [reference_ingestion_review_gate.test.js](../tests/unit/reference_ingestion_review_gate.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\reference_image_conversion.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/reference_image_conversion.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\quality_reference_flow.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/quality_reference_flow.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\knowledge_module.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/knowledge_module.test.js)
@@ -176,14 +177,13 @@ Agent-stage audit artifacts explicitly covered:
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\knowledge_assets.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/knowledge_assets.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\ao_client.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/ao_client.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\ao_assets.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/ao_assets.test.js)
-- [C:\Users\berserker\Desktop\comics\1\tests\unit\one_click_translate.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/one_click_translate.test.js)
-- [C:\Users\berserker\Desktop\comics\1\tests\unit\listen_events.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/listen_events.test.js)
+- [C:\Users\berserker\Desktop\comics\1\tests\unit\project_orchestrator.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/project_orchestrator.test.js)
+- [C:\Users\berserker\Desktop\comics\1\tests\unit\pipeline_monitor.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/pipeline_monitor.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\unit\workflow_contracts.test.js](C:/Users/berserker/Desktop/comics/1/tests/unit/workflow_contracts.test.js)
 
 ### Integration Suites
 - [C:\Users\berserker\Desktop\comics\1\tests\integration\backend_api.test.js](C:/Users/berserker/Desktop/comics/1/tests/integration/backend_api.test.js)
 - [C:\Users\berserker\Desktop\comics\1\tests\integration\config_override.test.js](C:/Users/berserker/Desktop/comics/1/tests/integration/config_override.test.js)
-- [C:\Users\berserker\Desktop\comics\1\tests\integration\script_load.test.js](C:/Users/berserker/Desktop/comics/1/tests/integration/script_load.test.js)
 
 ### E2E Suites
 - [C:\Users\berserker\Desktop\comics\1\tests\e2e\backend_job_flow.test.js](C:/Users/berserker/Desktop/comics/1/tests/e2e/backend_job_flow.test.js)
@@ -262,7 +262,8 @@ Validated behaviors:
 ### Reference Workflow
 Covered by:
 - `reference_sets.test.js`
-- `reference_ingestion.test.js`
+- `reference_ingestion_review_gate.test.js`
+- `job_manager_dependencies.test.js`
 - `reference_image_conversion.test.js`
 - `backend_job_flow.test.js`
 
@@ -298,14 +299,14 @@ Covered by:
 
 ### FR-02 Pre-pipeline setup
 Covered by:
-- `one_click_translate.test.js`
+- `project_orchestrator.test.js`
 - `backend_api.test.js`
 - `backend_job_flow.test.js`
 - `live_backend_smoke.test.js`
 
 ### FR-03 Pipeline monitoring
 Covered by:
-- `listen_events.test.js`
+- `pipeline_monitor.test.js`
 - `pipeline.test.js`
 - `backend_job_flow.test.js`
 - `live_backend_smoke.test.js`
@@ -323,7 +324,8 @@ Covered by:
 
 ### FR-06 Reference ingestion
 Covered by:
-- `reference_ingestion.test.js`
+- `reference_ingestion_review_gate.test.js`
+- `job_manager_dependencies.test.js`
 - `backend_job_flow.test.js`
 
 ### FR-07 Job observation
@@ -394,7 +396,6 @@ This baseline reflects the current official workflow, including the mandatory so
 - Node.js is available
 - repo dependencies are installed
 - `tests/node_modules/` is available
-- `backend/node_modules/` is available for SDK tests
 - Koharu is available for live smoke suites that require it
 
 ## Exit Criteria

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { getJobArtifacts, type GuiArtifact } from "../../../api/jobs";
 import { deleteDesktopPath, readJsonFile, writeJsonFile } from "../../../services/desktop_api";
 
@@ -24,75 +24,98 @@ export type UseReferenceArtifactsResult = {
   resetPreview: (status?: string) => void;
 };
 
-export function useReferenceArtifacts(selectedReferenceJobId: string | null): UseReferenceArtifactsResult {
+type PreviewSetters = {
+  artifact: Dispatch<SetStateAction<GuiArtifact | null>>;
+  data: Dispatch<SetStateAction<unknown>>;
+  editor: Dispatch<SetStateAction<string>>;
+  status: Dispatch<SetStateAction<string>>;
+};
+
+function clearPreview(setters: PreviewSetters, status: string) {
+  setters.artifact(null);
+  setters.data(null);
+  setters.editor("");
+  setters.status(status);
+}
+
+async function loadArtifactData(artifact: GuiArtifact, setters: PreviewSetters) {
+  try {
+    setters.artifact(artifact);
+    setters.status("載入 Artifact 中...");
+    const loaded = await readJsonFile(artifact.path);
+    setters.data(loaded.data);
+    setters.editor(formatJson(loaded.data));
+    setters.status("Artifact 已載入。");
+  } catch (error) {
+    setters.data(null);
+    setters.editor("");
+    setters.status(error instanceof Error ? error.message : "載入 Artifact 失敗。");
+  }
+}
+
+async function saveArtifactData(
+  artifact: GuiArtifact | null,
+  value: string,
+  setters: PreviewSetters,
+  refetch: () => Promise<unknown>,
+) {
+  if (!artifact) return;
+  try {
+    const parsed = JSON.parse(value);
+    await writeJsonFile(artifact.path, parsed);
+    setters.data(parsed);
+    setters.status("Artifact 已儲存。");
+    await refetch();
+  } catch (error) {
+    setters.status(error instanceof Error ? error.message : "儲存 Artifact 失敗。");
+  }
+}
+
+async function deleteArtifactData(
+  artifact: GuiArtifact | null,
+  setters: PreviewSetters,
+  refetch: () => Promise<unknown>,
+) {
+  if (!artifact) return;
+  try {
+    await deleteDesktopPath(artifact.path);
+    clearPreview(setters, "Artifact 已刪除。");
+    await refetch();
+  } catch (error) {
+    setters.status(error instanceof Error ? error.message : "刪除 Artifact 失敗。");
+  }
+}
+
+function useArtifactPreview() {
   const [previewArtifact, setPreviewArtifact] = useState<GuiArtifact | null>(null);
   const [previewData, setPreviewData] = useState<unknown>(null);
   const [editorValue, setEditorValue] = useState("");
   const [previewStatus, setPreviewStatus] = useState("請先選擇要預覽的 Artifact。");
+  const setters = {
+    artifact: setPreviewArtifact,
+    data: setPreviewData,
+    editor: setEditorValue,
+    status: setPreviewStatus,
+  };
+  return { previewArtifact, previewData, editorValue, previewStatus, setEditorValue, setters };
+}
 
+export function useReferenceArtifacts(selectedReferenceJobId: string | null): UseReferenceArtifactsResult {
+  const preview = useArtifactPreview();
   const artifactsQuery = useQuery<ReferenceArtifactsQuery>({
     queryKey: ["reference-artifacts", selectedReferenceJobId],
     queryFn: () => getJobArtifacts(selectedReferenceJobId as string),
     enabled: Boolean(selectedReferenceJobId),
   });
-
-  const resetPreview = (status = "請先選擇要預覽的 Artifact。") => {
-    setPreviewArtifact(null);
-    setPreviewData(null);
-    setEditorValue("");
-    setPreviewStatus(status);
-  };
-
-  const loadArtifact = async (artifact: GuiArtifact) => {
-    try {
-      setPreviewArtifact(artifact);
-      setPreviewStatus("載入 Artifact 中...");
-      const loaded = await readJsonFile(artifact.path);
-      setPreviewData(loaded.data);
-      setEditorValue(formatJson(loaded.data));
-      setPreviewStatus("Artifact 已載入。");
-    } catch (error) {
-      setPreviewData(null);
-      setEditorValue("");
-      setPreviewStatus(error instanceof Error ? error.message : "載入 Artifact 失敗。");
-    }
-  };
-
-  const saveEditedArtifact = async () => {
-    if (!previewArtifact) {
-      return;
-    }
-    try {
-      const parsed = JSON.parse(editorValue);
-      await writeJsonFile(previewArtifact.path, parsed);
-      setPreviewData(parsed);
-      setPreviewStatus("Artifact 已儲存。");
-      await artifactsQuery.refetch();
-    } catch (error) {
-      setPreviewStatus(error instanceof Error ? error.message : "儲存 Artifact 失敗。");
-    }
-  };
-
-  const deleteArtifact = async () => {
-    if (!previewArtifact) {
-      return;
-    }
-    try {
-      await deleteDesktopPath(previewArtifact.path);
-      resetPreview("Artifact 已刪除。");
-      await artifactsQuery.refetch();
-    } catch (error) {
-      setPreviewStatus(error instanceof Error ? error.message : "刪除 Artifact 失敗。");
-    }
-  };
-
+  const resetPreview = (status = "請先選擇要預覽的 Artifact。"): void => clearPreview(preview.setters, status);
+  const loadArtifact = (artifact: GuiArtifact) => loadArtifactData(artifact, preview.setters);
+  const saveEditedArtifact = () => saveArtifactData(
+    preview.previewArtifact, preview.editorValue, preview.setters, artifactsQuery.refetch,
+  );
+  const deleteArtifact = () => deleteArtifactData(preview.previewArtifact, preview.setters, artifactsQuery.refetch);
   return {
     artifactsQuery,
-    previewArtifact,
-    previewData,
-    editorValue,
-    previewStatus,
-    setEditorValue,
+    ...preview,
     loadArtifact,
     saveEditedArtifact,
     deleteArtifact,

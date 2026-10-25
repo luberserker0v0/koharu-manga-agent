@@ -1,10 +1,5 @@
 import { useMemo } from "react";
-import type {
-  GuiJob,
-  MangaSeriesSummary,
-  ReferenceSetSummary,
-  TranslatorProfileSummary,
-} from "../../../api/jobs";
+import type { GuiJob, MangaSeriesSummary, ReferenceSetSummary, TranslatorProfileSummary } from "../../../api/jobs";
 import { confirmDialog } from "../../../services/desktop_api";
 import type { ReferenceJobSummaryLike } from "../types";
 
@@ -23,85 +18,62 @@ type ReferenceJobActionsParams = {
   openJobListPage: (job: GuiJob) => void;
 };
 
-export function useReferenceJobActions({
-  selectedJob,
-  selectedReferenceSetSummary,
-  selectedReferenceExtractionJob,
-  selectedReferenceIngestionJob,
-  selectedDeletionManga,
-  selectedDeletionTranslator,
-  retryReferenceJob,
-  deleteReferenceJob,
-  deleteReferenceExtractionResult,
-  deleteIngestionResult,
-  selectReferenceJob,
-  openJobListPage,
-}: ReferenceJobActionsParams) {
+async function confirmDeleteExtraction(params: ReferenceJobActionsParams) {
+  const reference = params.selectedReferenceSetSummary;
+  if (!reference) return;
+  const confirmed = await confirmDialog({
+    title: "刪除 Extraction 結果",
+    message: `確定要刪除 ${reference.label} 的 Extraction 結果與相關工作紀錄嗎？`,
+    confirmLabel: "刪除 Extraction",
+  });
+  if (confirmed) params.deleteReferenceExtractionResult(reference.id);
+}
+
+async function confirmDeleteIngestion(params: ReferenceJobActionsParams) {
+  const { selectedDeletionManga: manga, selectedDeletionTranslator: translator } = params;
+  if (!manga || !translator) return;
+  const confirmed = await confirmDialog({
+    title: "刪除 Ingestion 結果",
+    message: `確定要刪除 ${manga.label} / ${translator.label} 的 Ingestion 結果與相關工作紀錄嗎？`,
+    confirmLabel: "刪除 Ingestion",
+  });
+  if (confirmed) params.deleteIngestionResult(manga.mangaId, translator.translatorId);
+}
+
+function createActions(params: ReferenceJobActionsParams) {
+  return {
+    retryJob: () => {
+      if (params.selectedJob) params.retryReferenceJob(params.selectedJob.id);
+    },
+    openJobList: () => {
+      if (params.selectedJob) params.openJobListPage(params.selectedJob);
+    },
+    deleteJob: () => {
+      if (params.selectedJob) params.deleteReferenceJob(params.selectedJob.id);
+    },
+    viewExtraction: () => params.selectReferenceJob(params.selectedReferenceExtractionJob?.id || null),
+    viewIngestion: () => params.selectReferenceJob(params.selectedReferenceIngestionJob?.id || null),
+    confirmDeleteExtraction: () => confirmDeleteExtraction(params),
+    confirmDeleteIngestion: () => confirmDeleteIngestion(params),
+  };
+}
+
+export function useReferenceJobActions(params: ReferenceJobActionsParams) {
   return useMemo(
-    () => ({
-      retryJob() {
-        if (selectedJob) {
-          retryReferenceJob(selectedJob.id);
-        }
-      },
-      openJobList() {
-        if (selectedJob) {
-          openJobListPage(selectedJob);
-        }
-      },
-      deleteJob() {
-        if (selectedJob) {
-          deleteReferenceJob(selectedJob.id);
-        }
-      },
-      viewExtraction() {
-        selectReferenceJob(selectedReferenceExtractionJob?.id || null);
-      },
-      viewIngestion() {
-        selectReferenceJob(selectedReferenceIngestionJob?.id || null);
-      },
-      async confirmDeleteExtraction() {
-        if (!selectedReferenceSetSummary) {
-          return;
-        }
-        const confirmed = await confirmDialog({
-          title: "刪除 Extraction 結果",
-          message: `確定要刪除 ${selectedReferenceSetSummary.label} 的 Extraction 結果與相關工作紀錄嗎？`,
-          confirmLabel: "刪除 Extraction",
-        });
-        if (!confirmed) {
-          return;
-        }
-        deleteReferenceExtractionResult(selectedReferenceSetSummary.id);
-      },
-      async confirmDeleteIngestion() {
-        if (!selectedDeletionManga || !selectedDeletionTranslator) {
-          return;
-        }
-        const confirmed = await confirmDialog({
-          title: "刪除 Ingestion 結果",
-          message: `確定要刪除 ${selectedDeletionManga.label} / ${selectedDeletionTranslator.label} 的 Ingestion 結果與相關工作紀錄嗎？`,
-          confirmLabel: "刪除 Ingestion",
-        });
-        if (!confirmed) {
-          return;
-        }
-        deleteIngestionResult(selectedDeletionManga.mangaId, selectedDeletionTranslator.translatorId);
-      },
-    }),
+    () => createActions(params),
     [
-      deleteIngestionResult,
-      deleteReferenceExtractionResult,
-      deleteReferenceJob,
-      openJobListPage,
-      retryReferenceJob,
-      selectReferenceJob,
-      selectedDeletionManga,
-      selectedDeletionTranslator,
-      selectedJob,
-      selectedReferenceExtractionJob,
-      selectedReferenceIngestionJob,
-      selectedReferenceSetSummary,
-    ]
+      params.deleteIngestionResult,
+      params.deleteReferenceExtractionResult,
+      params.deleteReferenceJob,
+      params.openJobListPage,
+      params.retryReferenceJob,
+      params.selectReferenceJob,
+      params.selectedDeletionManga,
+      params.selectedDeletionTranslator,
+      params.selectedJob,
+      params.selectedReferenceExtractionJob,
+      params.selectedReferenceIngestionJob,
+      params.selectedReferenceSetSummary,
+    ],
   );
 }

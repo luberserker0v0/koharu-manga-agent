@@ -28,6 +28,32 @@ function buildStrategyDefinitions(t: (key: string) => string): StrategyDefinitio
   ];
 }
 
+function StrategyButtons({
+  definitions,
+  value,
+  onChange,
+}: {
+  definitions: StrategyDefinition[];
+  value: ReferenceGlossaryStrategy;
+  onChange: (value: ReferenceGlossaryStrategy) => void;
+}) {
+  return (
+    <div className="translation-mode-grid">
+      {definitions.map((definition) => (
+        <button
+          key={definition.value}
+          className={value === definition.value ? "translation-mode-card active" : "translation-mode-card"}
+          onClick={() => onChange(definition.value)}
+          type="button"
+        >
+          <strong>{definition.label}</strong>
+          <span>{definition.description}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function ReferenceGlossaryStrategySelector({
   label,
   helpText,
@@ -41,26 +67,13 @@ export function ReferenceGlossaryStrategySelector({
 }) {
   const t = useLanguageStore((state) => state.t);
   const definitions = buildStrategyDefinitions(t);
-  const selectedDefinition =
-    definitions.find((definition) => definition.value === value) || definitions[0];
+  const selectedDefinition = definitions.find((definition) => definition.value === value) || definitions[0];
 
   return (
     <article className="compact-grid">
       <h3>{label}</h3>
       {helpText ? <p className="muted-text">{helpText}</p> : null}
-      <div className="translation-mode-grid">
-        {definitions.map((definition) => (
-          <button
-            key={definition.value}
-            className={value === definition.value ? "translation-mode-card active" : "translation-mode-card"}
-            onClick={() => onChange(definition.value)}
-            type="button"
-          >
-            <strong>{definition.label}</strong>
-            <span>{definition.description}</span>
-          </button>
-        ))}
-      </div>
+      <StrategyButtons definitions={definitions} value={value} onChange={onChange} />
       <div className="artifact-summary-card">
         <strong>{selectedDefinition.label}</strong>
         <p className="muted-text">{selectedDefinition.description}</p>

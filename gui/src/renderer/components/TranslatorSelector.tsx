@@ -4,7 +4,7 @@ export const CREATE_NEW_TRANSLATOR_VALUE = "__create_new_translator__";
 
 export function resolveSelectedTranslator(
   selectedValue: string,
-  options: TranslatorProfileSummary[]
+  options: TranslatorProfileSummary[],
 ): TranslatorProfileSummary | null {
   return options.find((entry) => entry.translatorId === selectedValue) || null;
 }
@@ -27,23 +27,18 @@ type TranslatorSelectorProps = {
   onNewTranslatorLabelChange: (value: string) => void;
 };
 
-export function TranslatorSelector({
-  label,
-  helpText,
-  selectedValue,
-  newTranslatorLabel,
-  options,
-  loading = false,
-  failed = false,
-  disabled = false,
-  emptyLabel,
-  loadingLabel,
-  failedLabel,
-  createLabel,
-  inputPlaceholder,
-  onSelectionChange,
-  onNewTranslatorLabelChange,
-}: TranslatorSelectorProps) {
+function TranslatorOptions({ options }: Pick<TranslatorSelectorProps, "options">) {
+  return options.map((entry) => (
+    <option key={entry.translatorId} value={entry.translatorId}>
+      {entry.label}
+    </option>
+  ));
+}
+
+export function TranslatorSelector(props: TranslatorSelectorProps) {
+  const { label, helpText, selectedValue, newTranslatorLabel, options } = props;
+  const { loading = false, failed = false, disabled = false } = props;
+  const emptyText = loading ? props.loadingLabel : failed ? props.failedLabel : props.emptyLabel;
   return (
     <label>
       <span>{label}</span>
@@ -51,22 +46,18 @@ export function TranslatorSelector({
       <div className="inline-field-row">
         <select
           value={selectedValue}
-          onChange={(event) => onSelectionChange(event.currentTarget.value)}
+          onChange={(event) => props.onSelectionChange(event.currentTarget.value)}
           disabled={disabled}
         >
-          <option value="">{loading ? loadingLabel : failed ? failedLabel : emptyLabel}</option>
-          {options.map((entry) => (
-            <option key={entry.translatorId} value={entry.translatorId}>
-              {entry.label}
-            </option>
-          ))}
-          <option value={CREATE_NEW_TRANSLATOR_VALUE}>{createLabel}</option>
+          <option value="">{emptyText}</option>
+          <TranslatorOptions options={options} />
+          <option value={CREATE_NEW_TRANSLATOR_VALUE}>{props.createLabel}</option>
         </select>
         {selectedValue === CREATE_NEW_TRANSLATOR_VALUE ? (
           <input
-            placeholder={inputPlaceholder}
+            placeholder={props.inputPlaceholder}
             value={newTranslatorLabel}
-            onChange={(event) => onNewTranslatorLabelChange(event.currentTarget.value)}
+            onChange={(event) => props.onNewTranslatorLabelChange(event.currentTarget.value)}
           />
         ) : null}
       </div>

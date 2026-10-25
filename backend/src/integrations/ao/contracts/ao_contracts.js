@@ -22,12 +22,16 @@ function assertPlainObject(value, fieldName) {
   assertCondition(isPlainObject(value), `${fieldName} must be an object.`);
 }
 
+function assertFiniteNumber(value, message) {
+  assertCondition(typeof value === "number" && Number.isFinite(value), message);
+}
+
 function validateNamedStringArray(value, fieldName) {
   assertArray(value, fieldName);
   value.forEach((entry, index) => {
     assertCondition(
       typeof entry === "string" && entry.length > 0,
-      `${fieldName}[${index}] must be a non-empty string.`
+      `${fieldName}[${index}] must be a non-empty string.`,
     );
   });
 }
@@ -68,11 +72,11 @@ function validateQualityFinding(finding, index, fieldName) {
   assertPlainObject(finding, `${fieldName}[${index}]`);
   assertCondition(
     typeof finding.type === "string" && finding.type.length > 0,
-    `${fieldName}[${index}].type must be a non-empty string.`
+    `${fieldName}[${index}].type must be a non-empty string.`,
   );
   assertCondition(
     typeof finding.message === "string" && finding.message.length > 0,
-    `${fieldName}[${index}].message must be a non-empty string.`
+    `${fieldName}[${index}].message must be a non-empty string.`,
   );
   assertOptionalString(finding.severity, `${fieldName}[${index}].severity`);
   assertOptionalString(finding.pageName, `${fieldName}[${index}].pageName`);
@@ -90,14 +94,8 @@ function validateQualityChecksSummary(checks, fieldName) {
   validateNamedStringArray(checks.passed, `${fieldName}.passed`);
   validateNamedStringArray(checks.failed, `${fieldName}.failed`);
   assertPlainObject(checks.totals, `${fieldName}.totals`);
-  assertCondition(
-    typeof checks.totals.passed === "number" && Number.isFinite(checks.totals.passed),
-    `${fieldName}.totals.passed must be a finite number.`
-  );
-  assertCondition(
-    typeof checks.totals.failed === "number" && Number.isFinite(checks.totals.failed),
-    `${fieldName}.totals.failed must be a finite number.`
-  );
+  assertFiniteNumber(checks.totals.passed, `${fieldName}.totals.passed must be a finite number.`);
+  assertFiniteNumber(checks.totals.failed, `${fieldName}.totals.failed must be a finite number.`);
 }
 
 function arraysMatch(left, right) {
@@ -108,33 +106,39 @@ function arraysMatch(left, right) {
   return left.every((entry, index) => entry === right[index]);
 }
 
-function validateQualityValidationReport(result, fieldName = "quality_validation_report") {
+function validateQualityReportCore(result, fieldName) {
   assertPlainObject(result, fieldName);
   assertCondition(
     typeof result.overall === "string" && result.overall.length > 0,
-    `${fieldName}.overall must be a non-empty string.`
+    `${fieldName}.overall must be a non-empty string.`,
   );
-  assertCondition(
-    typeof result.score === "number" && Number.isFinite(result.score),
-    `${fieldName}.score must be a finite number.`
-  );
-  assertCondition(
-    typeof result.totalTranslations === "number" && Number.isFinite(result.totalTranslations),
-    `${fieldName}.totalTranslations must be a finite number.`
-  );
+  assertFiniteNumber(result.score, `${fieldName}.score must be a finite number.`);
+  assertFiniteNumber(result.totalTranslations, `${fieldName}.totalTranslations must be a finite number.`);
+}
+
+function validateQualityReportArrays(result, fieldName) {
   validateQualityChecksSummary(result.checks, `${fieldName}.checks`);
   validateQualityFindingArray(result.issues, `${fieldName}.issues`);
   validateQualityFindingArray(result.warnings, `${fieldName}.warnings`);
   validateNamedStringArray(result.passedChecks, `${fieldName}.passedChecks`);
   validateNamedStringArray(result.failedChecks, `${fieldName}.failedChecks`);
+}
+
+function validateQualityReportConsistency(result, fieldName) {
   assertCondition(
     arraysMatch(result.passedChecks, result.checks.passed),
-    `${fieldName}.passedChecks must match ${fieldName}.checks.passed.`
+    `${fieldName}.passedChecks must match ${fieldName}.checks.passed.`,
   );
   assertCondition(
     arraysMatch(result.failedChecks, result.checks.failed),
-    `${fieldName}.failedChecks must match ${fieldName}.checks.failed.`
+    `${fieldName}.failedChecks must match ${fieldName}.checks.failed.`,
   );
+}
+
+function validateQualityValidationReport(result, fieldName = "quality_validation_report") {
+  validateQualityReportCore(result, fieldName);
+  validateQualityReportArrays(result, fieldName);
+  validateQualityReportConsistency(result, fieldName);
   if (result.usedKnowledgeSources !== undefined) {
     validateNamedStringArray(result.usedKnowledgeSources, `${fieldName}.usedKnowledgeSources`);
   }
@@ -146,18 +150,18 @@ function validateTerminologyEntry(entry, index) {
   assertPlainObject(entry, `knowledge_enrichment.terminologyEntries[${index}]`);
   assertCondition(
     typeof entry.term === "string" && entry.term.length > 0,
-    `knowledge_enrichment.terminologyEntries[${index}].term must be a non-empty string.`
+    `knowledge_enrichment.terminologyEntries[${index}].term must be a non-empty string.`,
   );
   assertCondition(
     typeof entry.translation === "string" && entry.translation.length > 0,
-    `knowledge_enrichment.terminologyEntries[${index}].translation must be a non-empty string.`
+    `knowledge_enrichment.terminologyEntries[${index}].translation must be a non-empty string.`,
   );
   assertOptionalString(entry.category, `knowledge_enrichment.terminologyEntries[${index}].category`);
   assertOptionalString(entry.notes, `knowledge_enrichment.terminologyEntries[${index}].notes`);
   if (entry.confidence !== undefined && entry.confidence !== null) {
-    assertCondition(
-      typeof entry.confidence === "number" && Number.isFinite(entry.confidence),
-      `knowledge_enrichment.terminologyEntries[${index}].confidence must be a finite number.`
+    assertFiniteNumber(
+      entry.confidence,
+      `knowledge_enrichment.terminologyEntries[${index}].confidence must be a finite number.`,
     );
   }
 }
@@ -166,60 +170,74 @@ function validateCharacterExample(example, index, parentIndex) {
   assertPlainObject(example, `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}]`);
   assertOptionalString(
     example.pageName,
-    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].pageName`
+    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].pageName`,
   );
   assertOptionalString(
     example.nodeId,
-    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].nodeId`
+    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].nodeId`,
   );
   assertCondition(
     typeof example.translation === "string" && example.translation.length > 0,
-    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].translation must be a non-empty string.`
+    `knowledge_enrichment.characterEntries[${parentIndex}].example_lines[${index}].translation must be a non-empty string.`,
   );
+}
+
+function validateCharacterOptionalArrays(entry, index) {
+  const prefix = `knowledge_enrichment.characterEntries[${index}]`;
+  if (entry.aliases !== undefined) {
+    assertArray(entry.aliases, `${prefix}.aliases`);
+  }
+  if (entry.title_forms !== undefined) {
+    assertArray(entry.title_forms, `${prefix}.title_forms`);
+  }
+  if (entry.speech_style !== undefined) {
+    assertArray(entry.speech_style, `${prefix}.speech_style`);
+  }
+  if (entry.sentence_ending_patterns !== undefined) {
+    assertArray(entry.sentence_ending_patterns, `${prefix}.sentence_ending_patterns`);
+  }
+  if (entry.addressing_patterns !== undefined) {
+    assertArray(entry.addressing_patterns, `${prefix}.addressing_patterns`);
+  }
 }
 
 function validateCharacterEntry(entry, index) {
   assertPlainObject(entry, `knowledge_enrichment.characterEntries[${index}]`);
   assertCondition(
     typeof entry.name === "string" && entry.name.length > 0,
-    `knowledge_enrichment.characterEntries[${index}].name must be a non-empty string.`
+    `knowledge_enrichment.characterEntries[${index}].name must be a non-empty string.`,
   );
-  if (entry.aliases !== undefined) {
-    assertArray(entry.aliases, `knowledge_enrichment.characterEntries[${index}].aliases`);
-  }
-  if (entry.title_forms !== undefined) {
-    assertArray(entry.title_forms, `knowledge_enrichment.characterEntries[${index}].title_forms`);
-  }
-  if (entry.speech_style !== undefined) {
-    assertArray(entry.speech_style, `knowledge_enrichment.characterEntries[${index}].speech_style`);
-  }
-  if (entry.sentence_ending_patterns !== undefined) {
-    assertArray(
-      entry.sentence_ending_patterns,
-      `knowledge_enrichment.characterEntries[${index}].sentence_ending_patterns`
-    );
-  }
-  if (entry.addressing_patterns !== undefined) {
-    assertArray(
-      entry.addressing_patterns,
-      `knowledge_enrichment.characterEntries[${index}].addressing_patterns`
-    );
-  }
-  assertOptionalString(
-    entry.first_seen_chapter,
-    `knowledge_enrichment.characterEntries[${index}].first_seen_chapter`
-  );
+  validateCharacterOptionalArrays(entry, index);
+  assertOptionalString(entry.first_seen_chapter, `knowledge_enrichment.characterEntries[${index}].first_seen_chapter`);
   if (entry.example_lines !== undefined) {
     assertArray(entry.example_lines, `knowledge_enrichment.characterEntries[${index}].example_lines`);
-    entry.example_lines.forEach((example, exampleIndex) =>
-      validateCharacterExample(example, exampleIndex, index)
-    );
+    entry.example_lines.forEach((example, exampleIndex) => validateCharacterExample(example, exampleIndex, index));
   }
   if (entry.confidence !== undefined && entry.confidence !== null) {
-    assertCondition(
-      typeof entry.confidence === "number" && Number.isFinite(entry.confidence),
-      `knowledge_enrichment.characterEntries[${index}].confidence must be a finite number.`
+    assertFiniteNumber(
+      entry.confidence,
+      `knowledge_enrichment.characterEntries[${index}].confidence must be a finite number.`,
     );
+  }
+}
+
+function validateCharacterSpeechOptionalArrays(entry, index) {
+  const prefix = `knowledge_enrichment.characterSpeechEvidence[${index}]`;
+  if (entry.speech_style !== undefined) {
+    assertArray(entry.speech_style, `${prefix}.speech_style`);
+  }
+  if (entry.sentence_ending_patterns !== undefined) {
+    assertArray(entry.sentence_ending_patterns, `${prefix}.sentence_ending_patterns`);
+  }
+  if (entry.addressing_patterns !== undefined) {
+    assertArray(entry.addressing_patterns, `${prefix}.addressing_patterns`);
+  }
+  if (entry.example_lines !== undefined) {
+    assertArray(entry.example_lines, `${prefix}.example_lines`);
+    entry.example_lines.forEach((example, exampleIndex) => validateCharacterExample(example, exampleIndex, index));
+  }
+  if (entry.notes !== undefined) {
+    assertArray(entry.notes, `${prefix}.notes`);
   }
 }
 
@@ -227,37 +245,31 @@ function validateCharacterSpeechEvidenceEntry(entry, index) {
   assertPlainObject(entry, `knowledge_enrichment.characterSpeechEvidence[${index}]`);
   assertCondition(
     typeof entry.name === "string" && entry.name.length > 0,
-    `knowledge_enrichment.characterSpeechEvidence[${index}].name must be a non-empty string.`
+    `knowledge_enrichment.characterSpeechEvidence[${index}].name must be a non-empty string.`,
   );
-  if (entry.speech_style !== undefined) {
-    assertArray(entry.speech_style, `knowledge_enrichment.characterSpeechEvidence[${index}].speech_style`);
-  }
-  if (entry.sentence_ending_patterns !== undefined) {
-    assertArray(
-      entry.sentence_ending_patterns,
-      `knowledge_enrichment.characterSpeechEvidence[${index}].sentence_ending_patterns`
+  validateCharacterSpeechOptionalArrays(entry, index);
+  if (entry.confidence !== undefined && entry.confidence !== null) {
+    assertFiniteNumber(
+      entry.confidence,
+      `knowledge_enrichment.characterSpeechEvidence[${index}].confidence must be a finite number.`,
     );
   }
-  if (entry.addressing_patterns !== undefined) {
-    assertArray(
-      entry.addressing_patterns,
-      `knowledge_enrichment.characterSpeechEvidence[${index}].addressing_patterns`
-    );
+}
+
+function validateNarrationOptionalArrays(entry, index) {
+  const prefix = `knowledge_enrichment.narrationEvidence[${index}]`;
+  if (entry.preferred_patterns !== undefined) {
+    assertArray(entry.preferred_patterns, `${prefix}.preferred_patterns`);
+  }
+  if (entry.forbidden_patterns !== undefined) {
+    assertArray(entry.forbidden_patterns, `${prefix}.forbidden_patterns`);
   }
   if (entry.example_lines !== undefined) {
-    assertArray(entry.example_lines, `knowledge_enrichment.characterSpeechEvidence[${index}].example_lines`);
-    entry.example_lines.forEach((example, exampleIndex) =>
-      validateCharacterExample(example, exampleIndex, index)
-    );
+    assertArray(entry.example_lines, `${prefix}.example_lines`);
+    entry.example_lines.forEach((example, exampleIndex) => validateCharacterExample(example, exampleIndex, index));
   }
   if (entry.notes !== undefined) {
-    assertArray(entry.notes, `knowledge_enrichment.characterSpeechEvidence[${index}].notes`);
-  }
-  if (entry.confidence !== undefined && entry.confidence !== null) {
-    assertCondition(
-      typeof entry.confidence === "number" && Number.isFinite(entry.confidence),
-      `knowledge_enrichment.characterSpeechEvidence[${index}].confidence must be a finite number.`
-    );
+    assertArray(entry.notes, `${prefix}.notes`);
   }
 }
 
@@ -265,44 +277,18 @@ function validateNarrationEvidenceEntry(entry, index) {
   assertPlainObject(entry, `knowledge_enrichment.narrationEvidence[${index}]`);
   assertOptionalString(entry.tone, `knowledge_enrichment.narrationEvidence[${index}].tone`);
   assertOptionalString(entry.register, `knowledge_enrichment.narrationEvidence[${index}].register`);
-  if (entry.preferred_patterns !== undefined) {
-    assertArray(
-      entry.preferred_patterns,
-      `knowledge_enrichment.narrationEvidence[${index}].preferred_patterns`
-    );
-  }
-  if (entry.forbidden_patterns !== undefined) {
-    assertArray(
-      entry.forbidden_patterns,
-      `knowledge_enrichment.narrationEvidence[${index}].forbidden_patterns`
-    );
-  }
-  if (entry.example_lines !== undefined) {
-    assertArray(entry.example_lines, `knowledge_enrichment.narrationEvidence[${index}].example_lines`);
-    entry.example_lines.forEach((example, exampleIndex) =>
-      validateCharacterExample(example, exampleIndex, index)
-    );
-  }
-  if (entry.notes !== undefined) {
-    assertArray(entry.notes, `knowledge_enrichment.narrationEvidence[${index}].notes`);
-  }
+  validateNarrationOptionalArrays(entry, index);
   if (entry.confidence !== undefined && entry.confidence !== null) {
-    assertCondition(
-      typeof entry.confidence === "number" && Number.isFinite(entry.confidence),
-      `knowledge_enrichment.narrationEvidence[${index}].confidence must be a finite number.`
+    assertFiniteNumber(
+      entry.confidence,
+      `knowledge_enrichment.narrationEvidence[${index}].confidence must be a finite number.`,
     );
   }
 }
 
-function validateStyleProfile(profile) {
-  if (profile === null || profile === undefined) {
-    return;
-  }
-
-  assertPlainObject(profile, "knowledge_enrichment.styleProfile");
+function validateStyleProfileTopLevel(profile) {
   assertOptionalString(profile.tone, "knowledge_enrichment.styleProfile.tone");
   assertOptionalString(profile.register, "knowledge_enrichment.styleProfile.register");
-
   for (const fieldName of [
     "honorific_policy",
     "punctuation_policy",
@@ -314,20 +300,29 @@ function validateStyleProfile(profile) {
       assertArray(profile[fieldName], `knowledge_enrichment.styleProfile.${fieldName}`);
     }
   }
+}
 
-  if (profile.narration !== undefined && profile.narration !== null) {
-    assertPlainObject(profile.narration, "knowledge_enrichment.styleProfile.narration");
-    assertOptionalString(profile.narration.tone, "knowledge_enrichment.styleProfile.narration.tone");
-    assertOptionalString(profile.narration.register, "knowledge_enrichment.styleProfile.narration.register");
-    for (const fieldName of ["preferred_patterns", "forbidden_patterns", "notes"]) {
-      if (profile.narration[fieldName] !== undefined) {
-        assertArray(
-          profile.narration[fieldName],
-          `knowledge_enrichment.styleProfile.narration.${fieldName}`
-        );
-      }
+function validateStyleProfileNarration(profile) {
+  if (profile.narration === undefined || profile.narration === null) {
+    return;
+  }
+  assertPlainObject(profile.narration, "knowledge_enrichment.styleProfile.narration");
+  assertOptionalString(profile.narration.tone, "knowledge_enrichment.styleProfile.narration.tone");
+  assertOptionalString(profile.narration.register, "knowledge_enrichment.styleProfile.narration.register");
+  for (const fieldName of ["preferred_patterns", "forbidden_patterns", "notes"]) {
+    if (profile.narration[fieldName] !== undefined) {
+      assertArray(profile.narration[fieldName], `knowledge_enrichment.styleProfile.narration.${fieldName}`);
     }
   }
+}
+
+function validateStyleProfile(profile) {
+  if (profile === null || profile === undefined) {
+    return;
+  }
+  assertPlainObject(profile, "knowledge_enrichment.styleProfile");
+  validateStyleProfileTopLevel(profile);
+  validateStyleProfileNarration(profile);
 }
 
 function validateStyleExampleEntry(entry, index) {
@@ -336,7 +331,7 @@ function validateStyleExampleEntry(entry, index) {
   if (entry.type !== undefined && entry.type !== null) {
     assertCondition(
       ["dialogue", "narration", "monologue"].includes(entry.type),
-      `knowledge_enrichment.styleExampleEntries[${index}].type must be dialogue, narration, or monologue.`
+      `knowledge_enrichment.styleExampleEntries[${index}].type must be dialogue, narration, or monologue.`,
     );
   }
   assertOptionalString(entry.pageName, `knowledge_enrichment.styleExampleEntries[${index}].pageName`);
@@ -347,44 +342,45 @@ function validateStyleExampleEntry(entry, index) {
   assertOptionalString(entry.speakerRef, `knowledge_enrichment.styleExampleEntries[${index}].speakerRef`);
   assertCondition(
     typeof entry.translation === "string" && entry.translation.length > 0,
-    `knowledge_enrichment.styleExampleEntries[${index}].translation must be a non-empty string.`
+    `knowledge_enrichment.styleExampleEntries[${index}].translation must be a non-empty string.`,
   );
   assertOptionalString(entry.reason, `knowledge_enrichment.styleExampleEntries[${index}].reason`);
   for (const fieldName of ["confidence", "roleConfidence", "speakerConfidence"]) {
     if (entry[fieldName] !== undefined && entry[fieldName] !== null) {
-      assertCondition(
-        typeof entry[fieldName] === "number" && Number.isFinite(entry[fieldName]),
-        `knowledge_enrichment.styleExampleEntries[${index}].${fieldName} must be a finite number.`
+      assertFiniteNumber(
+        entry[fieldName],
+        `knowledge_enrichment.styleExampleEntries[${index}].${fieldName} must be a finite number.`,
       );
     }
   }
 }
 
-function validateKnowledgeEnrichmentResult(result) {
+function validateKnowledgeEnrichmentCounts(result) {
+  for (const fieldName of ["translationPairs", "characters", "terminology", "styleExamples"]) {
+    assertFiniteNumber(result[fieldName], `knowledge_enrichment.${fieldName} must be a finite number.`);
+  }
+}
+
+function validateKnowledgeEnrichmentCore(result) {
   assertPlainObject(result, "knowledge_enrichment result");
   assertCondition(
     typeof result.enrichmentMode === "string" && result.enrichmentMode.length > 0,
-    "knowledge_enrichment.enrichmentMode must be a non-empty string."
+    "knowledge_enrichment.enrichmentMode must be a non-empty string.",
   );
+  validateKnowledgeEnrichmentCounts(result);
+}
 
-  for (const fieldName of ["translationPairs", "characters", "terminology", "styleExamples"]) {
-    assertCondition(
-      typeof result[fieldName] === "number" && Number.isFinite(result[fieldName]),
-      `knowledge_enrichment.${fieldName} must be a finite number.`
-    );
-  }
-
+function validateKnowledgeEnrichmentArrays(result) {
   assertArray(result.terminologyEntries, "knowledge_enrichment.terminologyEntries");
   result.terminologyEntries.forEach(validateTerminologyEntry);
-
   assertArray(result.characterEntries, "knowledge_enrichment.characterEntries");
   result.characterEntries.forEach(validateCharacterEntry);
-
   validateStyleProfile(result.styleProfile);
-
   assertArray(result.styleExampleEntries, "knowledge_enrichment.styleExampleEntries");
   result.styleExampleEntries.forEach(validateStyleExampleEntry);
+}
 
+function validateKnowledgeEnrichmentEvidence(result) {
   if (result.characterSpeechEvidence !== undefined) {
     assertArray(result.characterSpeechEvidence, "knowledge_enrichment.characterSpeechEvidence");
     result.characterSpeechEvidence.forEach(validateCharacterSpeechEvidenceEntry);
@@ -393,7 +389,12 @@ function validateKnowledgeEnrichmentResult(result) {
     assertArray(result.narrationEvidence, "knowledge_enrichment.narrationEvidence");
     result.narrationEvidence.forEach(validateNarrationEvidenceEntry);
   }
+}
 
+function validateKnowledgeEnrichmentResult(result) {
+  validateKnowledgeEnrichmentCore(result);
+  validateKnowledgeEnrichmentArrays(result);
+  validateKnowledgeEnrichmentEvidence(result);
   assertOptionalString(result.notes, "knowledge_enrichment.notes");
   return result;
 }

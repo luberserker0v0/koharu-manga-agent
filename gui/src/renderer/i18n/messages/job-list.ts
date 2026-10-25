@@ -1,6 +1,8 @@
 export const jobListMessagesZhTW = {
-  "jobList.selectAll.visible": (params?: Record<string, string | number>) => `\u5168\u9078\u76EE\u524D\u5DE5\u4F5C\uFF08${params?.count ?? 0}\uFF09`,
-  "jobList.selectAll.trash": (params?: Record<string, string | number>) => `\u5168\u9078\u76EE\u524D\u5783\u573E\u6876\u5DE5\u4F5C\uFF08${params?.count ?? 0}\uFF09`,
+  "jobList.selectAll.visible": (params?: Record<string, string | number>) =>
+    `\u5168\u9078\u76EE\u524D\u5DE5\u4F5C\uFF08${params?.count ?? 0}\uFF09`,
+  "jobList.selectAll.trash": (params?: Record<string, string | number>) =>
+    `\u5168\u9078\u76EE\u524D\u5783\u573E\u6876\u5DE5\u4F5C\uFF08${params?.count ?? 0}\uFF09`,
   "jobList.status.queued": "\u6392\u968A\u4E2D",
   "jobList.status.waitingDependency": "\u7B49\u5F85\u524D\u7F6E\u5DE5\u4F5C",
   "jobList.status.running": "\u57F7\u884C\u4E2D",
@@ -12,8 +14,10 @@ export const jobListMessagesZhTW = {
   "jobList.outcome.clean": "\u6210\u529F",
   "jobList.outcome.warnings": "\u5df2\u5b8c\u6210\uff0c\u4f46\u6709\u9805\u76ee\u672a\u7d0d\u5165\u5b78\u7fd2",
   "jobList.outcome.partial": "\u5df2\u5b8c\u6210\uff0c\u53ef\u7528\u8cc7\u6599\u4e0d\u5b8c\u6574",
-  "jobList.resourceFailure": (params?: Record<string, string | number>) => `AO \u8CC7\u6E90\u4E2D\u65B7\uFF1A${params?.value ?? ""}`,
-  "jobList.failureSummary": (params?: Record<string, string | number>) => `${params?.source ?? ""} / ${params?.stage ?? ""}\uFF1A${params?.type ?? ""}`,
+  "jobList.resourceFailure": (params?: Record<string, string | number>) =>
+    `AO \u8CC7\u6E90\u4E2D\u65B7\uFF1A${params?.value ?? ""}`,
+  "jobList.failureSummary": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""} / ${params?.stage ?? ""}\uFF1A${params?.type ?? ""}`,
   "jobList.resourceFailure.quota": "\u984D\u5EA6\u4E0D\u8DB3",
   "jobList.resourceFailure.timeout": "\u903E\u6642",
   "jobList.resourceFailure.transient_network": "\u9023\u7DDA\u6216\u670D\u52D9\u66AB\u6642\u4E2D\u65B7",
@@ -38,12 +42,16 @@ export const jobListMessagesZhTW = {
   "jobList.type.translationDeepAudit": "\u5b8c\u6574\u7ffb\u8b6f\u6aa2\u67e5",
   "jobList.type.translationDeepAuditApply": "\u5957\u7528\u5b8c\u6574\u6aa2\u67e5\u7d50\u679c",
   "jobList.type.translationQualityRepair": "\u91cd\u65b0\u6aa2\u67e5\u7ffb\u8b6f\u54c1\u8cea",
-  "jobList.card.title": (params?: Record<string, string | number>) => `${params?.manga ?? ""} \u00b7 ${params?.chapter ?? ""}`,
+  "jobList.card.title": (params?: Record<string, string | number>) =>
+    `${params?.manga ?? ""} \u00b7 ${params?.chapter ?? ""}`,
   "jobList.card.chapter": (params?: Record<string, string | number>) => `\u7b2c ${params?.value ?? ""} \u8a71`,
-  "jobList.card.translator": (params?: Record<string, string | number>) => `\u8f38\u51fa\u8b6f\u8005\uff1a${params?.value ?? ""}`,
-  "jobList.card.runningStage": (params?: Record<string, string | number>) => `\u6b63\u5728\u8655\u7406\uff1a${params?.value ?? ""}`,
+  "jobList.card.translator": (params?: Record<string, string | number>) =>
+    `\u8f38\u51fa\u8b6f\u8005\uff1a${params?.value ?? ""}`,
+  "jobList.card.runningStage": (params?: Record<string, string | number>) =>
+    `\u6b63\u5728\u8655\u7406\uff1a${params?.value ?? ""}`,
   "jobList.card.failedStage": (params?: Record<string, string | number>) => `\u505c\u5728\uff1a${params?.value ?? ""}`,
-  "jobList.card.completedStages": (params?: Record<string, string | number>) => `\u5df2\u5b8c\u6210\u5168\u90e8 ${params?.count ?? 0} \u500b\u6b65\u9a5f`,
+  "jobList.card.completedStages": (params?: Record<string, string | number>) =>
+    `\u5df2\u5b8c\u6210\u5168\u90e8 ${params?.count ?? 0} \u500b\u6b65\u9a5f`,
   "jobList.card.completed": "\u5df2\u5b8c\u6210",
   "jobList.card.waiting": "\u7b49\u5f85\u958b\u59cb",
   "jobList.card.progressLabel": (params?: Record<string, string | number>) => `\u9032\u5ea6 ${params?.value ?? 0}%`,
@@ -52,9 +60,11 @@ export const jobListMessagesZhTW = {
   "jobList.mode.reference_style": "Reference \u98a8\u683c\u7ffb\u8b6f",
   "jobList.mode.reference_style.description": "\u4f7f\u7528\u6307\u5b9a\u8b6f\u8005\u7684 Reference \u8a18\u61b6\u3002",
   "jobList.mode.local_style": "\u672c\u5730\u98a8\u683c\u7ffb\u8b6f",
-  "jobList.mode.local_style.description": "\u4f7f\u7528\u5df2\u7d2f\u7a4d\u7684\u672c\u5730\u7ffb\u8b6f\u8a18\u61b6\u3002",
+  "jobList.mode.local_style.description":
+    "\u4f7f\u7528\u5df2\u7d2f\u7a4d\u7684\u672c\u5730\u7ffb\u8b6f\u8a18\u61b6\u3002",
   "jobList.mode.learning_style": "\u5b78\u7fd2\u5f0f\u7ffb\u8b6f",
-  "jobList.mode.learning_style.description": "\u4f7f\u7528 Reference \u8207\u672c\u5730\u8a18\u61b6\uff0c\u4e26\u5b78\u7fd2\u672c\u7ae0\u6210\u679c\u3002",
+  "jobList.mode.learning_style.description":
+    "\u4f7f\u7528 Reference \u8207\u672c\u5730\u8a18\u61b6\uff0c\u4e26\u5b78\u7fd2\u672c\u7ae0\u6210\u679c\u3002",
   "jobList.stage.waiting": "\u7b49\u5f85\u958b\u59cb",
   "jobList.stage.waitingDependency": "\u7b49\u5f85\u524d\u4e00\u500b\u6b65\u9a5f",
   "jobList.stage.running": "\u57f7\u884c\u4e2d",
@@ -82,8 +92,10 @@ export const jobListMessagesZhTW = {
   "jobList.stage.translationObservation": "\u89c0\u5bdf\u672c\u7ae0\u539f\u6587\u89d2\u8272",
   "jobList.stage.deepAuditApplyOpenProject": "\u958b\u555f Deep Audit \u4f86\u6e90\u5c08\u6848",
   "jobList.stage.deepAuditApplyRender": "\u5957\u7528 Deep Audit \u7d50\u679c\u4e26\u532f\u51fa",
-  "jobList.stage.standardQuality": (params?: Record<string, string | number>) => `Standard Quality \u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
-  "jobList.stage.standardQualityPurpose": (params?: Record<string, string | number>) => `${params?.purpose ?? "Quality"}\uff1a\u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
+  "jobList.stage.standardQuality": (params?: Record<string, string | number>) =>
+    `Standard Quality \u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
+  "jobList.stage.standardQualityPurpose": (params?: Record<string, string | number>) =>
+    `${params?.purpose ?? "Quality"}\uff1a\u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
   "jobList.qualityPurpose.completeness": "\u7ffb\u8b6f\u5b8c\u6574\u6027\u6aa2\u67e5",
   "jobList.qualityPurpose.sequence": "\u9023\u7e8c\u5c0d\u8a71\u932f\u4f4d",
   "jobList.qualityPurpose.terminology": "\u5c08\u6709\u540d\u8a5e\u4e00\u81f4\u6027",
@@ -92,45 +104,65 @@ export const jobListMessagesZhTW = {
   "jobList.qualityPurpose.representative": "\u4ee3\u8868\u6027\u6d41\u66a2\u5ea6\u6aa2\u67e5",
   "jobList.qualityPurpose.review": "\u7ffb\u8b6f\u54c1\u8cea\u6aa2\u67e5",
   "jobList.stage.qualityApply": "\u5957\u7528 Quality \u4fee\u6b63",
-  "jobList.stage.qualityObservation": (params?: Record<string, string | number>) => `\u5168\u7ae0\u54c1\u8cea\u89c0\u5bdf ${params?.current ?? 0} / ${params?.total ?? 0}`,
+  "jobList.stage.qualityObservation": (params?: Record<string, string | number>) =>
+    `\u5168\u7ae0\u54c1\u8cea\u89c0\u5bdf ${params?.current ?? 0} / ${params?.total ?? 0}`,
   "jobList.stage.qualityVerification": "\u9a57\u8b49\u4fee\u6b63\u5f8c\u7d50\u679c",
   "jobList.stage.lightweightKnowledge": "\u8f15\u91cf Knowledge \u5b78\u7fd2",
-  "jobList.stage.deepAudit": (params?: Record<string, string | number>) => `Deep Audit \u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
+  "jobList.stage.deepAudit": (params?: Record<string, string | number>) =>
+    `Deep Audit \u7b2c ${params?.current ?? 0} / ${params?.total ?? 0} \u500b\u7a97\u53e3`,
   "jobList.type.postEditExport": "\u532f\u51fa\u5f8c\u7de8\u8f2f\u7d50\u679c",
   "jobList.type.unknown": "\u672A\u77E5\u5DE5\u4F5C",
   "jobList.mode.referenceExtraction.label": "\u5167\u5bb9\u64f7\u53d6",
-  "jobList.mode.referenceExtraction.description": "\u5F9E\u6F2B\u756B\u9801\u9762\u62BD\u53D6\u53EF\u4F9B\u5F8C\u7E8C\u5206\u6790\u7684\u6587\u5B57\u8B49\u64DA\u3002",
+  "jobList.mode.referenceExtraction.description":
+    "\u5F9E\u6F2B\u756B\u9801\u9762\u62BD\u53D6\u53EF\u4F9B\u5F8C\u7E8C\u5206\u6790\u7684\u6587\u5B57\u8B49\u64DA\u3002",
   "jobList.mode.sourceIngestion.label": "\u539f\u6587\u5167\u5bb9\u5b78\u7fd2",
-  "jobList.mode.sourceIngestion.description": "\u4F9D\u7AE0\u7BC0\u9806\u5E8F\u66F4\u65B0\u5C08\u6709\u540D\u8A5E\u8207\u6545\u4E8B\u8A18\u61B6\u3002",
+  "jobList.mode.sourceIngestion.description":
+    "\u4F9D\u7AE0\u7BC0\u9806\u5E8F\u66F4\u65B0\u5C08\u6709\u540D\u8A5E\u8207\u6545\u4E8B\u8A18\u61B6\u3002",
   "jobList.mode.translatorIngestion.label": "\u8b6f\u8005\u98a8\u683c\u5b78\u7fd2",
-  "jobList.mode.translatorIngestion.description": "\u5206\u6790\u5C08\u6709\u540D\u8A5E\u8B6F\u6CD5\u8207\u7FFB\u8B6F\u98A8\u683C\u3002",
-  "jobList.sequence": (params?: Record<string, string | number>) => `\u7AE0\u7BC0\u9806\u5E8F\uFF1A${params?.value ?? ""}`,
-  "jobList.parentWorkflow": (params?: Record<string, string | number>) => `\u6240\u5C6C Workflow\uFF1A${params?.value ?? ""}`,
-  "jobList.dependencies": (params?: Record<string, string | number>) => `\u524D\u7F6E\u5DE5\u4F5C\uFF1A${params?.value ?? ""}`,
-  "jobList.blockedReason": (params?: Record<string, string | number>) => `\u963B\u64CB\u539F\u56E0\uFF1A${params?.value ?? ""}`,
+  "jobList.mode.translatorIngestion.description":
+    "\u5206\u6790\u5C08\u6709\u540D\u8A5E\u8B6F\u6CD5\u8207\u7FFB\u8B6F\u98A8\u683C\u3002",
+  "jobList.sequence": (params?: Record<string, string | number>) =>
+    `\u7AE0\u7BC0\u9806\u5E8F\uFF1A${params?.value ?? ""}`,
+  "jobList.parentWorkflow": (params?: Record<string, string | number>) =>
+    `\u6240\u5C6C Workflow\uFF1A${params?.value ?? ""}`,
+  "jobList.dependencies": (params?: Record<string, string | number>) =>
+    `\u524D\u7F6E\u5DE5\u4F5C\uFF1A${params?.value ?? ""}`,
+  "jobList.blockedReason": (params?: Record<string, string | number>) =>
+    `\u963B\u64CB\u539F\u56E0\uFF1A${params?.value ?? ""}`,
   "jobList.mode.translation.label": "\u7ffb\u8b6f\u6d41\u7a0b",
-  "jobList.mode.translation.description": "\u57F7\u884C\u7FFB\u8B6F\u8207\u5DF2\u555F\u7528\u7684\u54C1\u8CEA\u3001\u77E5\u8B58\u968E\u6BB5\u3002",
+  "jobList.mode.translation.description":
+    "\u57F7\u884C\u7FFB\u8B6F\u8207\u5DF2\u555F\u7528\u7684\u54C1\u8CEA\u3001\u77E5\u8B58\u968E\u6BB5\u3002",
   "jobList.value.unassignedManga": "\u672A\u6307\u5B9A\u6F2B\u756B",
   "jobList.value.unassignedTranslator": "\u672A\u6307\u5B9A\u8B6F\u8005",
   "jobList.value.unassignedChapter": "\u672A\u6307\u5B9A\u7AE0\u7BC0",
-  "jobList.workflow.progress": (params?: Record<string, string | number>) => `\u968E\u6BB5\u9032\u5EA6 ${params?.completed ?? 0} / ${params?.total ?? 0}`,
-  "jobList.workflow.currentStage": (params?: Record<string, string | number>) => `\u76EE\u524D\uFF1A${params?.value ?? ""}`,
+  "jobList.workflow.progress": (params?: Record<string, string | number>) =>
+    `\u968E\u6BB5\u9032\u5EA6 ${params?.completed ?? 0} / ${params?.total ?? 0}`,
+  "jobList.workflow.currentStage": (params?: Record<string, string | number>) =>
+    `\u76EE\u524D\uFF1A${params?.value ?? ""}`,
   "jobList.workflow.noActiveStage": "\u76EE\u524D\u7121\u57F7\u884C\u4E2D\u968E\u6BB5",
-  "jobList.workflow.expandStages": (params?: Record<string, string | number>) => `\u57f7\u884c\u7d30\u7bc0\uff08${params?.count ?? 0}\uff09`,
+  "jobList.workflow.expandStages": (params?: Record<string, string | number>) =>
+    `\u57f7\u884c\u7d30\u7bc0\uff08${params?.count ?? 0}\uff09`,
   "jobList.workflow.collapseStages": "\u6536\u8d77\u57f7\u884c\u7d30\u7bc0",
   "jobList.workflow.reused": "\u6CBF\u7528\u5148\u524D\u5206\u6790\u7D50\u679C\uFF0C\u672A\u91CD\u65B0\u57F7\u884C",
-  "jobList.workflow.reusedWindows": (params?: Record<string, string | number>) => `\u5df2\u6cbf\u7528 checkpoint ${params?.count ?? 0} \u500b`,
-  "jobList.workflow.windowContext": (params?: Record<string, string | number>) => `${params?.purpose ?? ""} \u00b7 ${params?.chapter ?? ""} \u00b7 attempt ${params?.attempt ?? 0}`,
+  "jobList.workflow.reusedWindows": (params?: Record<string, string | number>) =>
+    `\u5df2\u6cbf\u7528 checkpoint ${params?.count ?? 0} \u500b`,
+  "jobList.workflow.windowContext": (params?: Record<string, string | number>) =>
+    `${params?.purpose ?? ""} \u00b7 ${params?.chapter ?? ""} \u00b7 attempt ${params?.attempt ?? 0}`,
   "jobList.workflow.purpose.terminology": "\u5c08\u8a5e\u8b49\u64da",
   "jobList.workflow.purpose.style": "\u98a8\u683c\u8b49\u64da",
   "jobList.workflow.childFailed": "\u5b50\u5de5\u4f5c\u5931\u6557",
-  "jobList.workflow.failedStage": (params?: Record<string, string | number>) => `\u5931\u6557\u5b50\u5de5\u4f5c\uff1a${params?.value ?? ""}`,
-  "jobList.workflow.retryFailedStage": (params?: Record<string, string | number>) => `\u91cd\u8a66${params?.value ?? ""}`,
+  "jobList.workflow.failedStage": (params?: Record<string, string | number>) =>
+    `\u5931\u6557\u5b50\u5de5\u4f5c\uff1a${params?.value ?? ""}`,
+  "jobList.workflow.retryFailedStage": (params?: Record<string, string | number>) =>
+    `\u91cd\u8a66${params?.value ?? ""}`,
   "jobList.workflow.resumeUnfinishedWindows": "\u7e8c\u8dd1\u672a\u5b8c\u6210\u7a97\u53e3",
   "jobList.workflow.supersededAttempt": "\u5df2\u7531\u5f8c\u7e8c\u91cd\u8a66\u53d6\u4ee3",
-  "jobList.updatedAt": (params?: Record<string, string | number>) => `\u66F4\u65B0\u6642\u9593\uFF1A${params?.value ?? ""}`,
-  "jobList.empty.filtered": "\u6C92\u6709\u7B26\u5408\u76EE\u524D\u7BE9\u9078\u689D\u4EF6\u7684\u5DE5\u4F5C\u6D41\u7A0B\u3002",
-  "jobList.empty.search": (params?: Record<string, string | number>) => `\u627E\u4E0D\u5230\u8207\u300C${params?.value ?? ""}\u300D\u76F8\u7B26\u7684\u5DE5\u4F5C\u6D41\u7A0B\u3002`,
+  "jobList.updatedAt": (params?: Record<string, string | number>) =>
+    `\u66F4\u65B0\u6642\u9593\uFF1A${params?.value ?? ""}`,
+  "jobList.empty.filtered":
+    "\u6C92\u6709\u7B26\u5408\u76EE\u524D\u7BE9\u9078\u689D\u4EF6\u7684\u5DE5\u4F5C\u6D41\u7A0B\u3002",
+  "jobList.empty.search": (params?: Record<string, string | number>) =>
+    `\u627E\u4E0D\u5230\u8207\u300C${params?.value ?? ""}\u300D\u76F8\u7B26\u7684\u5DE5\u4F5C\u6D41\u7A0B\u3002`,
   "jobList.action.retry": "\u91CD\u8A66",
   "jobList.action.resume": "\u7E8C\u8DD1",
   "jobList.action.stop": "\u505C\u6B62",
@@ -174,24 +206,33 @@ export const jobListMessagesZhTW = {
   "jobList.sort.title": "漫畫名稱（A-Z）",
   "jobList.loading": "載入工作流程中...",
   "jobList.loadFailed": "載入工作流程失敗。",
-  "jobList.notice.deleted": (params?: Record<string, string | number>) => `已將工作 ${params?.value ?? ""} 移到垃圾桶。`,
-  "jobList.notice.batchDeleted": (params?: Record<string, string | number>) => `已將 ${params?.count ?? 0} 個工作移到垃圾桶。`,
+  "jobList.notice.deleted": (params?: Record<string, string | number>) =>
+    `已將工作 ${params?.value ?? ""} 移到垃圾桶。`,
+  "jobList.notice.batchDeleted": (params?: Record<string, string | number>) =>
+    `已將 ${params?.count ?? 0} 個工作移到垃圾桶。`,
   "jobList.notice.restored": (params?: Record<string, string | number>) => `已還原工作 ${params?.value ?? ""}。`,
   "jobList.notice.batchRestored": (params?: Record<string, string | number>) => `已還原 ${params?.count ?? 0} 個工作。`,
   "jobList.notice.purged": (params?: Record<string, string | number>) => `已永久刪除工作 ${params?.value ?? ""}。`,
-  "jobList.notice.batchPurged": (params?: Record<string, string | number>) => `已永久刪除 ${params?.count ?? 0} 個工作。`,
+  "jobList.notice.batchPurged": (params?: Record<string, string | number>) =>
+    `已永久刪除 ${params?.count ?? 0} 個工作。`,
   "jobList.error.delete": "刪除工作失敗。",
   "jobList.error.batchDelete": "刪除所選工作失敗。",
   "jobList.error.restore": "還原工作失敗。",
   "jobList.error.batchRestore": "還原所選工作失敗。",
   "jobList.error.purge": "永久刪除工作失敗。",
   "jobList.error.batchPurge": "永久刪除所選工作失敗。",
-  "jobList.confirm.stopAndDelete": (params?: Record<string, string | number>) => `要停止並將這個工作流程移到垃圾桶嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n之後可以從垃圾桶還原。`,
-  "jobList.confirm.delete": (params?: Record<string, string | number>) => `要將這個工作流程移到垃圾桶嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n之後可以從垃圾桶還原。`,
-  "jobList.confirm.batchDelete": (params?: Record<string, string | number>) => `要將 ${params?.count ?? 0} 個所選工作流程移到垃圾桶嗎？\n\n之後可以從垃圾桶還原。`,
-  "jobList.confirm.batchRestore": (params?: Record<string, string | number>) => `要從垃圾桶還原 ${params?.count ?? 0} 個所選工作嗎？`,
-  "jobList.confirm.purge": (params?: Record<string, string | number>) => `要永久刪除這個垃圾桶工作嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n此動作無法復原。`,
-  "jobList.confirm.batchPurge": (params?: Record<string, string | number>) => `要永久刪除 ${params?.count ?? 0} 個所選垃圾桶工作嗎？\n\n此動作無法復原。`,
+  "jobList.confirm.stopAndDelete": (params?: Record<string, string | number>) =>
+    `要停止並將這個工作流程移到垃圾桶嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n之後可以從垃圾桶還原。`,
+  "jobList.confirm.delete": (params?: Record<string, string | number>) =>
+    `要將這個工作流程移到垃圾桶嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n之後可以從垃圾桶還原。`,
+  "jobList.confirm.batchDelete": (params?: Record<string, string | number>) =>
+    `要將 ${params?.count ?? 0} 個所選工作流程移到垃圾桶嗎？\n\n之後可以從垃圾桶還原。`,
+  "jobList.confirm.batchRestore": (params?: Record<string, string | number>) =>
+    `要從垃圾桶還原 ${params?.count ?? 0} 個所選工作嗎？`,
+  "jobList.confirm.purge": (params?: Record<string, string | number>) =>
+    `要永久刪除這個垃圾桶工作嗎？\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\n此動作無法復原。`,
+  "jobList.confirm.batchPurge": (params?: Record<string, string | number>) =>
+    `要永久刪除 ${params?.count ?? 0} 個所選垃圾桶工作嗎？\n\n此動作無法復原。`,
 };
 
 export const jobListMessagesEnUS = {
@@ -206,8 +247,10 @@ export const jobListMessagesEnUS = {
   "jobList.outcome.clean": "Succeeded",
   "jobList.outcome.warnings": "Completed, with items excluded from learning",
   "jobList.outcome.partial": "Completed with incomplete usable data",
-  "jobList.resourceFailure": (params?: Record<string, string | number>) => `AO resource interruption: ${params?.value ?? ""}`,
-  "jobList.failureSummary": (params?: Record<string, string | number>) => `${params?.source ?? ""} / ${params?.stage ?? ""}: ${params?.type ?? ""}`,
+  "jobList.resourceFailure": (params?: Record<string, string | number>) =>
+    `AO resource interruption: ${params?.value ?? ""}`,
+  "jobList.failureSummary": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""} / ${params?.stage ?? ""}: ${params?.type ?? ""}`,
   "jobList.resourceFailure.quota": "quota exhausted",
   "jobList.resourceFailure.timeout": "timeout",
   "jobList.resourceFailure.transient_network": "temporary connection or service failure",
@@ -232,12 +275,14 @@ export const jobListMessagesEnUS = {
   "jobList.type.translationDeepAudit": "Full translation review",
   "jobList.type.translationDeepAuditApply": "Apply full-review results",
   "jobList.type.translationQualityRepair": "Recheck translation quality",
-  "jobList.card.title": (params?: Record<string, string | number>) => `${params?.manga ?? ""} · ${params?.chapter ?? ""}`,
+  "jobList.card.title": (params?: Record<string, string | number>) =>
+    `${params?.manga ?? ""} · ${params?.chapter ?? ""}`,
   "jobList.card.chapter": (params?: Record<string, string | number>) => `Chapter ${params?.value ?? ""}`,
   "jobList.card.translator": (params?: Record<string, string | number>) => `Output translator: ${params?.value ?? ""}`,
   "jobList.card.runningStage": (params?: Record<string, string | number>) => `Working on: ${params?.value ?? ""}`,
   "jobList.card.failedStage": (params?: Record<string, string | number>) => `Stopped at: ${params?.value ?? ""}`,
-  "jobList.card.completedStages": (params?: Record<string, string | number>) => `All ${params?.count ?? 0} steps completed`,
+  "jobList.card.completedStages": (params?: Record<string, string | number>) =>
+    `All ${params?.count ?? 0} steps completed`,
   "jobList.card.completed": "Completed",
   "jobList.card.waiting": "Waiting to start",
   "jobList.card.progressLabel": (params?: Record<string, string | number>) => `Progress ${params?.value ?? 0}%`,
@@ -276,8 +321,10 @@ export const jobListMessagesEnUS = {
   "jobList.stage.translationObservation": "Observing source text roles",
   "jobList.stage.deepAuditApplyOpenProject": "Opening Deep Audit source project",
   "jobList.stage.deepAuditApplyRender": "Applying Deep Audit results and exporting",
-  "jobList.stage.standardQuality": (params?: Record<string, string | number>) => `Standard Quality window ${params?.current ?? 0} / ${params?.total ?? 0}`,
-  "jobList.stage.standardQualityPurpose": (params?: Record<string, string | number>) => `${params?.purpose ?? "Quality"}: window ${params?.current ?? 0} / ${params?.total ?? 0}`,
+  "jobList.stage.standardQuality": (params?: Record<string, string | number>) =>
+    `Standard Quality window ${params?.current ?? 0} / ${params?.total ?? 0}`,
+  "jobList.stage.standardQualityPurpose": (params?: Record<string, string | number>) =>
+    `${params?.purpose ?? "Quality"}: window ${params?.current ?? 0} / ${params?.total ?? 0}`,
   "jobList.qualityPurpose.completeness": "Translation completeness",
   "jobList.qualityPurpose.sequence": "Consecutive translation alignment",
   "jobList.qualityPurpose.terminology": "Terminology consistency",
@@ -286,10 +333,12 @@ export const jobListMessagesEnUS = {
   "jobList.qualityPurpose.representative": "Representative fluency review",
   "jobList.qualityPurpose.review": "Translation quality review",
   "jobList.stage.qualityApply": "Applying Quality revisions",
-  "jobList.stage.qualityObservation": (params?: Record<string, string | number>) => `Full-chapter quality observation ${params?.current ?? 0} / ${params?.total ?? 0}`,
+  "jobList.stage.qualityObservation": (params?: Record<string, string | number>) =>
+    `Full-chapter quality observation ${params?.current ?? 0} / ${params?.total ?? 0}`,
   "jobList.stage.qualityVerification": "Verifying revised translation",
   "jobList.stage.lightweightKnowledge": "Lightweight Knowledge learning",
-  "jobList.stage.deepAudit": (params?: Record<string, string | number>) => `Deep Audit window ${params?.current ?? 0} / ${params?.total ?? 0}`,
+  "jobList.stage.deepAudit": (params?: Record<string, string | number>) =>
+    `Deep Audit window ${params?.current ?? 0} / ${params?.total ?? 0}`,
   "jobList.type.postEditExport": "Export post-edit results",
   "jobList.type.unknown": "Unknown job",
   "jobList.mode.referenceExtraction.label": "Content extraction",
@@ -302,26 +351,33 @@ export const jobListMessagesEnUS = {
   "jobList.parentWorkflow": (params?: Record<string, string | number>) => `Workflow: ${params?.value ?? ""}`,
   "jobList.dependencies": (params?: Record<string, string | number>) => `Prerequisites: ${params?.value ?? ""}`,
   "jobList.blockedReason": (params?: Record<string, string | number>) => `Blocked reason: ${params?.value ?? ""}`,
-  "jobList.selectAll.visible": (params?: Record<string, string | number>) => `Select all visible jobs (${params?.count ?? 0})`,
-  "jobList.selectAll.trash": (params?: Record<string, string | number>) => `Select all visible trash jobs (${params?.count ?? 0})`,
+  "jobList.selectAll.visible": (params?: Record<string, string | number>) =>
+    `Select all visible jobs (${params?.count ?? 0})`,
+  "jobList.selectAll.trash": (params?: Record<string, string | number>) =>
+    `Select all visible trash jobs (${params?.count ?? 0})`,
   "jobList.mode.translation.label": "Translation process",
   "jobList.mode.translation.description": "Run translation and the enabled quality and knowledge stages.",
   "jobList.value.unassignedManga": "No manga assigned",
   "jobList.value.unassignedTranslator": "No translator assigned",
   "jobList.value.unassignedChapter": "No chapter assigned",
-  "jobList.workflow.progress": (params?: Record<string, string | number>) => `Stage progress ${params?.completed ?? 0} / ${params?.total ?? 0}`,
+  "jobList.workflow.progress": (params?: Record<string, string | number>) =>
+    `Stage progress ${params?.completed ?? 0} / ${params?.total ?? 0}`,
   "jobList.workflow.currentStage": (params?: Record<string, string | number>) => `Current: ${params?.value ?? ""}`,
   "jobList.workflow.noActiveStage": "No active stage",
-  "jobList.workflow.expandStages": (params?: Record<string, string | number>) => `Execution details (${params?.count ?? 0})`,
+  "jobList.workflow.expandStages": (params?: Record<string, string | number>) =>
+    `Execution details (${params?.count ?? 0})`,
   "jobList.workflow.collapseStages": "Hide execution details",
   "jobList.workflow.reused": "Reused previous analysis result; not executed again",
-  "jobList.workflow.reusedWindows": (params?: Record<string, string | number>) => `Reused checkpoints: ${params?.count ?? 0}`,
-  "jobList.workflow.windowContext": (params?: Record<string, string | number>) => `${params?.purpose ?? ""} \u00b7 ${params?.chapter ?? ""} \u00b7 attempt ${params?.attempt ?? 0}`,
+  "jobList.workflow.reusedWindows": (params?: Record<string, string | number>) =>
+    `Reused checkpoints: ${params?.count ?? 0}`,
+  "jobList.workflow.windowContext": (params?: Record<string, string | number>) =>
+    `${params?.purpose ?? ""} \u00b7 ${params?.chapter ?? ""} \u00b7 attempt ${params?.attempt ?? 0}`,
   "jobList.workflow.purpose.terminology": "Terminology evidence",
   "jobList.workflow.purpose.style": "Style evidence",
   "jobList.workflow.childFailed": "Child job failed",
   "jobList.workflow.failedStage": (params?: Record<string, string | number>) => `Failed child: ${params?.value ?? ""}`,
-  "jobList.workflow.retryFailedStage": (params?: Record<string, string | number>) => `Retry ${params?.value ?? "child job"}`,
+  "jobList.workflow.retryFailedStage": (params?: Record<string, string | number>) =>
+    `Retry ${params?.value ?? "child job"}`,
   "jobList.workflow.resumeUnfinishedWindows": "Resume unfinished windows",
   "jobList.workflow.supersededAttempt": "Superseded by a later retry",
   "jobList.updatedAt": (params?: Record<string, string | number>) => `Updated: ${params?.value ?? ""}`,
@@ -371,21 +427,30 @@ export const jobListMessagesEnUS = {
   "jobList.loading": "Loading workflows...",
   "jobList.loadFailed": "Failed to load workflows.",
   "jobList.notice.deleted": (params?: Record<string, string | number>) => `Moved job ${params?.value ?? ""} to Trash.`,
-  "jobList.notice.batchDeleted": (params?: Record<string, string | number>) => `Moved ${params?.count ?? 0} jobs to Trash.`,
+  "jobList.notice.batchDeleted": (params?: Record<string, string | number>) =>
+    `Moved ${params?.count ?? 0} jobs to Trash.`,
   "jobList.notice.restored": (params?: Record<string, string | number>) => `Restored job ${params?.value ?? ""}.`,
   "jobList.notice.batchRestored": (params?: Record<string, string | number>) => `Restored ${params?.count ?? 0} jobs.`,
-  "jobList.notice.purged": (params?: Record<string, string | number>) => `Permanently deleted job ${params?.value ?? ""}.`,
-  "jobList.notice.batchPurged": (params?: Record<string, string | number>) => `Permanently deleted ${params?.count ?? 0} jobs.`,
+  "jobList.notice.purged": (params?: Record<string, string | number>) =>
+    `Permanently deleted job ${params?.value ?? ""}.`,
+  "jobList.notice.batchPurged": (params?: Record<string, string | number>) =>
+    `Permanently deleted ${params?.count ?? 0} jobs.`,
   "jobList.error.delete": "Failed to delete job.",
   "jobList.error.batchDelete": "Failed to delete selected jobs.",
   "jobList.error.restore": "Failed to restore job.",
   "jobList.error.batchRestore": "Failed to restore selected jobs.",
   "jobList.error.purge": "Failed to permanently delete job.",
   "jobList.error.batchPurge": "Failed to permanently delete selected jobs.",
-  "jobList.confirm.stopAndDelete": (params?: Record<string, string | number>) => `Stop and move this workflow to Trash?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nIt can be restored later.`,
-  "jobList.confirm.delete": (params?: Record<string, string | number>) => `Move this workflow to Trash?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nIt can be restored later.`,
-  "jobList.confirm.batchDelete": (params?: Record<string, string | number>) => `Move ${params?.count ?? 0} selected workflows to Trash?\n\nThey can be restored later.`,
-  "jobList.confirm.batchRestore": (params?: Record<string, string | number>) => `Restore ${params?.count ?? 0} selected jobs from Trash?`,
-  "jobList.confirm.purge": (params?: Record<string, string | number>) => `Permanently delete this trashed job?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nThis cannot be undone.`,
-  "jobList.confirm.batchPurge": (params?: Record<string, string | number>) => `Permanently delete ${params?.count ?? 0} selected trashed jobs?\n\nThis cannot be undone.`,
+  "jobList.confirm.stopAndDelete": (params?: Record<string, string | number>) =>
+    `Stop and move this workflow to Trash?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nIt can be restored later.`,
+  "jobList.confirm.delete": (params?: Record<string, string | number>) =>
+    `Move this workflow to Trash?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nIt can be restored later.`,
+  "jobList.confirm.batchDelete": (params?: Record<string, string | number>) =>
+    `Move ${params?.count ?? 0} selected workflows to Trash?\n\nThey can be restored later.`,
+  "jobList.confirm.batchRestore": (params?: Record<string, string | number>) =>
+    `Restore ${params?.count ?? 0} selected jobs from Trash?`,
+  "jobList.confirm.purge": (params?: Record<string, string | number>) =>
+    `Permanently delete this trashed job?\n\n${params?.type ?? ""} / ${params?.status ?? ""} / ${params?.id ?? ""}\n\nThis cannot be undone.`,
+  "jobList.confirm.batchPurge": (params?: Record<string, string | number>) =>
+    `Permanently delete ${params?.count ?? 0} selected trashed jobs?\n\nThis cannot be undone.`,
 };

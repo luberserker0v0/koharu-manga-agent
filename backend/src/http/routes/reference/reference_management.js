@@ -18,7 +18,10 @@ function matchingReferenceJobs(jobManager, predicate) {
     "reference_ingestion",
     "reference_bilingual_enrichment",
   ]);
-  return jobManager.listJobsWithDeleted().filter((job) => referenceTypes.has(job.type)).filter(predicate);
+  return jobManager
+    .listJobsWithDeleted()
+    .filter((job) => referenceTypes.has(job.type))
+    .filter(predicate);
 }
 
 function assertNoActiveJobs(jobs) {
@@ -44,13 +47,15 @@ function hydrateReferenceDisplayLabels(referenceSets) {
 }
 
 function deleteBoundReferenceData(jobManager, { mangaId, translatorId = null }) {
-  const boundReferences = listReferenceSets().filter((entry) =>
-    entry.mangaId === mangaId && (!translatorId || entry.translatorId === translatorId)
+  const boundReferences = listReferenceSets().filter(
+    (entry) => entry.mangaId === mangaId && (!translatorId || entry.translatorId === translatorId),
   );
   const referenceIds = new Set(boundReferences.map((entry) => entry.id));
-  const jobs = matchingReferenceJobs(jobManager, (job) =>
-    referenceIds.has(job.payload?.referenceSetId) ||
-    (job.payload?.mangaId === mangaId && (!translatorId || job.payload?.translatorId === translatorId))
+  const jobs = matchingReferenceJobs(
+    jobManager,
+    (job) =>
+      referenceIds.has(job.payload?.referenceSetId) ||
+      (job.payload?.mangaId === mangaId && (!translatorId || job.payload?.translatorId === translatorId)),
   );
   assertNoActiveJobs(jobs);
   return {

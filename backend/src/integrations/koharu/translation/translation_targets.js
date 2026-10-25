@@ -1,9 +1,4 @@
-const MACHINE_TRANSLATION_PROVIDERS = new Set([
-  "deepl",
-  "google-translate",
-  "google-cloud-translation",
-  "caiyun",
-]);
+const MACHINE_TRANSLATION_PROVIDERS = new Set(["deepl", "google-translate", "google-cloud-translation", "caiyun"]);
 
 function targetError(message, statusCode = 422, code = "invalid_translation_target") {
   const error = new Error(message);
@@ -25,6 +20,24 @@ function normalizeModel(model, fallbackProviderId, fallbackKind = "provider") {
   };
 }
 
+function normalizeProvider(provider) {
+  const providerId = provider?.id || provider?.providerId;
+  if (!providerId) return null;
+  const models = (Array.isArray(provider.models) ? provider.models : [])
+    .map((model) => normalizeModel(model, providerId))
+    .filter(Boolean);
+  return {
+    providerId,
+    name: provider.name || providerId,
+    kind: MACHINE_TRANSLATION_PROVIDERS.has(providerId) ? "machine_translation" : "hosted_llm",
+    status: provider.status || (provider.requiresApiKey && !provider.hasApiKey ? "missing_configuration" : "ready"),
+    hasCredential: typeof provider.hasApiKey === "boolean" ? provider.hasApiKey : null,
+    requiresCredential: provider.requiresApiKey === true,
+    models,
+    error: provider.error || null,
+  };
+}
+
 function normalizeTranslationCatalog(catalog) {
   const providers = [];
   const localModels = (Array.isArray(catalog?.localModels) ? catalog.localModels : [])
@@ -40,67 +53,41 @@ function normalizeTranslationCatalog(catalog) {
       models: localModels,
     });
   }
-
   for (const provider of Array.isArray(catalog?.providers) ? catalog.providers : []) {
-    const providerId = provider?.id || provider?.providerId;
-    if (!providerId) continue;
-    const models = (Array.isArray(provider.models) ? provider.models : [])
-      .map((model) => normalizeModel(model, providerId))
-      .filter(Boolean);
-    providers.push({
-      providerId,
-      name: provider.name || providerId,
-      kind: MACHINE_TRANSLATION_PROVIDERS.has(providerId)
-        ? "machine_translation"
-        : "hosted_llm",
-      status: provider.status || (provider.requiresApiKey && !provider.hasApiKey
-        ? "missing_configuration"
-        : "ready"),
-      hasCredential: typeof provider.hasApiKey === "boolean" ? provider.hasApiKey : null,
-      requiresCredential: provider.requiresApiKey === true,
-      models,
-      error: provider.error || null,
-    });
+    const normalized = normalizeProvider(provider);
+    if (normalized) providers.push(normalized);
   }
-
   return { providers };
 }
 
-function resolveTranslationTarget({ catalog, requestedTarget, defaultTarget, targetLanguage }) {
+function selectTranslationTarget(requestedTarget, defaultTarget) {
   const selected = requestedTarget || defaultTarget;
-  if (!selected || typeof selected !== "object") {
-    throw targetError("A translation target is required.");
-  }
+  if (!selected || typeof selected !== "object") throw targetError("A translation target is required.");
   const providerId = typeof selected.providerId === "string" ? selected.providerId.trim() : "";
   const modelId = typeof selected.modelId === "string" ? selected.modelId.trim() : "";
-  if (!providerId || !modelId) {
-    throw targetError("translationTarget requires providerId and modelId.");
-  }
+  if (!providerId || !modelId) throw targetError("translationTarget requires providerId and modelId.");
+  return { providerId, modelId };
+}
 
+function resolveTranslationTarget({ catalog, requestedTarget, defaultTarget, targetLanguage }) {
+  const { providerId, modelId } = selectTranslationTarget(requestedTarget, defaultTarget);
   const normalized = normalizeTranslationCatalog(catalog);
   const provider = normalized.providers.find((entry) => entry.providerId === providerId);
-  if (!provider) {
-    throw targetError(`Unknown translation provider: ${providerId}.`);
-  }
+  if (!provider) throw targetError(`Unknown translation provider: ${providerId}.`);
   const model = provider.models.find((entry) => entry.modelId === modelId);
-  if (!model) {
-    throw targetError(`Unknown translation model ${modelId} for provider ${providerId}.`);
-  }
-  if (provider.status !== "ready") {
+  if (!model) throw targetError(`Unknown translation model ${modelId} for provider ${providerId}.`);
+  if (provider.status !== "ready")
     throw targetError(
       `Translation provider ${providerId} is not ready (${provider.status}).`,
       409,
-      "translation_provider_not_ready"
+      "translation_provider_not_ready",
     );
-  }
-  if (targetLanguage && model.languages.length > 0 && !model.languages.includes(targetLanguage)) {
+  if (targetLanguage && model.languages.length > 0 && !model.languages.includes(targetLanguage))
     throw targetError(
       `Translation target ${providerId}/${modelId} does not support ${targetLanguage}.`,
       422,
-      "unsupported_translation_language"
+      "unsupported_translation_language",
     );
-  }
-
   return {
     kind: provider.kind,
     providerId,

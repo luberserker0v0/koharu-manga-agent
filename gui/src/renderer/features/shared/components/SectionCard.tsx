@@ -7,12 +7,7 @@ type SectionCardProps = {
   children: ReactNode;
 };
 
-export function SectionCard({
-  title,
-  description,
-  defaultOpen = false,
-  children,
-}: SectionCardProps) {
+export function SectionCard({ title, description, defaultOpen = false, children }: SectionCardProps) {
   return (
     <details className="settings-section" open={defaultOpen}>
       <summary>

@@ -12,31 +12,40 @@ type Props = {
   t: Translate;
 };
 
-export function KoharuHostRuntimeSettings({
-  autoStart,
-  executablePath,
-  process,
-  onAutoStartChange,
-  onExecutablePathChange,
-  onBrowse,
-  t,
-}: Props) {
-  const tone = process?.status === "running" ? "good" : process?.status === "failed" ? "bad" : "warn";
+function ExecutableField({ executablePath, onExecutablePathChange, onBrowse, t }: Props) {
+  return (
+    <label className="field full-span">
+      <span>{t("settings.koharu.host.executable.label")}</span>
+      <small className="muted-text">{t("settings.koharu.host.executable.help")}</small>
+      <div className="field-with-button">
+        <input value={executablePath} onChange={(event) => onExecutablePathChange(event.currentTarget.value)} />
+        <button className="secondary-button" type="button" onClick={onBrowse}>
+          {t("settings.koharu.host.executable.browse")}
+        </button>
+      </div>
+    </label>
+  );
+}
+
+function ProcessStatus({ process, t }: Pick<Props, "process" | "t">) {
+  if (!process) return null;
+  const tone = process.status === "running" ? "good" : process.status === "failed" ? "bad" : "warn";
+  return (
+    <div className={`status-badge status-${tone} full-span`}>
+      <strong>{t("settings.koharu.host.status.label")}</strong>
+      <span>
+        {t(`settings.koharu.host.status.${process.status}`)} · {process.baseUrl}
+        {process.pid ? ` · PID ${process.pid}` : ""}
+      </span>
+    </div>
+  );
+}
+
+export function KoharuHostRuntimeSettings(props: Props) {
+  const { autoStart, process, onAutoStartChange, t } = props;
   return (
     <div className="form-grid">
-      <label className="field full-span">
-        <span>{t("settings.koharu.host.executable.label")}</span>
-        <small className="muted-text">{t("settings.koharu.host.executable.help")}</small>
-        <div className="field-with-button">
-          <input
-            value={executablePath}
-            onChange={(event) => onExecutablePathChange(event.currentTarget.value)}
-          />
-          <button className="secondary-button" type="button" onClick={onBrowse}>
-            {t("settings.koharu.host.executable.browse")}
-          </button>
-        </div>
-      </label>
+      <ExecutableField {...props} />
       <label className="checkbox-field full-span">
         <input
           checked={autoStart}
@@ -46,15 +55,7 @@ export function KoharuHostRuntimeSettings({
         <span>{t("settings.koharu.host.autoStart.label")}</span>
       </label>
       <small className="muted-text full-span">{t("settings.koharu.host.autoStart.help")}</small>
-      {process && (
-        <div className={`status-badge status-${tone} full-span`}>
-          <strong>{t("settings.koharu.host.status.label")}</strong>
-          <span>
-            {t(`settings.koharu.host.status.${process.status}`)} · {process.baseUrl}
-            {process.pid ? ` · PID ${process.pid}` : ""}
-          </span>
-        </div>
-      )}
+      <ProcessStatus process={process} t={t} />
     </div>
   );
 }

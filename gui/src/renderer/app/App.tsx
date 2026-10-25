@@ -1,6 +1,5 @@
-﻿import { Component, ErrorInfo, ReactNode, useEffect, useMemo } from "react";
+﻿import { Component, ErrorInfo, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useRef, useState } from "react";
 import { ROUTES } from "./routes";
 import { getBackendReadiness, getRuntimeStatus } from "../api/runtime";
 import { translateLiteral } from "../i18n/messages";
@@ -12,7 +11,12 @@ import { ReferencePage } from "../pages/ReferencePage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { KoharuRecoveryDialog } from "../features/runtime/components/KoharuRecoveryDialog";
 import {
-  getDesktopInfo, installAndStartKoharuHost, pickFile, readSettings, startKoharuHost, writeSettings,
+  getDesktopInfo,
+  installAndStartKoharuHost,
+  pickFile,
+  readSettings,
+  startKoharuHost,
+  writeSettings,
 } from "../services/desktop_api";
 import { useLanguageStore } from "../stores/language_store";
 import { useUiStore } from "../stores/ui_store";
@@ -36,9 +40,7 @@ function renderPage(routeKey: string) {
   }
 }
 
-type RendererErrorBoundaryState = {
-  error: Error | null;
-};
+type RendererErrorBoundaryState = { error: Error | null };
 
 function applyLiteralTranslations(root: HTMLElement, locale: "zh-TW" | "en-US") {
   const blockedTags = new Set(["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"]);
@@ -72,16 +74,10 @@ function applyLiteralTranslations(root: HTMLElement, locale: "zh-TW" | "en-US") 
 }
 
 class RendererErrorBoundary extends Component<
-  {
-    children: ReactNode;
-    errorTitle: string;
-    errorDescription: string;
-  },
+  { children: ReactNode; errorTitle: string; errorDescription: string },
   RendererErrorBoundaryState
 > {
-  state: RendererErrorBoundaryState = {
-    error: null,
-  };
+  state: RendererErrorBoundaryState = { error: null };
 
   static getDerivedStateFromError(error: Error): RendererErrorBoundaryState {
     return { error };
@@ -104,27 +100,28 @@ class RendererErrorBoundary extends Component<
         </section>
       );
     }
-
     return this.props.children;
   }
 }
 
-export function App() {
-  const markHydrated = useUiStore((state) => state.markHydrated);
-  const selectedPage = useUiStore((state) => state.selectedPage);
-  const setSelectedPage = useUiStore((state) => state.setSelectedPage);
-  const setLocale = useLanguageStore((state) => state.setLocale);
-  const t = useLanguageStore((state) => state.t);
-  const locale = useLanguageStore((state) => state.locale);
+function useAppSettings(setLocale: (locale: any) => void, markHydrated: () => void) {
   const [settings, setSettings] = useState<GuiSettings | null>(null);
-  const [recoveryBusy, setRecoveryBusy] = useState(false);
-  const [recoveryDownloading, setRecoveryDownloading] = useState(false);
-  const [recoveryDismissed, setRecoveryDismissed] = useState(false);
-  const [recoveryError, setRecoveryError] = useState("");
-  const autoRecoveryAttempted = useRef(false);
+  useEffect(() => {
+    markHydrated();
+    readSettings()
+      .then((loadedSettings) => {
+        setSettings(loadedSettings);
+        setLocale(loadedSettings.locale || "zh-TW");
+      })
+      .catch(() => {});
+  }, [markHydrated, setLocale]);
+  return { settings, setSettings };
+}
+
+function useAppQueries() {
   const runtimeQuery = useQuery({
     queryKey: ["runtime-status"],
-    queryFn: getRuntimeStatus
+    queryFn: getRuntimeStatus,
   });
   const desktopInfoQuery = useQuery({
     queryKey: ["desktop-info"],
@@ -138,34 +135,56 @@ export function App() {
     refetchInterval: 10_000,
     retry: false,
   });
-  const koharuUnavailable = readinessQuery.data
-    ? !readinessQuery.data.capabilities.koharuJobs
-    : desktopInfoQuery.data?.koharuProcess.status !== "running";
-  const koharuFailureDetail = readinessQuery.data?.blockers.find((item) => item.service === "koharu")?.message
-    || desktopInfoQuery.data?.koharuProcess.note
-    || "";
+  return { runtimeQuery, desktopInfoQuery, readinessQuery };
+}
 
-  useEffect(() => {
-    markHydrated();
-    readSettings()
-      .then((settings) => {
-        setSettings(settings);
-        setLocale(settings.locale || "zh-TW");
-      })
-      .catch(() => {});
-  }, [markHydrated, setLocale]);
+type RecoveryState = {
+  recoveryBusy: boolean;
+  setRecoveryBusy: (value: boolean) => void;
+  recoveryDownloading: boolean;
+  setRecoveryDownloading: (value: boolean) => void;
+  recoveryDismissed: boolean;
+  setRecoveryDismissed: (value: boolean) => void;
+  recoveryError: string;
+  setRecoveryError: (value: string) => void;
+};
 
-  const refreshRuntimeState = async () => {
-    await Promise.allSettled([
-      desktopInfoQuery.refetch(),
-      readinessQuery.refetch(),
-      runtimeQuery.refetch(),
-    ]);
+function useRecoveryState(): RecoveryState {
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryDownloading, setRecoveryDownloading] = useState(false);
+  const [recoveryDismissed, setRecoveryDismissed] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  return {
+    recoveryBusy,
+    setRecoveryBusy,
+    recoveryDownloading,
+    setRecoveryDownloading,
+    recoveryDismissed,
+    setRecoveryDismissed,
+    recoveryError,
+    setRecoveryError,
   };
+}
 
-  const startConfiguredExecutable = async (executablePath: string, persist: boolean) => {
-    setRecoveryBusy(true);
-    setRecoveryError("");
+function useRefreshRuntimeState(
+  desktopInfoQuery: ReturnType<typeof useAppQueries>["desktopInfoQuery"],
+  readinessQuery: ReturnType<typeof useAppQueries>["readinessQuery"],
+  runtimeQuery: ReturnType<typeof useAppQueries>["runtimeQuery"],
+) {
+  return async () => {
+    await Promise.allSettled([desktopInfoQuery.refetch(), readinessQuery.refetch(), runtimeQuery.refetch()]);
+  };
+}
+
+function useStartConfiguredExecutable(
+  settings: GuiSettings | null,
+  setSettings: (value: GuiSettings | null) => void,
+  recovery: RecoveryState,
+  refreshRuntimeState: () => Promise<void>,
+) {
+  return async (executablePath: string, persist: boolean) => {
+    recovery.setRecoveryBusy(true);
+    recovery.setRecoveryError("");
     try {
       if (persist && settings) {
         const saved = await writeSettings({
@@ -178,14 +197,21 @@ export function App() {
       await startKoharuHost(executablePath);
       await refreshRuntimeState();
     } catch (error) {
-      setRecoveryError(error instanceof Error ? error.message : String(error));
+      recovery.setRecoveryError(error instanceof Error ? error.message : String(error));
       await refreshRuntimeState();
     } finally {
-      setRecoveryBusy(false);
+      recovery.setRecoveryBusy(false);
     }
   };
+}
 
-  const chooseAndStartKoharu = async () => {
+function useChooseAndStartKoharu(
+  t: ReturnType<typeof useLanguageStore.getState>["t"],
+  settings: GuiSettings | null,
+  startConfiguredExecutable: (executablePath: string, persist: boolean) => Promise<void>,
+  setRecoveryError: (value: string) => void,
+) {
+  return async () => {
     try {
       const result = await pickFile({
         title: t("app.koharuRecovery.fileDialogTitle"),
@@ -199,146 +225,349 @@ export function App() {
       setRecoveryError(error instanceof Error ? error.message : String(error));
     }
   };
+}
 
-  const downloadAndStartKoharu = async () => {
-    setRecoveryBusy(true);
-    setRecoveryDownloading(true);
-    setRecoveryError("");
+function useDownloadAndStartKoharu(
+  settings: GuiSettings | null,
+  setSettings: (value: GuiSettings | null) => void,
+  recovery: RecoveryState,
+  refreshRuntimeState: () => Promise<void>,
+  t: ReturnType<typeof useLanguageStore.getState>["t"],
+) {
+  return async () => {
+    recovery.setRecoveryBusy(true);
+    recovery.setRecoveryDownloading(true);
+    recovery.setRecoveryError("");
     try {
       const processState = await installAndStartKoharuHost();
       if (!processState.executablePath) {
         throw new Error(t("app.koharuRecovery.downloadMissingPath"));
       }
-      const saved = await writeSettings({
-        ...(settings || {}),
-        koharuExecutablePath: processState.executablePath,
-        koharuAutoStart: true,
-      });
-      setSettings(saved);
+      await saveKoharuSettings(settings, processState.executablePath, setSettings);
       await refreshRuntimeState();
     } catch (error) {
-      setRecoveryError(error instanceof Error ? error.message : String(error));
+      recovery.setRecoveryError(error instanceof Error ? error.message : String(error));
       await refreshRuntimeState();
     } finally {
-      setRecoveryDownloading(false);
-      setRecoveryBusy(false);
+      recovery.setRecoveryDownloading(false);
+      recovery.setRecoveryBusy(false);
     }
   };
+}
 
+async function saveKoharuSettings(
+  settings: GuiSettings | null,
+  executablePath: string,
+  setSettings: (value: GuiSettings | null) => void,
+) {
+  const saved = await writeSettings({
+    ...(settings || {}),
+    koharuExecutablePath: executablePath,
+    koharuAutoStart: true,
+  });
+  setSettings(saved);
+}
+
+function shouldAutoRecover(
+  status: string | undefined,
+  unavailable: boolean,
+  attempted: boolean,
+  busy: boolean,
+  settings: GuiSettings | null,
+) {
+  return (
+    unavailable &&
+    !attempted &&
+    !busy &&
+    Boolean(settings?.koharuAutoStart) &&
+    Boolean(settings?.koharuExecutablePath.trim()) &&
+    status !== "checking"
+  );
+}
+
+function useAutoRecoveryEffect(
+  desktopInfoQuery: ReturnType<typeof useAppQueries>["desktopInfoQuery"],
+  koharuUnavailable: boolean,
+  recovery: RecoveryState,
+  settings: GuiSettings | null,
+  startConfiguredExecutable: (executablePath: string, persist: boolean) => Promise<void>,
+) {
+  const autoRecoveryAttempted = useRef(false);
   useEffect(() => {
     if (!koharuUnavailable) {
       autoRecoveryAttempted.current = false;
-      setRecoveryDismissed(false);
-      setRecoveryError("");
+      recovery.setRecoveryDismissed(false);
+      recovery.setRecoveryError("");
       return;
     }
-    if (
-      autoRecoveryAttempted.current ||
-      recoveryBusy ||
-      !settings?.koharuAutoStart ||
-      !settings.koharuExecutablePath.trim() ||
-      desktopInfoQuery.data?.koharuProcess.status === "checking"
-    ) {
+    const status = desktopInfoQuery.data?.koharuProcess.status;
+    if (!shouldAutoRecover(status, koharuUnavailable, autoRecoveryAttempted.current, recovery.recoveryBusy, settings))
       return;
-    }
     autoRecoveryAttempted.current = true;
-    void startConfiguredExecutable(settings.koharuExecutablePath, false);
-  }, [desktopInfoQuery.data?.koharuProcess.status, koharuUnavailable, recoveryBusy, settings]);
+    void startConfiguredExecutable(settings?.koharuExecutablePath || "", false);
+  }, [
+    desktopInfoQuery.data?.koharuProcess.status,
+    koharuUnavailable,
+    recovery.recoveryBusy,
+    settings,
+    startConfiguredExecutable,
+    recovery,
+  ]);
+}
 
-  const statusSummary = useMemo(() => {
-    if (runtimeQuery.isLoading) {
-      return t("status.loadingRuntime");
-    }
-    if (runtimeQuery.isError) {
-      return t("status.runtimeUnavailable");
-    }
-    if (!runtimeQuery.data) {
-      return t("status.runtimeUnavailable");
-    }
+function useStatusSummary(
+  runtimeQuery: ReturnType<typeof useAppQueries>["runtimeQuery"],
+  t: ReturnType<typeof useLanguageStore.getState>["t"],
+) {
+  return useMemo(() => {
+    if (runtimeQuery.isLoading) return t("status.loadingRuntime");
+    if (runtimeQuery.isError) return t("status.runtimeUnavailable");
+    if (!runtimeQuery.data) return t("status.runtimeUnavailable");
     return t("status.backendAgent", {
       backend: runtimeQuery.data.backend.status,
       koharu: runtimeQuery.data.koharu.status,
       agent: runtimeQuery.data.agent.status,
     });
   }, [runtimeQuery.data, runtimeQuery.isError, runtimeQuery.isLoading, t]);
+}
 
+function useLiteralTranslationEffect(
+  locale: string,
+  selectedPage: string,
+  t: ReturnType<typeof useLanguageStore.getState>["t"],
+) {
   useEffect(() => {
     document.documentElement.lang = locale;
     document.title = t("app.brand");
-
     const root = document.getElementById("root");
-    if (!root) {
-      return;
-    }
-
+    if (!root) return;
     const frameId = window.requestAnimationFrame(() => {
-      applyLiteralTranslations(root, locale);
+      applyLiteralTranslations(root, locale as "zh-TW" | "en-US");
     });
-
     return () => window.cancelAnimationFrame(frameId);
   }, [locale, selectedPage, t]);
+}
 
+type AppLayoutProps = {
+  selectedPage: string;
+  setSelectedPage: (page: any) => void;
+  t: ReturnType<typeof useLanguageStore.getState>["t"];
+  statusSummary: string;
+  koharuUnavailable: boolean;
+  koharuFailureDetail: string;
+  settings: GuiSettings | null;
+  recovery: RecoveryState;
+  desktopInfoQuery: ReturnType<typeof useAppQueries>["desktopInfoQuery"];
+  readinessQuery: ReturnType<typeof useAppQueries>["readinessQuery"];
+  chooseAndStartKoharu: () => Promise<void>;
+  downloadAndStartKoharu: () => Promise<void>;
+  startConfiguredExecutable: (executablePath: string, persist: boolean) => Promise<void>;
+};
+
+function AppServiceAlert({
+  koharuFailureDetail,
+  t,
+  setSelectedPage,
+}: {
+  koharuFailureDetail: string;
+  t: ReturnType<typeof useLanguageStore.getState>["t"];
+  setSelectedPage: (page: string) => void;
+}) {
   return (
-    <div className={selectedPage === "job-list" ? "app-shell job-list-shell" : selectedPage === "post-edit" ? "app-shell post-edit-shell" : selectedPage === "reference" ? "app-shell reference-shell" : "app-shell"}>
-      <header className="top-status-bar">
-        <div className="brand">{t("app.brand")}</div>
-        <div className="status-summary">{statusSummary}</div>
-      </header>
-      <div className="app-body">
-        <aside className="left-navigation">
-          {ROUTES.map((route) => (
-            <button
-              key={route.key}
-              className={route.key === selectedPage ? "nav-button active" : "nav-button"}
-              onClick={() => setSelectedPage(route.key)}
-              title={t(route.labelKey)}
-              type="button"
-            >
-              {t(route.labelKey)}
-            </button>
-          ))}
-        </aside>
-        <main className="main-content">
-          {koharuUnavailable && (readinessQuery.data || desktopInfoQuery.data?.koharuProcess) && (
-            <div className="service-alert" role="alert">
-              <div>
-                <strong>{t("app.koharuWarning.title")}</strong>
-                <span>
-                  {koharuFailureDetail
-                    ? t("app.koharuWarning.failed", { detail: koharuFailureDetail })
-                    : t("app.koharuWarning.unavailable")}
-                </span>
-              </div>
-              <button className="secondary-button" type="button" onClick={() => setSelectedPage("settings")}>
-                {t("app.koharuWarning.openSettings")}
-              </button>
-            </div>
-          )}
-          <RendererErrorBoundary
-            errorTitle={t("app.error.title")}
-            errorDescription={t("app.error.description")}
-          >
-            {renderPage(selectedPage)}
-          </RendererErrorBoundary>
-        </main>
+    <div className="service-alert" role="alert">
+      <div>
+        <strong>{t("app.koharuWarning.title")}</strong>
+        <span>
+          {koharuFailureDetail
+            ? t("app.koharuWarning.failed", { detail: koharuFailureDetail })
+            : t("app.koharuWarning.unavailable")}
+        </span>
       </div>
-      {koharuUnavailable && settings && !recoveryDismissed && (
-        <KoharuRecoveryDialog
-          busy={recoveryBusy}
-          configuredPath={settings.koharuExecutablePath}
-          downloading={recoveryDownloading}
-          error={recoveryBusy ? "" : recoveryError || koharuFailureDetail}
-          onChooseAndStart={() => void chooseAndStartKoharu()}
-          onDownloadAndStart={() => void downloadAndStartKoharu()}
-          onDismissForManualStart={() => setRecoveryDismissed(true)}
-          onOpenSettings={() => {
-            setRecoveryDismissed(true);
-            setSelectedPage("settings");
-          }}
-          onRetry={() => void startConfiguredExecutable(settings.koharuExecutablePath, false)}
-          t={t}
-        />
-      )}
+      <button className="secondary-button" type="button" onClick={() => setSelectedPage("settings")}>
+        {t("app.koharuWarning.openSettings")}
+      </button>
     </div>
   );
+}
+
+function AppRecoveryDialog(props: {
+  koharuUnavailable: boolean;
+  settings: GuiSettings | null;
+  recovery: RecoveryState;
+  koharuFailureDetail: string;
+  t: ReturnType<typeof useLanguageStore.getState>["t"];
+  setSelectedPage: (page: string) => void;
+  chooseAndStartKoharu: () => Promise<void>;
+  downloadAndStartKoharu: () => Promise<void>;
+  startConfiguredExecutable: (executablePath: string, persist: boolean) => Promise<void>;
+}) {
+  if (!props.koharuUnavailable || !props.settings || props.recovery.recoveryDismissed) return null;
+  return (
+    <KoharuRecoveryDialog
+      busy={props.recovery.recoveryBusy}
+      configuredPath={props.settings.koharuExecutablePath}
+      downloading={props.recovery.recoveryDownloading}
+      error={props.recovery.recoveryBusy ? "" : props.recovery.recoveryError || props.koharuFailureDetail}
+      onChooseAndStart={() => void props.chooseAndStartKoharu()}
+      onDownloadAndStart={() => void props.downloadAndStartKoharu()}
+      onDismissForManualStart={() => props.recovery.setRecoveryDismissed(true)}
+      onOpenSettings={() => {
+        props.recovery.setRecoveryDismissed(true);
+        props.setSelectedPage("settings");
+      }}
+      onRetry={() => void props.startConfiguredExecutable(props.settings!.koharuExecutablePath, false)}
+      t={props.t}
+    />
+  );
+}
+
+function AppLayout(props: AppLayoutProps) {
+  return (
+    <div className={appShellClass(props.selectedPage)}>
+      <header className="top-status-bar">
+        <div className="brand">{props.t("app.brand")}</div>
+        <div className="status-summary">{props.statusSummary}</div>
+      </header>
+      <div className="app-body">
+        <AppNavigation {...props} />
+        <AppMain {...props} />
+      </div>
+      <AppRecoveryDialog {...props} />
+    </div>
+  );
+}
+
+function appShellClass(page: string) {
+  const suffix =
+    page === "job-list"
+      ? "job-list-shell"
+      : page === "post-edit"
+        ? "post-edit-shell"
+        : page === "reference"
+          ? "reference-shell"
+          : "";
+  return `app-shell${suffix ? ` ${suffix}` : ""}`;
+}
+
+function AppNavigation(props: AppLayoutProps) {
+  return (
+    <aside className="left-navigation">
+      {ROUTES.map((route) => (
+        <button
+          key={route.key}
+          className={route.key === props.selectedPage ? "nav-button active" : "nav-button"}
+          onClick={() => props.setSelectedPage(route.key)}
+          title={props.t(route.labelKey)}
+          type="button"
+        >
+          {props.t(route.labelKey)}
+        </button>
+      ))}
+    </aside>
+  );
+}
+
+function AppMain(props: AppLayoutProps) {
+  const showAlert =
+    props.koharuUnavailable && (props.readinessQuery.data || props.desktopInfoQuery.data?.koharuProcess);
+  return (
+    <main className="main-content">
+      {showAlert && (
+        <AppServiceAlert
+          koharuFailureDetail={props.koharuFailureDetail}
+          t={props.t}
+          setSelectedPage={props.setSelectedPage}
+        />
+      )}
+      <RendererErrorBoundary
+        errorTitle={props.t("app.error.title")}
+        errorDescription={props.t("app.error.description")}
+      >
+        {renderPage(props.selectedPage)}
+      </RendererErrorBoundary>
+    </main>
+  );
+}
+
+function useAppStores() {
+  const selectedPage = useUiStore((state) => state.selectedPage);
+  const setSelectedPage = useUiStore((state) => state.setSelectedPage);
+  const markHydrated = useUiStore((state) => state.markHydrated);
+  const setLocale = useLanguageStore((state) => state.setLocale);
+  const t = useLanguageStore((state) => state.t);
+  const locale = useLanguageStore((state) => state.locale);
+  return { selectedPage, setSelectedPage, markHydrated, setLocale, t, locale };
+}
+
+function useKoharuRecoveryActions(
+  settings: GuiSettings | null,
+  setSettings: (value: GuiSettings | null) => void,
+  queries: ReturnType<typeof useAppQueries>,
+  recovery: RecoveryState,
+  t: ReturnType<typeof useLanguageStore.getState>["t"],
+) {
+  const refresh = useRefreshRuntimeState(queries.desktopInfoQuery, queries.readinessQuery, queries.runtimeQuery);
+  const start = useStartConfiguredExecutable(settings, setSettings, recovery, refresh);
+  const choose = useChooseAndStartKoharu(t, settings, start, recovery.setRecoveryError);
+  const download = useDownloadAndStartKoharu(settings, setSettings, recovery, refresh, t);
+  return { startConfiguredExecutable: start, chooseAndStartKoharu: choose, downloadAndStartKoharu: download };
+}
+
+function resolveKoharuState(queries: ReturnType<typeof useAppQueries>) {
+  const { readinessQuery, desktopInfoQuery } = queries;
+  const unavailable = readinessQuery.data
+    ? !readinessQuery.data.capabilities.koharuJobs
+    : desktopInfoQuery.data?.koharuProcess.status !== "running";
+  const detail =
+    readinessQuery.data?.blockers.find((item) => item.service === "koharu")?.message ||
+    desktopInfoQuery.data?.koharuProcess.note ||
+    "";
+  return { unavailable, detail };
+}
+
+type AppViewProps = {
+  stores: ReturnType<typeof useAppStores>;
+  settings: GuiSettings | null;
+  queries: ReturnType<typeof useAppQueries>;
+  recovery: RecoveryState;
+  actions: ReturnType<typeof useKoharuRecoveryActions>;
+  koharu: ReturnType<typeof resolveKoharuState>;
+  statusSummary: string;
+};
+
+function AppView(props: AppViewProps) {
+  return (
+    <AppLayout
+      selectedPage={props.stores.selectedPage}
+      setSelectedPage={props.stores.setSelectedPage}
+      t={props.stores.t}
+      statusSummary={props.statusSummary}
+      koharuUnavailable={props.koharu.unavailable}
+      koharuFailureDetail={props.koharu.detail}
+      settings={props.settings}
+      recovery={props.recovery}
+      desktopInfoQuery={props.queries.desktopInfoQuery}
+      readinessQuery={props.queries.readinessQuery}
+      {...props.actions}
+    />
+  );
+}
+
+export function App() {
+  const stores = useAppStores();
+  const { settings, setSettings } = useAppSettings(stores.setLocale, stores.markHydrated);
+  const queries = useAppQueries();
+  const recovery = useRecoveryState();
+  const actions = useKoharuRecoveryActions(settings, setSettings, queries, recovery, stores.t);
+  const koharu = resolveKoharuState(queries);
+  useAutoRecoveryEffect(
+    queries.desktopInfoQuery,
+    koharu.unavailable,
+    recovery,
+    settings,
+    actions.startConfiguredExecutable,
+  );
+  const statusSummary = useStatusSummary(queries.runtimeQuery, stores.t);
+  useLiteralTranslationEffect(stores.locale, stores.selectedPage, stores.t);
+  return <AppView {...{ stores, settings, queries, recovery, actions, koharu, statusSummary }} />;
 }

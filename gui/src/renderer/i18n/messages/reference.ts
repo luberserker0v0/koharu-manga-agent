@@ -1,7 +1,8 @@
 export const referenceMessagesZhTW = {
   "reference.common.none": "\u7121",
   "reference.bilingualEvidence.title": "\u96d9\u8a9e\u8b49\u64da\u9023\u7d50",
-  "reference.bilingualEvidence.description": "\u7cfb\u7d71\u6703\u5728\u539f\u6587\u8207\u8b6f\u6587 Observation \u5b8c\u6210\u5f8c\u81ea\u52d5\u88dc\u5f37\u5c08\u6709\u540d\u8a5e\u5c0d\u61c9\uff0c\u4e0d\u6703\u963b\u64cb Ingestion\u3002",
+  "reference.bilingualEvidence.description":
+    "\u7cfb\u7d71\u6703\u5728\u539f\u6587\u8207\u8b6f\u6587 Observation \u5b8c\u6210\u5f8c\u81ea\u52d5\u88dc\u5f37\u5c08\u6709\u540d\u8a5e\u5c0d\u61c9\uff0c\u4e0d\u6703\u963b\u64cb Ingestion\u3002",
   "reference.bilingualEvidence.optional": "\u9078\u7528\u5f0f\u6821\u6b63",
   "reference.bilingualEvidence.accepted": "\u5df2\u63a1\u7528",
   "reference.bilingualEvidence.needsReview": "\u5f85\u78ba\u8a8d",
@@ -72,18 +73,23 @@ export const referenceMessagesZhTW = {
   "reference.import.addFolder": "\u65B0\u589E\u8CC7\u6599\u593E",
   "reference.import.addFolders": "\u65B0\u589E\u591A\u500B\u8CC7\u6599\u593E",
   "reference.import.languageLabel": "\u8A9E\u8A00",
-  "reference.import.languageHelp": "\u6B64\u8A9E\u8A00\u6703\u7528\u65BC\u5F8C\u7E8C\u53C3\u8003\u8CC7\u6599\u5206\u6790\u3002",
+  "reference.import.languageHelp":
+    "\u6B64\u8A9E\u8A00\u6703\u7528\u65BC\u5F8C\u7E8C\u53C3\u8003\u8CC7\u6599\u5206\u6790\u3002",
   "reference.import.kindLabel": "\u8CC7\u6599\u985E\u578B",
-  "reference.import.mangaHelp": "\u9078\u64C7\u4F5C\u54C1\uFF0C\u6BCF\u500B\u8CC7\u6599\u593E\u6703\u5EFA\u7ACB\u6210\u4E00\u500B\u7AE0\u7BC0\u3002",
-  "reference.import.translatorHelp": "\u9078\u64C7\u6216\u5EFA\u7ACB\u8B6F\u8005\uFF0C\u7AE0\u7BC0\u540D\u7A31\u6703\u6839\u64DA\u8CC7\u6599\u593E\u5EFA\u7ACB\u3002",
+  "reference.import.mangaHelp":
+    "\u9078\u64C7\u4F5C\u54C1\uFF0C\u6BCF\u500B\u8CC7\u6599\u593E\u6703\u5EFA\u7ACB\u6210\u4E00\u500B\u7AE0\u7BC0\u3002",
+  "reference.import.translatorHelp":
+    "\u9078\u64C7\u6216\u5EFA\u7ACB\u8B6F\u8005\uFF0C\u7AE0\u7BC0\u540D\u7A31\u6703\u6839\u64DA\u8CC7\u6599\u593E\u5EFA\u7ACB\u3002",
   "reference.import.selectTranslator": "\u9078\u64C7\u8B6F\u8005",
   "reference.import.chooseMangaFirst": "\u8ACB\u5148\u9078\u64C7\u4F5C\u54C1",
   "reference.import.loadingTranslators": "\u8F09\u5165\u8B6F\u8005\u4E2D",
   "reference.import.failedTranslators": "\u8F09\u5165\u8B6F\u8005\u5931\u6557",
   "reference.import.createTranslator": "\u5EFA\u7ACB\u65B0\u8B6F\u8005",
   "reference.import.translatorPlaceholder": "\u8F38\u5165\u8B6F\u8005\u540D\u7A31",
-  "reference.import.sourceNotice": "\u539F\u6587\u6703\u7D2F\u7A4D\u6545\u4E8B\u3001\u89D2\u8272\u8207\u5C08\u6709\u540D\u8A5E\uFF0C\u4E0D\u6703\u5EFA\u7ACB\u7FFB\u8B6F\u98A8\u683C\u3002",
-  "reference.import.mixedNotice": "\u7FFB\u8B6F\u98A8\u683C\u53EA\u6703\u5957\u7528\u65BC\u8B6F\u8005\u8CC7\u6599\u3002",
+  "reference.import.sourceNotice":
+    "\u539F\u6587\u6703\u7D2F\u7A4D\u6545\u4E8B\u3001\u89D2\u8272\u8207\u5C08\u6709\u540D\u8A5E\uFF0C\u4E0D\u6703\u5EFA\u7ACB\u7FFB\u8B6F\u98A8\u683C\u3002",
+  "reference.import.mixedNotice":
+    "\u7FFB\u8B6F\u98A8\u683C\u53EA\u6703\u5957\u7528\u65BC\u8B6F\u8005\u8CC7\u6599\u3002",
   "reference.import.submit": "\u532F\u5165\u5DF2\u8F09\u5165\u8CC7\u6599\u593E",
   "reference.import.clear": "\u6E05\u7A7A\u8F09\u5165\u6E05\u55AE",
   "reference.import.remove": "\u79FB\u9664",
@@ -94,7 +100,8 @@ export const referenceMessagesZhTW = {
   "reference.section.worklist.title": "\u7AE0\u7BC0\u5DE5\u4F5C\u5340",
   "reference.section.worklist.description":
     "\u5C07\u5DF2\u532F\u5165\u7684 Reference \u6392\u5165 Extraction / Ingestion \u5DE5\u4F5C\u3002",
-  "reference.section.worklist.sequenceDescription": "\u5B8C\u6210 Extraction \u5F8C\u5373\u53EF\u57F7\u884C Ingestion\uFF0C\u4E26\u53EF\u8996\u9700\u8981\u6821\u5C0D Extraction\u3002",
+  "reference.section.worklist.sequenceDescription":
+    "\u5B8C\u6210 Extraction \u5F8C\u5373\u53EF\u57F7\u884C Ingestion\uFF0C\u4E26\u53EF\u8996\u9700\u8981\u6821\u5C0D Extraction\u3002",
   "reference.worklist.count": "\u7B46\u6578",
   "reference.worklist.useTerminology": "\u7528\u65BC\u5C08\u6709\u540D\u8A5E",
   "reference.worklist.useStyle": "\u7528\u65BC\u7FFB\u8B6F\u98A8\u683C",
@@ -142,7 +149,8 @@ export const referenceMessagesZhTW = {
   "reference.data.ingestion": "Ingestion \u8CC7\u6599",
   "reference.data.noIngestion": "\u5C1A\u672A\u7522\u751F Ingestion \u8CC7\u6599\u3002",
   "reference.data.ingestionUpdated": "Ingestion \u6700\u5F8C\u66F4\u65B0",
-  "reference.data.ingestionStale": "Extraction \u5DF2\u8B8A\u66F4\uFF0C\u9019\u4EFD Ingestion \u5831\u544A\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C Ingestion\u3002",
+  "reference.data.ingestionStale":
+    "Extraction \u5DF2\u8B8A\u66F4\uFF0C\u9019\u4EFD Ingestion \u5831\u544A\u5DF2\u904E\u671F\uFF0C\u8ACB\u91CD\u65B0\u57F7\u884C Ingestion\u3002",
   "reference.data.addToWorklist": "\u52A0\u5165\u5DE5\u4F5C\u5340",
   "reference.data.inWorklist": "\u5DF2\u5728\u5DE5\u4F5C\u5340",
   "reference.data.addAllToWorklist": (params?: Record<string, string | number>) =>
@@ -176,7 +184,8 @@ export const referenceMessagesZhTW = {
   "reference.extractionReview.shortTitle": "\u5DF2\u6821\u5C0D",
   "reference.extractionReview.description":
     "Extraction \u53EF\u76F4\u63A5\u7528\u65BC\u5C0D\u8A71\u5C0D\u9F4A\u8207 Ingestion\u3002\u82E5\u767C\u73FE OCR\u3001\u6587\u5B57\u6846\u6216\u9806\u5E8F\u6709\u8AA4\uFF0C\u53EF\u5728 Koharu \u4FEE\u6B63\u5F8C\u5EFA\u7ACB\u65B0 revision\u3002",
-  "reference.extractionReview.select": "\u8ACB\u5148\u5F9E\u5DE5\u4F5C\u5340\u9078\u53D6\u4E00\u7B46\u5DF2\u5B8C\u6210 Extraction \u7684 Reference\u3002",
+  "reference.extractionReview.select":
+    "\u8ACB\u5148\u5F9E\u5DE5\u4F5C\u5340\u9078\u53D6\u4E00\u7B46\u5DF2\u5B8C\u6210 Extraction \u7684 Reference\u3002",
   "reference.extractionReview.reference": "Reference",
   "reference.extractionReview.status": "\u6821\u5C0D\u72C0\u614B",
   "reference.extractionReview.rawNodes": "\u539F\u59CB\u7BC0\u9EDE",
@@ -208,33 +217,42 @@ export const referenceMessagesZhTW = {
   "reference.extractionReview.status.startFailed": "\u7121\u6CD5\u958B\u555F Koharu \u6821\u5C0D\u3002",
   "reference.extractionReview.status.synced": "\u5DF2\u540C\u6B65 Koharu \u8349\u7A3F\u3002",
   "reference.extractionReview.status.syncFailed": "\u540C\u6B65 Koharu \u8349\u7A3F\u5931\u6557\u3002",
-  "reference.extractionReview.status.editorFinished": "Koharu \u7DE8\u8F2F\u5DF2\u5B8C\u6210\uFF0C\u8ACB\u78BA\u8A8D\u5C0D\u8A71\u9806\u5E8F\u3002",
-  "reference.extractionReview.status.windowClosedSyncing": "Koharu \u8996\u7A97\u5DF2\u95DC\u9589\uFF0C\u6B63\u5728\u540C\u6B65\u8349\u7A3F\u4E26\u9032\u5165\u5C0D\u8A71\u9806\u5E8F\u78BA\u8A8D\u3002",
+  "reference.extractionReview.status.editorFinished":
+    "Koharu \u7DE8\u8F2F\u5DF2\u5B8C\u6210\uFF0C\u8ACB\u78BA\u8A8D\u5C0D\u8A71\u9806\u5E8F\u3002",
+  "reference.extractionReview.status.windowClosedSyncing":
+    "Koharu \u8996\u7A97\u5DF2\u95DC\u9589\uFF0C\u6B63\u5728\u540C\u6B65\u8349\u7A3F\u4E26\u9032\u5165\u5C0D\u8A71\u9806\u5E8F\u78BA\u8A8D\u3002",
   "reference.extractionReview.status.finishFailed": "\u5B8C\u6210 Koharu \u7DE8\u8F2F\u5931\u6557\u3002",
-  "reference.extractionReview.status.cancelled": "\u5DF2\u53D6\u6D88\u6821\u5C0D\uFF0C\u8349\u7A3F\u672A\u88AB\u78BA\u8A8D\u70BA\u6B63\u5F0F Extraction\u3002",
+  "reference.extractionReview.status.cancelled":
+    "\u5DF2\u53D6\u6D88\u6821\u5C0D\uFF0C\u8349\u7A3F\u672A\u88AB\u78BA\u8A8D\u70BA\u6B63\u5F0F Extraction\u3002",
   "reference.extractionReview.status.cancelFailed": "\u53D6\u6D88 Extraction \u6821\u5C0D\u5931\u6557\u3002",
   "reference.extractionReview.status.orderSaved": "\u5DF2\u5132\u5B58\u5C0D\u8A71\u9806\u5E8F\u8349\u7A3F\u3002",
   "reference.extractionReview.status.orderFailed": "\u5132\u5B58\u5C0D\u8A71\u9806\u5E8F\u5931\u6557\u3002",
-  "reference.extractionReview.status.confirmed": "Extraction \u5DF2\u5B8C\u6210\u6821\u5C0D\uFF0C\u53EF\u7528\u65BC Ingestion \u8207\u5C0D\u8A71\u5C0D\u9F4A\u3002",
+  "reference.extractionReview.status.confirmed":
+    "Extraction \u5DF2\u5B8C\u6210\u6821\u5C0D\uFF0C\u53EF\u7528\u65BC Ingestion \u8207\u5C0D\u8A71\u5C0D\u9F4A\u3002",
   "reference.extractionReview.status.confirmFailed": "\u78BA\u8A8D\u6B63\u5F0F Extraction \u5931\u6557\u3002",
   "reference.dialogueAlignment.title": "\u5C0D\u8A71\u6846\u5E8F\u5217\u5C0D\u9F4A",
-  "reference.dialogueAlignment.description": "\u9078\u7528\u7684\u9AD8\u7CBE\u5EA6\u8B49\u64DA\u5DE5\u5177\u3002\u4F9D bbox \u4F4D\u7F6E\u8207\u9806\u5E8F\u5C0D\u9F4A\uFF0C\u4E0D\u6703\u963B\u64CB Ingestion\u3002",
+  "reference.dialogueAlignment.description":
+    "\u9078\u7528\u7684\u9AD8\u7CBE\u5EA6\u8B49\u64DA\u5DE5\u5177\u3002\u4F9D bbox \u4F4D\u7F6E\u8207\u9806\u5E8F\u5C0D\u9F4A\uFF0C\u4E0D\u6703\u963B\u64CB Ingestion\u3002",
   "reference.dialogueAlignment.optional": "\u9078\u7528\u5DE5\u5177",
   "reference.dialogueAlignment.sourceOrder": "\u539F\u6587\u7AE0\u7BC0",
   "reference.dialogueAlignment.targetOrder": "\u8B6F\u6587\u7AE0\u7BC0",
   "reference.dialogueAlignment.confirmed": "\u5DF2\u78BA\u8A8D",
   "reference.dialogueAlignment.draft": "\u5F85\u8986\u6838",
   "reference.dialogueAlignment.stale": "\u5DF2\u904E\u671F",
-  "reference.dialogueAlignment.staleHelp": "Extraction \u5167\u5BB9\u5DF2\u8B8A\u66F4，\u8ACB\u91CD\u5EFA\u4E26\u91CD\u65B0\u78BA\u8A8D\u5C0D\u8A71\u5E8F\u5217\u3002",
+  "reference.dialogueAlignment.staleHelp":
+    "Extraction \u5167\u5BB9\u5DF2\u8B8A\u66F4，\u8ACB\u91CD\u5EFA\u4E26\u91CD\u65B0\u78BA\u8A8D\u5C0D\u8A71\u5E8F\u5217\u3002",
   "reference.dialogueAlignment.rebuild": "\u91CD\u5EFA\u5E8F\u5217\u5C0D\u9F4A",
-  "reference.dialogueAlignment.emptyOperations": "\u76EE\u524D\u5C0D\u9F4A\u8349\u7A3F\u6C92\u6709\u5C0D\u8A71\u7BC0\u9EDE\uFF0C\u8ACB\u78BA\u8A8D\u539F\u6587\u8207\u8B6F\u6587 Extraction \u90FD\u5B58\u5728\u5F8C\u91CD\u5EFA\u3002",
+  "reference.dialogueAlignment.emptyOperations":
+    "\u76EE\u524D\u5C0D\u9F4A\u8349\u7A3F\u6C92\u6709\u5C0D\u8A71\u7BC0\u9EDE\uFF0C\u8ACB\u78BA\u8A8D\u539F\u6587\u8207\u8B6F\u6587 Extraction \u90FD\u5B58\u5728\u5F8C\u91CD\u5EFA\u3002",
   "reference.dialogueAlignment.originalStream": "\u539F\u6587\u9801\u9762\u8207\u5C0D\u8A71\u6846",
   "reference.dialogueAlignment.translatedStream": "\u8B6F\u6587\u9801\u9762\u8207\u5C0D\u8A71\u6846",
   "reference.dialogueAlignment.selectedPair": "\u76EE\u524D\u914D\u5C0D",
   "reference.dialogueAlignment.originalPage": "\u539F\u6587\u9801\u9762",
   "reference.dialogueAlignment.translatedPage": "\u8B6F\u6587\u9801\u9762",
-  "reference.dialogueAlignment.imageUnavailable": "\u7121\u6CD5\u8F09\u5165\u9019\u7D44\u914D\u5C0D\u7684\u9801\u9762\u5716\u7247\u3002",
-  "reference.dialogueAlignment.bboxUnavailable": "\u90E8\u5206\u5C0D\u8A71\u6846\u7F3A\u5C11 bbox \u6216\u9801\u9762\u5C3A\u5BF8\uFF0C\u7121\u6CD5\u758A\u5716\u3002",
+  "reference.dialogueAlignment.imageUnavailable":
+    "\u7121\u6CD5\u8F09\u5165\u9019\u7D44\u914D\u5C0D\u7684\u9801\u9762\u5716\u7247\u3002",
+  "reference.dialogueAlignment.bboxUnavailable":
+    "\u90E8\u5206\u5C0D\u8A71\u6846\u7F3A\u5C11 bbox \u6216\u9801\u9762\u5C3A\u5BF8\uFF0C\u7121\u6CD5\u758A\u5716\u3002",
   "reference.dialogueAlignment.boxLabel": (params?: Record<string, string | number>) =>
     `\u5C0D\u8A71\u6846 ${params?.index || 0}`,
   "reference.dialogueAlignment.previousPair": "\u4E0A\u4E00\u7D44",
@@ -242,11 +260,13 @@ export const referenceMessagesZhTW = {
   "reference.dialogueAlignment.pairProgress": (params?: Record<string, string | number>) =>
     `${params?.current || 0} / ${params?.total || 0}`,
   "reference.dialogueAlignment.textDetails": "OCR \u6587\u5B57\uFF08\u8F14\u52A9\u8CC7\u8A0A\uFF09",
-  "reference.dialogueAlignment.noNodes": "\u9019\u4E00\u5074\u6C92\u6709\u53EF\u986F\u793A\u7684\u5C0D\u8A71\u6846\u3002",
+  "reference.dialogueAlignment.noNodes":
+    "\u9019\u4E00\u5074\u6C92\u6709\u53EF\u986F\u793A\u7684\u5C0D\u8A71\u6846\u3002",
   "reference.dialogueAlignment.nodeCount": (params?: Record<string, string | number>) =>
     `${params?.count || 0} \u500B\u5C0D\u8A71\u6846`,
   "reference.dialogueAlignment.loading": "\u8F09\u5165\u5C0D\u8A71\u6846\u5C0D\u9F4A\u4E2D\u3002\u3002\u3002",
-  "reference.dialogueAlignment.notPrepared": "\u5C1A\u672A\u5EFA\u7ACB\u9019\u500B\u8B6F\u8005\u7684\u5C0D\u8A71\u6846\u5E8F\u5217\u5C0D\u9F4A\u3002",
+  "reference.dialogueAlignment.notPrepared":
+    "\u5C1A\u672A\u5EFA\u7ACB\u9019\u500B\u8B6F\u8005\u7684\u5C0D\u8A71\u6846\u5E8F\u5217\u5C0D\u9F4A\u3002",
   "reference.dialogueAlignment.prepare": "\u5EFA\u7ACB\u5E8F\u5217\u5C0D\u9F4A",
   "reference.dialogueAlignment.preparing": "\u5C0D\u9F4A\u4E2D\u3002\u3002\u3002",
   "reference.dialogueAlignment.sourceNodes": "\u539F\u6587\u7BC0\u9EDE",
@@ -265,18 +285,23 @@ export const referenceMessagesZhTW = {
   "reference.dialogueAlignment.translation": "\u8B6F\u6587\u4F86\u6E90\u9801",
   "reference.dialogueAlignment.confirm": "\u78BA\u8A8D\u5C0D\u8A71\u6846\u5E8F\u5217",
   "reference.dialogueAlignment.confirming": "\u78BA\u8A8D\u4E2D\u3002\u3002\u3002",
-  "reference.dialogueAlignment.status.prepared": "\u5DF2\u5EFA\u7ACB\u5C0D\u8A71\u6846\u5E8F\u5217\u5C0D\u9F4A\u8349\u7A3F\u3002",
+  "reference.dialogueAlignment.status.prepared":
+    "\u5DF2\u5EFA\u7ACB\u5C0D\u8A71\u6846\u5E8F\u5217\u5C0D\u9F4A\u8349\u7A3F\u3002",
   "reference.dialogueAlignment.status.prepareFailed": "\u5EFA\u7ACB\u5C0D\u8A71\u6846\u5E8F\u5217\u5931\u6557\u3002",
-  "reference.dialogueAlignment.status.confirmed": "\u5DF2\u5132\u5B58\u5C0D\u8A71\u6846\u5E8F\u5217\uFF0C\u53EF\u4F5C\u70BA\u539F\u6587\u8207\u8B6F\u540D\u7684\u52A0\u5F37\u8B49\u64DA\u3002",
+  "reference.dialogueAlignment.status.confirmed":
+    "\u5DF2\u5132\u5B58\u5C0D\u8A71\u6846\u5E8F\u5217\uFF0C\u53EF\u4F5C\u70BA\u539F\u6587\u8207\u8B6F\u540D\u7684\u52A0\u5F37\u8B49\u64DA\u3002",
   "reference.dialogueAlignment.status.confirmFailed": "\u78BA\u8A8D\u5C0D\u8A71\u6846\u5E8F\u5217\u5931\u6557\u3002",
-  "reference.dialogueAlignment.status.manualUpdated": "\u624B\u52D5\u5C0D\u8A71\u6846\u7DB1\u5B9A\u5DF2\u5132\u5B58\uFF0C\u8ACB\u91CD\u65B0\u78BA\u8A8D\u5C0D\u8A71\u5E8F\u5217\u3002",
-  "reference.dialogueAlignment.status.manualFailed": "\u5132\u5B58\u624B\u52D5\u5C0D\u8A71\u6846\u7DB1\u5B9A\u5931\u6557\u3002",
+  "reference.dialogueAlignment.status.manualUpdated":
+    "\u624B\u52D5\u5C0D\u8A71\u6846\u7DB1\u5B9A\u5DF2\u5132\u5B58\uFF0C\u8ACB\u91CD\u65B0\u78BA\u8A8D\u5C0D\u8A71\u5E8F\u5217\u3002",
+  "reference.dialogueAlignment.status.manualFailed":
+    "\u5132\u5B58\u624B\u52D5\u5C0D\u8A71\u6846\u7DB1\u5B9A\u5931\u6557\u3002",
 };
 
 export const referenceMessagesEnUS = {
   "reference.common.none": "None",
   "reference.bilingualEvidence.title": "Bilingual evidence links",
-  "reference.bilingualEvidence.description": "Terminology links are enriched automatically after source and translator observations complete. This does not block ingestion.",
+  "reference.bilingualEvidence.description":
+    "Terminology links are enriched automatically after source and translator observations complete. This does not block ingestion.",
   "reference.bilingualEvidence.optional": "Optional correction",
   "reference.bilingualEvidence.accepted": "Accepted",
   "reference.bilingualEvidence.needsReview": "Needs review",
@@ -325,10 +350,8 @@ export const referenceMessagesEnUS = {
   "reference.workspace.searchPlaceholder": "Search titles or translators",
   "reference.workspace.libraryError": "Could not load titles and sources.",
   "reference.workspace.libraryEmpty": "No matching titles found.",
-  "reference.workspace.sourceCount": (params?: Record<string, string | number>) =>
-    `${params?.count || 0} sources`,
-  "reference.workspace.chapterCount": (params?: Record<string, string | number>) =>
-    `${params?.count || 0} chapters`,
+  "reference.workspace.sourceCount": (params?: Record<string, string | number>) => `${params?.count || 0} sources`,
+  "reference.workspace.chapterCount": (params?: Record<string, string | number>) => `${params?.count || 0} chapters`,
   "reference.workspace.chapterTitle": "Chapter workspace",
   "reference.workspace.selectSource": "Choose a title and source from the left panel.",
   "reference.workspace.selectedSource": "Current source",
@@ -357,7 +380,8 @@ export const referenceMessagesEnUS = {
   "reference.import.failedTranslators": "Could not load translators",
   "reference.import.createTranslator": "Create translator",
   "reference.import.translatorPlaceholder": "Enter translator name",
-  "reference.import.sourceNotice": "Original references accumulate story, character, and terminology evidence, not translation style.",
+  "reference.import.sourceNotice":
+    "Original references accumulate story, character, and terminology evidence, not translation style.",
   "reference.import.mixedNotice": "Translation style applies only to translator references.",
   "reference.import.submit": "Import loaded folders",
   "reference.import.clear": "Clear loaded folders",
@@ -367,9 +391,9 @@ export const referenceMessagesEnUS = {
   "reference.section.import.description":
     "Choose one or more chapter folders, review their display names, and import them when ready.",
   "reference.section.worklist.title": "Chapter workspace",
-  "reference.section.worklist.description":
-    "Queue imported references into Extraction and Ingestion work.",
-  "reference.section.worklist.sequenceDescription": "Ingestion becomes available after Extraction. Extraction review remains optional.",
+  "reference.section.worklist.description": "Queue imported references into Extraction and Ingestion work.",
+  "reference.section.worklist.sequenceDescription":
+    "Ingestion becomes available after Extraction. Extraction review remains optional.",
   "reference.worklist.count": "Items",
   "reference.worklist.useTerminology": "Use for terminology",
   "reference.worklist.useStyle": "Use for translation style",
@@ -399,14 +423,11 @@ export const referenceMessagesEnUS = {
   "reference.worklist.deleteFailed": "Failed to delete the reference.",
   "reference.worklist.empty": "The workspace is empty.",
   "reference.section.report.title": "Ingestion report overview",
-  "reference.section.report.description":
-    "Review the stored knowledge summary by manga and translator.",
+  "reference.section.report.description": "Review the stored knowledge summary by manga and translator.",
   "reference.section.jobs.title": "Reference jobs",
-  "reference.section.jobs.description":
-    "Inspect the current reference jobs and run quick actions.",
+  "reference.section.jobs.description": "Inspect the current reference jobs and run quick actions.",
   "reference.section.artifacts.title": "Artifact editor",
-  "reference.section.artifacts.description":
-    "Preview or edit artifacts produced by the selected reference job.",
+  "reference.section.artifacts.description": "Preview or edit artifacts produced by the selected reference job.",
   "reference.report.characterStates": "Character states",
   "reference.report.openThreads": "Open story threads",
   "reference.data.extractionList": "Extraction data",
@@ -449,21 +470,24 @@ export const referenceMessagesEnUS = {
   "reference.jobs.deleteJob": "Delete job",
   "reference.extractionReview.title": "Extraction review",
   "reference.extractionReview.shortTitle": "Reviewed",
-  "reference.extractionReview.description": "Extraction is immediately usable for alignment and Ingestion. If OCR, text boxes, or ordering are wrong, correct them in Koharu to create a new revision.",
+  "reference.extractionReview.description":
+    "Extraction is immediately usable for alignment and Ingestion. If OCR, text boxes, or ordering are wrong, correct them in Koharu to create a new revision.",
   "reference.extractionReview.select": "Select a reference with completed Extraction from the workspace.",
   "reference.extractionReview.reference": "Reference",
   "reference.extractionReview.status": "Review status",
   "reference.extractionReview.rawNodes": "Raw nodes",
   "reference.extractionReview.currentNodes": "Current nodes",
   "reference.extractionReview.loadFailed": "Failed to load Extraction review data.",
-  "reference.extractionReview.diff": (params?: Record<string, string | number>) => `Added ${params?.added || 0}, deleted ${params?.deleted || 0}, changed ${params?.changed || 0}`,
+  "reference.extractionReview.diff": (params?: Record<string, string | number>) =>
+    `Added ${params?.added || 0}, deleted ${params?.deleted || 0}, changed ${params?.changed || 0}`,
   "reference.extractionReview.start": "Review Extraction",
   "reference.extractionReview.reopen": "Review again",
   "reference.extractionReview.reviewButton": "Review Extraction",
   "reference.extractionReview.sync": "Sync draft",
   "reference.extractionReview.finishEditor": "Finish Koharu editing",
   "reference.extractionReview.cancel": "Cancel review",
-  "reference.extractionReview.nodeCount": (params?: Record<string, string | number>) => `${params?.count || 0} text boxes`,
+  "reference.extractionReview.nodeCount": (params?: Record<string, string | number>) =>
+    `${params?.count || 0} text boxes`,
   "reference.extractionReview.originalIndex": "Original order",
   "reference.extractionReview.change.added": "Added",
   "reference.extractionReview.change.modified": "Modified",
@@ -481,16 +505,20 @@ export const referenceMessagesEnUS = {
   "reference.extractionReview.status.synced": "Koharu draft synced.",
   "reference.extractionReview.status.syncFailed": "Failed to sync the Koharu draft.",
   "reference.extractionReview.status.editorFinished": "Koharu editing is complete. Confirm the dialogue order next.",
-  "reference.extractionReview.status.windowClosedSyncing": "The Koharu window closed. Syncing the draft and preparing dialogue order review.",
+  "reference.extractionReview.status.windowClosedSyncing":
+    "The Koharu window closed. Syncing the draft and preparing dialogue order review.",
   "reference.extractionReview.status.finishFailed": "Failed to finish Koharu editing.",
-  "reference.extractionReview.status.cancelled": "Review cancelled. The draft was not promoted to the official Extraction.",
+  "reference.extractionReview.status.cancelled":
+    "Review cancelled. The draft was not promoted to the official Extraction.",
   "reference.extractionReview.status.cancelFailed": "Failed to cancel Extraction review.",
   "reference.extractionReview.status.orderSaved": "Dialogue order draft saved.",
   "reference.extractionReview.status.orderFailed": "Failed to save dialogue order.",
-  "reference.extractionReview.status.confirmed": "Extraction reviewed and available for Ingestion and dialogue alignment.",
+  "reference.extractionReview.status.confirmed":
+    "Extraction reviewed and available for Ingestion and dialogue alignment.",
   "reference.extractionReview.status.confirmFailed": "Failed to confirm the official Extraction.",
   "reference.dialogueAlignment.title": "Dialogue sequence alignment",
-  "reference.dialogueAlignment.description": "Optional high-precision evidence tool using bbox position and sequence. It never blocks Ingestion.",
+  "reference.dialogueAlignment.description":
+    "Optional high-precision evidence tool using bbox position and sequence. It never blocks Ingestion.",
   "reference.dialogueAlignment.optional": "Optional tool",
   "reference.dialogueAlignment.sourceOrder": "Original chapters",
   "reference.dialogueAlignment.targetOrder": "Translated chapters",
@@ -499,18 +527,22 @@ export const referenceMessagesEnUS = {
   "reference.dialogueAlignment.stale": "Stale",
   "reference.dialogueAlignment.staleHelp": "Extraction content changed. Rebuild and reconfirm the dialogue sequence.",
   "reference.dialogueAlignment.rebuild": "Rebuild sequence alignment",
-  "reference.dialogueAlignment.emptyOperations": "The current draft has no dialogue nodes. Verify that both original and translated Extractions exist, then rebuild it.",
+  "reference.dialogueAlignment.emptyOperations":
+    "The current draft has no dialogue nodes. Verify that both original and translated Extractions exist, then rebuild it.",
   "reference.dialogueAlignment.originalStream": "Original pages and dialogue bubbles",
   "reference.dialogueAlignment.translatedStream": "Translated pages and dialogue bubbles",
   "reference.dialogueAlignment.selectedPair": "Selected alignment",
   "reference.dialogueAlignment.originalPage": "Original page",
   "reference.dialogueAlignment.translatedPage": "Translated page",
   "reference.dialogueAlignment.imageUnavailable": "No page image is available for this alignment.",
-  "reference.dialogueAlignment.bboxUnavailable": "Some dialogue bubbles have no bbox or page dimensions and cannot be overlaid.",
-  "reference.dialogueAlignment.boxLabel": (params?: Record<string, string | number>) => `Dialogue bubble ${params?.index || 0}`,
+  "reference.dialogueAlignment.bboxUnavailable":
+    "Some dialogue bubbles have no bbox or page dimensions and cannot be overlaid.",
+  "reference.dialogueAlignment.boxLabel": (params?: Record<string, string | number>) =>
+    `Dialogue bubble ${params?.index || 0}`,
   "reference.dialogueAlignment.previousPair": "Previous",
   "reference.dialogueAlignment.nextPair": "Next",
-  "reference.dialogueAlignment.pairProgress": (params?: Record<string, string | number>) => `${params?.current || 0} / ${params?.total || 0}`,
+  "reference.dialogueAlignment.pairProgress": (params?: Record<string, string | number>) =>
+    `${params?.current || 0} / ${params?.total || 0}`,
   "reference.dialogueAlignment.textDetails": "OCR text (secondary information)",
   "reference.dialogueAlignment.noNodes": "No dialogue bubbles are available on this side.",
   "reference.dialogueAlignment.nodeCount": (params?: Record<string, string | number>) =>
@@ -525,7 +557,8 @@ export const referenceMessagesEnUS = {
   "reference.dialogueAlignment.review": "Needs review",
   "reference.dialogueAlignment.reviewOnly": "Show review items only",
   "reference.dialogueAlignment.manual.title": "Manual dialogue binding",
-  "reference.dialogueAlignment.manual.selection": (params?: Record<string, string | number>) => `Selected original ${params?.source || 0} / translated ${params?.target || 0}`,
+  "reference.dialogueAlignment.manual.selection": (params?: Record<string, string | number>) =>
+    `Selected original ${params?.source || 0} / translated ${params?.target || 0}`,
   "reference.dialogueAlignment.manual.selectPair": "Select current pair",
   "reference.dialogueAlignment.manual.bind": "Bind selected dialogues",
   "reference.dialogueAlignment.manual.unbind": "Unbind selected dialogues",
@@ -538,6 +571,7 @@ export const referenceMessagesEnUS = {
   "reference.dialogueAlignment.status.prepareFailed": "Failed to build dialogue sequence alignment.",
   "reference.dialogueAlignment.status.confirmed": "Dialogue sequence saved as stronger original-to-rendering evidence.",
   "reference.dialogueAlignment.status.confirmFailed": "Failed to confirm dialogue sequence.",
-  "reference.dialogueAlignment.status.manualUpdated": "Manual dialogue binding saved. Confirm the dialogue sequence again.",
+  "reference.dialogueAlignment.status.manualUpdated":
+    "Manual dialogue binding saved. Confirm the dialogue sequence again.",
   "reference.dialogueAlignment.status.manualFailed": "Failed to save manual dialogue binding.",
 };

@@ -24,7 +24,10 @@ function buildUrl(endpoint, baseUrl = config.api.baseUrl) {
 
 async function apiFetch(endpoint, opts = {}) {
   const { baseUrl, body, headers, ...rest } = opts;
-  const finalHeaders = { "Content-Type": "application/json", ...(headers || {}) };
+  const finalHeaders = {
+    "Content-Type": "application/json",
+    ...(headers || {}),
+  };
   const finalOpts = { ...rest, headers: finalHeaders };
 
   if (body !== undefined) {
@@ -51,6 +54,27 @@ async function ensureJson(res, label) {
   return res.json();
 }
 
+function buildExportBody(format, pages) {
+  const body = { format };
+  if (pages && pages.length > 0) body.pages = pages;
+  return body;
+}
+
+function exportExtension(format, contentType) {
+  if (format === "khr") return "khr";
+  if (contentType.includes("image/png")) return "png";
+  if (contentType.includes("image/")) return "jpg";
+  return "zip";
+}
+
+function writeExportFile(targetDir, format, res, buffer) {
+  const contentType = res.headers.get("content-type") || "";
+  const ext = exportExtension(format, contentType);
+  const filePath = path.join(targetDir, `export_${Date.now()}.${ext}`);
+  fs.writeFileSync(filePath, buffer);
+  return filePath;
+}
+
 class KoharuClient {
   constructor(defaultBaseUrl = config.api.baseUrl) {
     this.defaultBaseUrl = defaultBaseUrl;
@@ -61,22 +85,30 @@ class KoharuClient {
   }
 
   async getScene(baseUrl) {
-    const res = await apiFetch(ENDPOINTS.SCENE, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    const res = await apiFetch(ENDPOINTS.SCENE, {
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
     return ensureJson(res, "Read scene");
   }
 
   async getEngines(baseUrl) {
-    const res = await apiFetch(ENDPOINTS.ENGINES, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    const res = await apiFetch(ENDPOINTS.ENGINES, {
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
     return ensureJson(res, "Fetch engines");
   }
 
   async getTranslationCatalog(baseUrl) {
-    const res = await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    const res = await apiFetch(ENDPOINTS.LLM_CATALOG, {
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
     return ensureJson(res, "Fetch translation catalog");
   }
 
   async getCurrentTranslationTarget(baseUrl) {
-    const res = await apiFetch(ENDPOINTS.LLM_CURRENT, { baseUrl: this.resolveBaseUrl(baseUrl) });
+    const res = await apiFetch(ENDPOINTS.LLM_CURRENT, {
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
     return ensureJson(res, "Get current translation target");
   }
 
@@ -137,42 +169,21 @@ class KoharuClient {
   }
 
   async exportCurrentProject({ format, pages, outputDir, baseUrl }) {
-    const body = { format };
-    if (pages && pages.length > 0) {
-      body.pages = pages;
-    }
-
+    const body = buildExportBody(format, pages);
     const res = await apiFetch(ENDPOINTS.EXPORT, {
       method: "POST",
       baseUrl: this.resolveBaseUrl(baseUrl),
       body,
     });
-
     if (!res.ok) {
       const text = await readTextSafe(res);
       throw new Error(`Export failed (${res.status}): ${text}`);
     }
-
+    const buffer = Buffer.from(await res.arrayBuffer());
     const targetDir = path.resolve(outputDir);
     fs.mkdirSync(targetDir, { recursive: true });
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") || "";
-    const ext = format === "khr"
-      ? "khr"
-      : contentType.includes("image/png")
-        ? "png"
-        : contentType.includes("image/")
-          ? "jpg"
-          : "zip";
-    const filePath = path.join(targetDir, `export_${Date.now()}.${ext}`);
-    fs.writeFileSync(filePath, buffer);
-
-    return {
-      path: filePath,
-      size: buffer.length,
-      format,
-    };
+    const filePath = writeExportFile(targetDir, format, res, buffer);
+    return { path: filePath, size: buffer.length, format };
   }
 
   async applyHistoryBatch({ ops, label = "post_edit_apply", baseUrl }) {

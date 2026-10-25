@@ -1,44 +1,26 @@
 const TASK_DEFINITIONS = Object.freeze({
   story_context_update: {
-    specialistFiles: [
-      "workspace/.opencode/agents/story-context-builder.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/story-delta-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/story-context-builder.md"],
+    skillFiles: ["workspace/.opencode/skills/story-delta-contract/SKILL.md"],
     defaultOutputFilePath: "output/story_delta_result.txt",
   },
   chapter_observation: {
-    specialistFiles: [
-      "workspace/.opencode/agents/chapter-observer.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/chapter-observation-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/chapter-observer.md"],
+    skillFiles: ["workspace/.opencode/skills/chapter-observation-contract/SKILL.md"],
     defaultOutputFilePath: "output/chapter_observation.txt",
   },
   bilingual_evidence_window: {
-    specialistFiles: [
-      "workspace/.opencode/agents/bilingual-evidence-builder.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/bilingual-evidence-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/bilingual-evidence-builder.md"],
+    skillFiles: ["workspace/.opencode/skills/bilingual-evidence-contract/SKILL.md"],
     defaultOutputFilePath: "output/bilingual_evidence.txt",
   },
   reference_deep_review: {
-    specialistFiles: [
-      "workspace/.opencode/agents/reference-deep-reviewer.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/chapter-observation-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/reference-deep-reviewer.md"],
+    skillFiles: ["workspace/.opencode/skills/chapter-observation-contract/SKILL.md"],
     defaultOutputFilePath: "output/reference_deep_review.txt",
   },
   quality_review: {
-    specialistFiles: [
-      "workspace/.opencode/agents/quality-optimizer.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/quality-optimizer.md"],
     skillFiles: [
       "workspace/.opencode/skills/quality-line-contract/SKILL.md",
       "workspace/.opencode/skills/quality-decision-framework/SKILL.md",
@@ -46,21 +28,13 @@ const TASK_DEFINITIONS = Object.freeze({
     defaultOutputFilePath: "output/quality_result.txt",
   },
   translation_quality_observation: {
-    specialistFiles: [
-      "workspace/.opencode/agents/translation-quality-observer.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/translation-quality-observation-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/translation-quality-observer.md"],
+    skillFiles: ["workspace/.opencode/skills/translation-quality-observation-contract/SKILL.md"],
     defaultOutputFilePath: "output/translation_quality_observation.txt",
   },
   reference_locale_projection: {
-    specialistFiles: [
-      "workspace/.opencode/agents/reference-locale-projector.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/reference-locale-projection-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/reference-locale-projector.md"],
+    skillFiles: ["workspace/.opencode/skills/reference-locale-projection-contract/SKILL.md"],
     defaultOutputFilePath: "output/reference_locale_projection.txt",
   },
   knowledge_enrichment: {
@@ -76,12 +50,8 @@ const TASK_DEFINITIONS = Object.freeze({
     defaultOutputFilePath: "output/knowledge_result.txt",
   },
   translation_deep_audit: {
-    specialistFiles: [
-      "workspace/.opencode/agents/quality-optimizer.md",
-    ],
-    skillFiles: [
-      "workspace/.opencode/skills/translation-deep-audit-contract/SKILL.md",
-    ],
+    specialistFiles: ["workspace/.opencode/agents/quality-optimizer.md"],
+    skillFiles: ["workspace/.opencode/skills/translation-deep-audit-contract/SKILL.md"],
     defaultOutputFilePath: "output/deep_audit.txt",
   },
 });

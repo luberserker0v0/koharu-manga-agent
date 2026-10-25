@@ -1,10 +1,43 @@
 import { useState } from "react";
 import {
-  executeMaintenanceCleanup, previewMaintenanceCleanup,
-  type BackendConfig, type MaintenanceCleanupResult, type MaintenanceCleanupTarget,
+  executeMaintenanceCleanup,
+  previewMaintenanceCleanup,
+  type BackendConfig,
+  type MaintenanceCleanupResult,
+  type MaintenanceCleanupTarget,
 } from "../../../api/runtime";
 
 const TARGETS: MaintenanceCleanupTarget[] = ["logs", "translated", "workspaces", "postedit"];
+const RETENTION_FIELDS = [
+  ["logRetentionDays", 14],
+  ["logMaxFiles", 200],
+  ["translatedRetentionDays", 30],
+  ["workspaceRetentionDays", 30],
+  ["postEditRetentionDays", 30],
+] as const;
+type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+function MaintenanceNumberField(props: {
+  field: string;
+  value: number;
+  min: number;
+  step?: number;
+  t: Translate;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{props.t(`settings.maintenance.${props.field}`)}</span>
+      <input
+        min={props.min}
+        step={props.step}
+        type="number"
+        value={props.value}
+        onChange={(event) => props.onChange(Number(event.currentTarget.value))}
+      />
+    </label>
+  );
+}
 
 function formatBytes(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "0 B";
@@ -18,102 +51,193 @@ function formatBytes(value: number): string {
   return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unit]}`;
 }
 
-export function MaintenanceCleanup({ config, onConfigChange, t }: {
+function MaintenanceDefaultsFields({
+  config,
+  t,
+  updateDefaults,
+}: {
   config: BackendConfig;
-  onConfigChange: (patch: BackendConfig) => void;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  updateDefaults: (key: string, value: number) => void;
+}) {
+  return (
+    <>
+      {RETENTION_FIELDS.map(([field, fallback]) => (
+        <MaintenanceNumberField
+          key={field}
+          field={field}
+          value={config.defaults?.[field] ?? fallback}
+          min={0}
+          t={t}
+          onChange={(value) => updateDefaults(field, value)}
+        />
+      ))}
+    </>
+  );
+}
+
+function MaintenanceOptions({
+  config,
+  t,
+  updateCleanup,
+}: {
+  config: BackendConfig;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  updateCleanup: (patch: Record<string, boolean | number>) => void;
+}) {
+  return (
+    <>
+      <label className="checkbox-field">
+        <input
+          checked={config.cleanup?.enabled !== false}
+          type="checkbox"
+          onChange={(event) => updateCleanup({ enabled: event.currentTarget.checked })}
+        />
+        <span>{t("settings.maintenance.autoEnabled")}</span>
+      </label>
+      <MaintenanceNumberField
+        field="intervalMs"
+        min={60000}
+        step={60000}
+        value={config.cleanup?.intervalMs ?? 3600000}
+        t={t}
+        onChange={(intervalMs) => updateCleanup({ intervalMs })}
+      />
+    </>
+  );
+}
+
+function MaintenanceButtons({
+  running,
+  t,
+  onPreview,
+  onExecute,
+}: {
+  running: "preview" | "execute" | null;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  onPreview: () => void;
+  onExecute: () => void;
+}) {
+  return (
+    <div className="button-row">
+      <button className="secondary-button" disabled={running !== null} type="button" onClick={onPreview}>
+        {t(running === "preview" ? "settings.maintenance.previewing" : "settings.maintenance.preview")}
+      </button>
+      <button className="secondary-button" disabled={running !== null} type="button" onClick={onExecute}>
+        {t(running === "execute" ? "settings.maintenance.executing" : "settings.maintenance.execute")}
+      </button>
+    </div>
+  );
+}
+
+function MaintenancePreview({
+  preview,
+  t,
+}: {
+  preview: MaintenanceCleanupResult;
   t: (key: string, params?: Record<string, string | number>) => string;
 }) {
+  return (
+    <div className="summary-grid">
+      {TARGETS.map((target) => {
+        const entry = preview.results[target];
+        if (!entry) return null;
+        return (
+          <div key={target}>
+            <strong>{t(`settings.maintenance.target.${target}`)}</strong>
+            <span>
+              {t("settings.maintenance.summary", {
+                deleted: entry.deleted,
+                freed: formatBytes(entry.freedBytes),
+              })}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+async function runMaintenancePreview(setters: {
+  setPreview: (value: MaintenanceCleanupResult | null) => void;
+  setRunning: (value: "preview" | "execute" | null) => void;
+  setError: (value: string | null) => void;
+  setNotice: (value: string | null) => void;
+}) {
+  setters.setRunning("preview");
+  setters.setError(null);
+  setters.setNotice(null);
+  try {
+    setters.setPreview(await previewMaintenanceCleanup("all"));
+  } catch (cause) {
+    setters.setError(cause instanceof Error ? cause.message : String(cause));
+  } finally {
+    setters.setRunning(null);
+  }
+}
+
+async function runMaintenanceExecute(
+  t: (key: string, params?: Record<string, string | number>) => string,
+  setters: {
+    setPreview: (value: MaintenanceCleanupResult | null) => void;
+    setRunning: (value: "preview" | "execute" | null) => void;
+    setError: (value: string | null) => void;
+    setNotice: (value: string | null) => void;
+  },
+) {
+  if (!window.confirm(t("settings.maintenance.confirm"))) return;
+  setters.setRunning("execute");
+  setters.setError(null);
+  setters.setNotice(null);
+  try {
+    const result = await executeMaintenanceCleanup({
+      targets: ["all"],
+      dryRun: false,
+    });
+    setters.setPreview(result);
+    setters.setNotice(t("settings.maintenance.executed"));
+  } catch (cause) {
+    setters.setError(cause instanceof Error ? cause.message : String(cause));
+  } finally {
+    setters.setRunning(null);
+  }
+}
+
+type MaintenanceCleanupProps = {
+  config: BackendConfig;
+  onConfigChange: (patch: BackendConfig) => void;
+  t: Translate;
+};
+
+function useMaintenanceState() {
   const [preview, setPreview] = useState<MaintenanceCleanupResult | null>(null);
   const [running, setRunning] = useState<"preview" | "execute" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  return { preview, running, error, notice, setters: { setPreview, setRunning, setError, setNotice } };
+}
 
+export function MaintenanceCleanup({ config, onConfigChange, t }: MaintenanceCleanupProps) {
+  const state = useMaintenanceState();
   const updateDefaults = (key: string, value: number) => {
     onConfigChange({ defaults: { ...config.defaults, [key]: value } });
   };
   const updateCleanup = (patch: Record<string, boolean | number>) => {
     onConfigChange({ cleanup: { ...config.cleanup, ...patch } });
   };
-
-  const runPreview = async () => {
-    setRunning("preview");
-    setError(null);
-    setNotice(null);
-    try {
-      setPreview(await previewMaintenanceCleanup("all"));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setRunning(null);
-    }
-  };
-
-  const runExecute = async () => {
-    if (!window.confirm(t("settings.maintenance.confirm"))) return;
-    setRunning("execute");
-    setError(null);
-    setNotice(null);
-    try {
-      const result = await executeMaintenanceCleanup({ targets: ["all"], dryRun: false });
-      setPreview(result);
-      setNotice(t("settings.maintenance.executed"));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setRunning(null);
-    }
-  };
-
   return (
     <div className="form-grid">
-      <label className="field"><span>{t("settings.maintenance.logRetentionDays")}</span>
-        <input min={0} type="number" value={config.defaults?.logRetentionDays ?? 14}
-          onChange={(event) => updateDefaults("logRetentionDays", Number(event.currentTarget.value))} />
-      </label>
-      <label className="field"><span>{t("settings.maintenance.logMaxFiles")}</span>
-        <input min={0} type="number" value={config.defaults?.logMaxFiles ?? 200}
-          onChange={(event) => updateDefaults("logMaxFiles", Number(event.currentTarget.value))} />
-      </label>
-      <label className="field"><span>{t("settings.maintenance.translatedRetentionDays")}</span>
-        <input min={0} type="number" value={config.defaults?.translatedRetentionDays ?? 30}
-          onChange={(event) => updateDefaults("translatedRetentionDays", Number(event.currentTarget.value))} />
-      </label>
-      <label className="field"><span>{t("settings.maintenance.workspaceRetentionDays")}</span>
-        <input min={0} type="number" value={config.defaults?.workspaceRetentionDays ?? 30}
-          onChange={(event) => updateDefaults("workspaceRetentionDays", Number(event.currentTarget.value))} />
-      </label>
-      <label className="field"><span>{t("settings.maintenance.postEditRetentionDays")}</span>
-        <input min={0} type="number" value={config.defaults?.postEditRetentionDays ?? 30}
-          onChange={(event) => updateDefaults("postEditRetentionDays", Number(event.currentTarget.value))} />
-      </label>
-      <label className="checkbox-field"><input checked={config.cleanup?.enabled !== false} type="checkbox"
-        onChange={(event) => updateCleanup({ enabled: event.currentTarget.checked })} />
-        <span>{t("settings.maintenance.autoEnabled")}</span>
-      </label>
-      <label className="field"><span>{t("settings.maintenance.intervalMs")}</span>
-        <input min={60000} step={60000} type="number" value={config.cleanup?.intervalMs ?? 3600000}
-          onChange={(event) => updateCleanup({ intervalMs: Number(event.currentTarget.value) })} />
-      </label>
-      <div className="button-row">
-        <button className="secondary-button" disabled={running !== null} type="button" onClick={() => void runPreview()}>
-          {t(running === "preview" ? "settings.maintenance.previewing" : "settings.maintenance.preview")}
-        </button>
-        <button className="secondary-button" disabled={running !== null} type="button" onClick={() => void runExecute()}>
-          {t(running === "execute" ? "settings.maintenance.executing" : "settings.maintenance.execute")}
-        </button>
-      </div>
-      {error && <p className="muted-text">{error}</p>}
-      {notice && <p className="muted-text">{notice}</p>}
-      {preview && <div className="summary-grid">
-        {TARGETS.map((target) => {
-          const entry = preview.results[target];
-          if (!entry) return null;
-          return <div key={target}>
-            <strong>{t(`settings.maintenance.target.${target}`)}</strong>
-            <span>{t("settings.maintenance.summary", { deleted: entry.deleted, freed: formatBytes(entry.freedBytes) })}</span>
-          </div>;
-        })}
-      </div>}
+      <MaintenanceDefaultsFields config={config} t={t} updateDefaults={updateDefaults} />
+      <MaintenanceOptions config={config} t={t} updateCleanup={updateCleanup} />
+      <MaintenanceButtons
+        onExecute={() => void runMaintenanceExecute(t, state.setters)}
+        onPreview={() => void runMaintenancePreview(state.setters)}
+        running={state.running}
+        t={t}
+      />
+      {state.error && <p className="muted-text">{state.error}</p>}
+      {state.notice && <p className="muted-text">{state.notice}</p>}
+      {state.preview && <MaintenancePreview preview={state.preview} t={t} />}
     </div>
   );
 }

@@ -1,13 +1,7 @@
 const crypto = require("crypto");
 
 class AOClient {
-  constructor({
-    baseUrl,
-    apiKey = null,
-    fetchImpl = fetch,
-    readyPollIntervalMs = 1000,
-    readyTimeoutMs = 30000,
-  } = {}) {
+  constructor({ baseUrl, apiKey = null, fetchImpl = fetch, readyPollIntervalMs = 1000, readyTimeoutMs = 30000 } = {}) {
     this.baseUrl = String(baseUrl || "").replace(/\/+$/, "");
     this.apiKey = apiKey;
     this.fetchImpl = fetchImpl;
@@ -72,7 +66,9 @@ class AOClient {
     return this.requestJson("/api/conversations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: conversationId || `ao-${crypto.randomUUID()}` }),
+      body: JSON.stringify({
+        id: conversationId || `ao-${crypto.randomUUID()}`,
+      }),
     });
   }
 
@@ -126,11 +122,14 @@ class AOClient {
   }
 
   async uploadSkillZip(conversationId, skillName, zipBuffer) {
-    return this.requestJson(`/api/conversations/${conversationId}/skills/upload?name=${encodeURIComponent(skillName)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/zip" },
-      body: zipBuffer,
-    });
+    return this.requestJson(
+      `/api/conversations/${conversationId}/skills/upload?name=${encodeURIComponent(skillName)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: zipBuffer,
+      },
+    );
   }
 
   async startConversation(conversationId) {
@@ -147,18 +146,14 @@ class AOClient {
     return this.requestJson(`/api/conversations/${encodeURIComponent(conversationId)}/providers`);
   }
 
-  async waitUntilReady(conversationId, {
-    readyPollIntervalMs = this.readyPollIntervalMs,
-    readyTimeoutMs = this.readyTimeoutMs,
-  } = {}) {
+  async waitUntilReady(
+    conversationId,
+    { readyPollIntervalMs = this.readyPollIntervalMs, readyTimeoutMs = this.readyTimeoutMs } = {},
+  ) {
     const startedAt = Date.now();
     while (Date.now() - startedAt < readyTimeoutMs) {
       const current = await this.getConversation(conversationId);
-      if (
-        current.ready === true &&
-        typeof current.sessionId === "string" &&
-        current.sessionId.length > 0
-      ) {
+      if (current.ready === true && typeof current.sessionId === "string" && current.sessionId.length > 0) {
         return current;
       }
       if (current.status !== "running") {
@@ -193,9 +188,7 @@ class AOClient {
   }
 
   async listSessionMessages(conversationId, sessionId) {
-    return this.requestJson(
-      `/api/conversations/${conversationId}/sessions/${encodeURIComponent(sessionId)}/messages`
-    );
+    return this.requestJson(`/api/conversations/${conversationId}/sessions/${encodeURIComponent(sessionId)}/messages`);
   }
 
   async deleteConversation(conversationId) {

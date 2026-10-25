@@ -9,23 +9,15 @@ type BackendConnectionSettingsProps = {
   t: Translate;
 };
 
-export function BackendConnectionSettings({
-  baseUrl,
-  desktopInfo,
-  onBaseUrlChange,
-  t,
-}: BackendConnectionSettingsProps) {
+export function BackendConnectionSettings(props: BackendConnectionSettingsProps) {
+  const { baseUrl, desktopInfo, onBaseUrlChange, t } = props;
   return (
     <>
       <div className="form-grid">
         <label className="field full-span">
           <span>{t("settings.backend.baseUrl.label")}</span>
           <small className="muted-text">{t("settings.backend.baseUrl.help")}</small>
-          <input
-            inputMode="url"
-            value={baseUrl}
-            onChange={(event) => onBaseUrlChange(event.currentTarget.value)}
-          />
+          <input inputMode="url" value={baseUrl} onChange={(event) => onBaseUrlChange(event.currentTarget.value)} />
         </label>
       </div>
       {desktopInfo && (

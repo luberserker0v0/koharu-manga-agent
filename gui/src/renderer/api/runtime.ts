@@ -7,8 +7,19 @@ export type BackendReadiness = {
   deploymentMode: string;
   services: {
     backend: { required: true; ready: boolean; status: string };
-    koharu: { required: true; ready: boolean; status: string; mode: string; baseUrl: string | null };
-    ao: { required: false; ready: boolean; status: string; baseUrl: string | null };
+    koharu: {
+      required: true;
+      ready: boolean;
+      status: string;
+      mode: string;
+      baseUrl: string | null;
+    };
+    ao: {
+      required: false;
+      ready: boolean;
+      status: string;
+      baseUrl: string | null;
+    };
   };
   capabilities: { koharuJobs: boolean; aoJobs: boolean };
   blockers: Array<{ service: string; code: string; message: string }>;
@@ -206,8 +217,12 @@ export async function getBackendReadiness(): Promise<BackendReadiness> {
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), 4000);
   try {
-    const response = await fetch(buildApiUrl("/ready"), { signal: controller.signal });
-    const payload = await response.json() as BackendReadiness & { error?: string };
+    const response = await fetch(buildApiUrl("/ready"), {
+      signal: controller.signal,
+    });
+    const payload = (await response.json()) as BackendReadiness & {
+      error?: string;
+    };
     if (response.status !== 200 && response.status !== 503) {
       throw new Error(payload.error || `Readiness request failed: ${response.status}`);
     }
@@ -229,20 +244,35 @@ export function resetBackendConfig(): Promise<BackendConfig> {
   return apiFetch("/config/reset", { method: "POST" });
 }
 
-export function testAOConnection(baseUrl: string, apiKey: string | null): Promise<{ available: boolean; baseUrl: string }> {
-  return apiFetch("/runtime/ao/connect", { method: "POST", body: JSON.stringify({ baseUrl, apiKey }), timeoutMs: 10000 });
+export function testAOConnection(
+  baseUrl: string,
+  apiKey: string | null,
+): Promise<{ available: boolean; baseUrl: string }> {
+  return apiFetch("/runtime/ao/connect", {
+    method: "POST",
+    body: JSON.stringify({ baseUrl, apiKey }),
+    timeoutMs: 10000,
+  });
 }
 
 export function getAOProviderCatalog(baseUrl: string, apiKey: string | null): Promise<AOProviderCatalog> {
-  return apiFetch("/runtime/ao/providers", { method: "POST", body: JSON.stringify({ baseUrl, apiKey }), timeoutMs: 60000 });
+  return apiFetch("/runtime/ao/providers", {
+    method: "POST",
+    body: JSON.stringify({ baseUrl, apiKey }),
+    timeoutMs: 60000,
+  });
 }
 
-export function getKoharuEngineCatalog(): Promise<{ engines: KoharuEngineCatalog }> {
+export function getKoharuEngineCatalog(): Promise<{
+  engines: KoharuEngineCatalog;
+}> {
   return apiFetch("/runtime/koharu/engines", { timeoutMs: 30000 });
 }
 
 export function getKoharuTranslationCatalog(): Promise<KoharuTranslationCatalog> {
-  return apiFetch("/runtime/koharu/translation-providers", { timeoutMs: 30000 });
+  return apiFetch("/runtime/koharu/translation-providers", {
+    timeoutMs: 30000,
+  });
 }
 
 export function getKoharuRuntimePaths(): Promise<{
@@ -252,15 +282,27 @@ export function getKoharuRuntimePaths(): Promise<{
   return apiFetch("/runtime/koharu/paths", { timeoutMs: 30000 });
 }
 
-export function startKoharuRuntime(): Promise<{ koharu: RuntimeStatus["koharu"] }> {
-  return apiFetch("/runtime/koharu/start", { method: "POST", timeoutMs: 60000 });
+export function startKoharuRuntime(): Promise<{
+  koharu: RuntimeStatus["koharu"];
+}> {
+  return apiFetch("/runtime/koharu/start", {
+    method: "POST",
+    timeoutMs: 60000,
+  });
 }
 
-export function prepareKoharuRuntime(): Promise<{ koharu: RuntimeStatus["koharu"] }> {
-  return apiFetch("/runtime/koharu/prepare", { method: "POST", timeoutMs: 600000 });
+export function prepareKoharuRuntime(): Promise<{
+  koharu: RuntimeStatus["koharu"];
+}> {
+  return apiFetch("/runtime/koharu/prepare", {
+    method: "POST",
+    timeoutMs: 600000,
+  });
 }
 
-export function stopKoharuRuntime(): Promise<{ koharu: RuntimeStatus["koharu"] }> {
+export function stopKoharuRuntime(): Promise<{
+  koharu: RuntimeStatus["koharu"];
+}> {
   return apiFetch("/runtime/koharu/stop", { method: "POST", timeoutMs: 30000 });
 }
 
@@ -268,17 +310,24 @@ export type MaintenanceCleanupTarget = "logs" | "translated" | "workspaces" | "p
 
 export type MaintenanceCleanupResult = {
   dryRun: boolean;
-  results: Partial<Record<MaintenanceCleanupTarget, {
-    target: string;
-    deleted: number;
-    freedBytes: number;
-    dryRun: boolean;
-    files?: string[];
-    dirs?: string[];
-  }>>;
+  results: Partial<
+    Record<
+      MaintenanceCleanupTarget,
+      {
+        target: string;
+        deleted: number;
+        freedBytes: number;
+        dryRun: boolean;
+        files?: string[];
+        dirs?: string[];
+      }
+    >
+  >;
 };
 
-export function previewMaintenanceCleanup(target: MaintenanceCleanupTarget | "all" = "all"): Promise<MaintenanceCleanupResult> {
+export function previewMaintenanceCleanup(
+  target: MaintenanceCleanupTarget | "all" = "all",
+): Promise<MaintenanceCleanupResult> {
   return apiFetch(`/maintenance/cleanup/preview?target=${encodeURIComponent(target)}`, { timeoutMs: 30000 });
 }
 
@@ -291,5 +340,9 @@ export function executeMaintenanceCleanup(payload: {
   workspaceRetentionDays?: number;
   postEditRetentionDays?: number;
 }): Promise<MaintenanceCleanupResult> {
-  return apiFetch("/maintenance/cleanup", { method: "POST", body: JSON.stringify(payload), timeoutMs: 60000 });
+  return apiFetch("/maintenance/cleanup", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 60000,
+  });
 }

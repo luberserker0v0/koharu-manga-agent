@@ -159,8 +159,9 @@ Building the desktop package does not rebuild the Docker backend. Build and star
 separately:
 
 ```powershell
-docker compose -p manga-backend up -d --build
-docker compose -p manga-backend ps
+docker compose build --pull backend
+docker compose up -d --force-recreate backend
+docker compose ps
 Invoke-RestMethod http://127.0.0.1:4001/health
 Invoke-RestMethod http://127.0.0.1:4001/ready
 ```

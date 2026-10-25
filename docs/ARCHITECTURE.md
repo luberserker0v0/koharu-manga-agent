@@ -3,9 +3,13 @@
 ## Overview
 The official runtime is now a **process-trigger backend**.
 
-The repository is split into two layers:
-- `backend/`: the only formal runtime
-- `.opencode/`: migration-era scripts and references that are being absorbed into backend modules
+The repository is split into three runtime-facing layers:
+- `backend/`: workflow, validation, persistence, AO HTTP integration, and Koharu HTTP integration
+- `gui/`: Electron client plus optional native backend and host-Koharu process ownership
+- `backend/ao/`: assets uploaded into temporary AO conversations
+
+The repository has no root `.opencode/` runtime. The backend never accesses an AgentOrchestrator
+project workspace on disk; it uploads the canonical `backend/ao/` assets through AO HTTP APIs.
 
 Primary runtime entrypoint:
 
@@ -36,12 +40,20 @@ Current endpoints:
 - `GET /knowledge/:mangaId/story-context`
 
 ### Job Manager
-The job manager owns:
-- job creation
-- queueing and in-process execution
-- cancellation and retry
-- event fan-out for SSE clients
-- persistence to SQLite
+`backend/src/domains/jobs/job_manager.js` is a façade. It preserves the API consumed by HTTP routes
+and domain services while delegating cohesive responsibilities:
+
+- `factory/`: job and generic workflow creation
+- `queue/`: queue draining and Koharu review leases
+- `lifecycle/`: recovery, execution, completion, cancellation, deletion, retry, and resume
+- `runtime/`: atomic job dispatch, Koharu readiness, and runtime status
+- `queries/`: job/event/artifact read models
+- `events/`: persistence-backed event publication and subscriptions
+- `maintenance/`: trash retention and cleanup orchestration
+- `workflows/`: Reference and Translation workflow construction and dependency state
+
+SQLite remains the persistence owner; workflow modules do not invent storage schemas or bypass the
+job store.
 
 Persistence tables:
 - `jobs`
@@ -71,30 +83,21 @@ Formal stage order:
 9. export
 10. close current project
 
-### Agent SDK Adapter
-The Agent SDK is no longer the orchestration layer.
+### AO HTTP Boundary
+AO is the only LLM execution boundary. The backend does not load `agent_sdk`, provider registries,
+generic provider adapters, or compatibility layers.
 
-It is reserved for:
-- high-level quality review
-- knowledge-base enrichment
-- future semantic reasoning tasks
+For every AO task, the backend:
 
-It must not own:
-- worker routing
-- retries
-- timeout policy
-- placeholder expansion
-- export and close sequencing
+1. creates a temporary conversation;
+2. uploads `opencode.json`, `AGENTS.md`, task agents, docs, and skills;
+3. starts the conversation and polls until `ready === true`;
+4. sends the task message;
+5. validates the task-specific output contract;
+6. deletes the temporary conversation unless preservation was explicitly requested for debugging.
 
-The next integration target is `opencode` through an SDK adapter, not through prompt-only task orchestration.
-See:
-- `docs/AGENT_INTEGRATION.md`
-
-Current implementation status:
-- `opencode` already supports managed SDK runtime startup
-- `quality_review` and `knowledge_enrichment` both support SDK-backed execution
-- provider results are schema-validated before they are imported into workflow modules
-- each agent stage records import/export manifests for backend-side auditing
+The backend owns retries, timeouts, IDs, schema validation, persistence, export, and close sequencing.
+AO supplies semantic values and evidence only. See `docs/AGENT_INTEGRATION.md`.
 
 ### Koharu Client
 `backend/src/integrations/koharu/client/koharu_client.js` is the formal low-level Koharu wrapper.
@@ -118,17 +121,16 @@ backend.
 
 ### Core Workflow Modules
 - `backend/src/integrations/koharu/pipeline/project_setup.js`
-  - wraps legacy `one_click_translate.js` orchestration for migration
+  - owns Koharu project creation, page upload, and pipeline planning
 - `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
   - replaces `pipeline-runner`
   - owns late-attach recovery and fast-finish handling
 - `backend/src/domains/translation/quality/quality.js`
   - replaces `quality-checker`
-  - owns read-only validation of the current translation against project knowledge assets
-  - uses Agent SDK only for semantic review
+  - owns bounded AO-assisted validation and validated revision application
 - `backend/src/domains/knowledge/learning/knowledge.js`
   - replaces `knowledge-builder`
-  - uses Agent SDK only for semantic enrichment
+  - uses AO HTTP tasks for semantic enrichment of backend-owned learning evidence
 - `backend/src/domains/translation/execution/export.js`
   - owns export behavior
 - `backend/src/integrations/koharu/pipeline/project_lifecycle.js`
@@ -140,9 +142,9 @@ Current implementation note:
 - some legacy comparison helpers and historical artifacts still remain in the repository, but they are not part of the primary quality path
 
 ### Non-Workflow Modules
-- `backend/src/domains/jobs/lifecycle/admin.js`
-  - list projects
-  - log maintenance (delegates to the maintenance cleanup service)
+- `backend/src/domains/jobs/maintenance/job_maintenance.js`
+  - trash retention
+  - cleanup orchestration
 - `backend/src/domains/maintenance/cleanup_service.js`
   - owns the file cleanup policy for `logs`, translated output, job workspaces, and post-edit documents
   - exposes preview/execute runs; the hourly scheduler is started from `backend/src/runtime.js` and stopped with the API server
@@ -157,21 +159,16 @@ These now form the AO-only integration layer. The backend no longer keeps a
 generic provider registry, SDK-loaded runtime adapter, or `agent_sdk`
 compatibility abstraction.
 
-Deferred utilities:
-- `delete_page.js`
-- `self_reflection.js`
-
-These are not part of the first-class backend workflow.
-
 ## Runtime Policy
 - backend configuration lives in the OS user config directory, or at `MANGA_TRANSLATION_CONFIG_PATH`
-- repository `.opencode/koharu.json` is not a Backend runtime configuration source
+- when the selected config file is absent, backend defaults apply until the backend API persists a
+  user configuration; Docker separately seeds `/data/config/koharu.json` from `docker/koharu.json`
 - request payloads may override config values
 - default workflow never deletes stored Koharu projects
 - `close project` always means `DELETE /projects/current`
 - backend returns structured job status and error data
 - `QQ` belongs to the outer agent response layer, not the backend transport layer
-- agent providers must run inside isolated per-job stage workspaces
+- AO tasks must run inside isolated per-job stage workspaces
 
 ## Reference Comparison Layout
 The quality workflow can consume a reference set through `referenceSetId`.
@@ -246,24 +243,21 @@ Important GUI-facing runtime rules:
 ```text
 comics/1/
 |- backend/
+|  |- ao/
+|  |- scripts/
 |  |- server.js
 |  `- src/
-|     |- ao_client.js
-|     |- ao_assets.js
-|     |- ao_tasks.js
-|     |- ao_contracts.js
+|     |- domains/
 |     |- http/
-|     |- modules/
-|     |- storage/
+|     |- integrations/
 |     |- config.js
-|     |- job_manager.js
-|     |- koharu_client.js
-|     |- runtime.js
-|     `- workflow_engine.js
+|     |- config_service.js
+|     `- runtime.js
+|- docker/
 |- docs/
-|- tests/
-`- .opencode/
-   `- developer tooling and local examples
+|- gui/
+|- scripts/
+`- tests/
 ```
 
 Runtime state is not part of the repository tree. Native and packaged backends use the OS data

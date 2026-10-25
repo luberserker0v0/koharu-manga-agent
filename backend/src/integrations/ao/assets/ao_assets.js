@@ -26,13 +26,8 @@ function crc32(buffer) {
 function toDosTime(date = new Date()) {
   const year = Math.max(1980, date.getFullYear());
   const dosTime =
-    ((date.getHours() & 0x1f) << 11) |
-    ((date.getMinutes() & 0x3f) << 5) |
-    ((Math.floor(date.getSeconds() / 2)) & 0x1f);
-  const dosDate =
-    (((year - 1980) & 0x7f) << 9) |
-    (((date.getMonth() + 1) & 0x0f) << 5) |
-    (date.getDate() & 0x1f);
+    ((date.getHours() & 0x1f) << 11) | ((date.getMinutes() & 0x3f) << 5) | (Math.floor(date.getSeconds() / 2) & 0x1f);
+  const dosDate = (((year - 1980) & 0x7f) << 9) | (((date.getMonth() + 1) & 0x0f) << 5) | (date.getDate() & 0x1f);
   return { dosTime, dosDate };
 }
 
@@ -44,66 +39,69 @@ function writeUInt32(buffer, value, offset) {
   buffer.writeUInt32LE(value >>> 0, offset);
 }
 
+function zipEntryData(file) {
+  const name = Buffer.from(file.name.replace(/\\/g, "/"), "utf8");
+  const content = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, "utf8");
+  const { dosTime, dosDate } = toDosTime(file.mtime || new Date());
+  return { name, content, checksum: crc32(content), dosTime, dosDate };
+}
+
+function createLocalHeader(entry) {
+  const header = Buffer.alloc(30);
+  writeUInt32(header, 0x04034b50, 0);
+  writeUInt16(header, 20, 4);
+  writeUInt16(header, 0, 6);
+  writeUInt16(header, 0, 8);
+  writeUInt16(header, entry.dosTime, 10);
+  writeUInt16(header, entry.dosDate, 12);
+  writeUInt32(header, entry.checksum, 14);
+  writeUInt32(header, entry.content.length, 18);
+  writeUInt32(header, entry.content.length, 22);
+  writeUInt16(header, entry.name.length, 26);
+  writeUInt16(header, 0, 28);
+  return header;
+}
+
+function createCentralHeader(entry, localOffset) {
+  const header = Buffer.alloc(46);
+  writeUInt32(header, 0x02014b50, 0);
+  writeUInt16(header, 20, 4);
+  writeUInt16(header, 20, 6);
+  writeUInt16(header, 0, 8);
+  writeUInt16(header, 0, 10);
+  writeUInt16(header, entry.dosTime, 12);
+  writeUInt16(header, entry.dosDate, 14);
+  writeUInt32(header, entry.checksum, 16);
+  writeUInt32(header, entry.content.length, 20);
+  writeUInt32(header, entry.content.length, 24);
+  writeUInt16(header, entry.name.length, 28);
+  writeUInt32(header, localOffset, 42);
+  return header;
+}
+
+function createEndRecord(fileCount, centralSize, localOffset) {
+  const record = Buffer.alloc(22);
+  writeUInt32(record, 0x06054b50, 0);
+  writeUInt16(record, fileCount, 8);
+  writeUInt16(record, fileCount, 10);
+  writeUInt32(record, centralSize, 12);
+  writeUInt32(record, localOffset, 16);
+  return record;
+}
+
 function createZipBuffer(files) {
   const localParts = [];
   const centralParts = [];
   let localOffset = 0;
-
   for (const file of files) {
-    const nameBuffer = Buffer.from(file.name.replace(/\\/g, "/"), "utf8");
-    const contentBuffer = Buffer.isBuffer(file.content) ? file.content : Buffer.from(file.content, "utf8");
-    const checksum = crc32(contentBuffer);
-    const { dosTime, dosDate } = toDosTime(file.mtime || new Date());
-
-    const localHeader = Buffer.alloc(30);
-    writeUInt32(localHeader, 0x04034b50, 0);
-    writeUInt16(localHeader, 20, 4);
-    writeUInt16(localHeader, 0, 6);
-    writeUInt16(localHeader, 0, 8);
-    writeUInt16(localHeader, dosTime, 10);
-    writeUInt16(localHeader, dosDate, 12);
-    writeUInt32(localHeader, checksum, 14);
-    writeUInt32(localHeader, contentBuffer.length, 18);
-    writeUInt32(localHeader, contentBuffer.length, 22);
-    writeUInt16(localHeader, nameBuffer.length, 26);
-    writeUInt16(localHeader, 0, 28);
-
-    localParts.push(localHeader, nameBuffer, contentBuffer);
-
-    const centralHeader = Buffer.alloc(46);
-    writeUInt32(centralHeader, 0x02014b50, 0);
-    writeUInt16(centralHeader, 20, 4);
-    writeUInt16(centralHeader, 20, 6);
-    writeUInt16(centralHeader, 0, 8);
-    writeUInt16(centralHeader, 0, 10);
-    writeUInt16(centralHeader, dosTime, 12);
-    writeUInt16(centralHeader, dosDate, 14);
-    writeUInt32(centralHeader, checksum, 16);
-    writeUInt32(centralHeader, contentBuffer.length, 20);
-    writeUInt32(centralHeader, contentBuffer.length, 24);
-    writeUInt16(centralHeader, nameBuffer.length, 28);
-    writeUInt16(centralHeader, 0, 30);
-    writeUInt16(centralHeader, 0, 32);
-    writeUInt16(centralHeader, 0, 34);
-    writeUInt16(centralHeader, 0, 36);
-    writeUInt32(centralHeader, 0, 38);
-    writeUInt32(centralHeader, localOffset, 42);
-    centralParts.push(centralHeader, nameBuffer);
-
-    localOffset += localHeader.length + nameBuffer.length + contentBuffer.length;
+    const entry = zipEntryData(file);
+    const localHeader = createLocalHeader(entry);
+    localParts.push(localHeader, entry.name, entry.content);
+    centralParts.push(createCentralHeader(entry, localOffset), entry.name);
+    localOffset += localHeader.length + entry.name.length + entry.content.length;
   }
-
   const centralDirectory = Buffer.concat(centralParts);
-  const endRecord = Buffer.alloc(22);
-  writeUInt32(endRecord, 0x06054b50, 0);
-  writeUInt16(endRecord, 0, 4);
-  writeUInt16(endRecord, 0, 6);
-  writeUInt16(endRecord, files.length, 8);
-  writeUInt16(endRecord, files.length, 10);
-  writeUInt32(endRecord, centralDirectory.length, 12);
-  writeUInt32(endRecord, localOffset, 16);
-  writeUInt16(endRecord, 0, 20);
-
+  const endRecord = createEndRecord(files.length, centralDirectory.length, localOffset);
   return Buffer.concat([...localParts, centralDirectory, endRecord]);
 }
 
@@ -137,7 +135,8 @@ function listAgentFiles(agentsRoot = path.join(AO_ASSETS_ROOT, "agents")) {
   if (!fs.existsSync(agentsRoot)) {
     return [];
   }
-  return fs.readdirSync(agentsRoot, { withFileTypes: true })
+  return fs
+    .readdirSync(agentsRoot, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md"))
     .map((entry) => ({
       name: entry.name.replace(/\.md$/i, ""),
@@ -192,7 +191,8 @@ function listSkillArchives(skillsRoot = path.join(AO_ASSETS_ROOT, "skills")) {
   if (!fs.existsSync(skillsRoot)) {
     return [];
   }
-  return fs.readdirSync(skillsRoot, { withFileTypes: true })
+  return fs
+    .readdirSync(skillsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => {
       const skillDir = path.join(skillsRoot, entry.name);

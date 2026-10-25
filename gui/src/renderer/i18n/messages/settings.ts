@@ -82,7 +82,8 @@ export const settingsMessagesZhTW = {
   "settings.koharu.description": "設定 Koharu base URL 與各 pipeline 階段的 engine ID。",
   "settings.koharu.baseUrl.label": "Koharu base URL",
   "settings.koharu.baseUrl.help": "Koharu 後端的 HTTP 端點。",
-  "settings.koharu.engineHelp": (params?: Record<string, string | number>) => `${params?.engine} 階段要使用的 engine ID。`,
+  "settings.koharu.engineHelp": (params?: Record<string, string | number>) =>
+    `${params?.engine} 階段要使用的 engine ID。`,
   "settings.koharu.engineSelect.placeholder": "選擇 engine",
   "settings.koharu.engineCatalog.loading": "載入 Koharu engines 中...",
   "settings.koharu.engineCatalog.failed": "無法載入 Koharu engines；請確認 Koharu 已啟動。",
@@ -157,7 +158,8 @@ export const settingsMessagesZhTW = {
   "settings.koharu.status.stoped": "Koharu 已停止。",
   "settings.koharu.status.stopFailed": "Koharu 停止失敗",
   "settings.preferences.title": "\u4ecb\u9762\u504f\u597d",
-  "settings.preferences.description": "\u7ba1\u7406\u986f\u793a\u8a9e\u8a00\u3001\u9810\u8a2d\u8f38\u51fa\u8207 Reference \u8cc7\u6599\u593e\u3002",
+  "settings.preferences.description":
+    "\u7ba1\u7406\u986f\u793a\u8a9e\u8a00\u3001\u9810\u8a2d\u8f38\u51fa\u8207 Reference \u8cc7\u6599\u593e\u3002",
   "settings.backend.title": "Backend 連線",
   "settings.backend.description": "優先連接指定的 REST API；無法連線時，桌面 APP 會啟動內附的本機 backend。",
   "settings.backend.baseUrl.label": "Backend API 位址",
@@ -166,18 +168,22 @@ export const settingsMessagesZhTW = {
   "settings.backend.activeAddress": "目前使用：",
   "settings.runtime.unavailable": "\u76ee\u524d\u7121\u6cd5\u53d6\u5f97",
   "settings.koharu.translationTitle": "Koharu \u7ffb\u8b6f\u8207\u8fa8\u8b58",
-  "settings.koharu.translationDescription": "\u7ba1\u7406 Koharu \u670d\u52d9\u3001\u7ffb\u8b6f\u6a21\u578b\u8207\u5f71\u50cf\u8fa8\u8b58\u5f15\u64ce\u3002",
+  "settings.koharu.translationDescription":
+    "\u7ba1\u7406 Koharu \u670d\u52d9\u3001\u7ffb\u8b6f\u6a21\u578b\u8207\u5f71\u50cf\u8fa8\u8b58\u5f15\u64ce\u3002",
   "settings.koharu.translationModel.label": "Koharu \u7ffb\u8b6f\u6a21\u578b ID",
-  "settings.koharu.translationModel.help": "\u683c\u5f0f\uff1amodel_id\uff0c\u4e0d\u5305\u542b provider \u524d\u7db4\u3002",
+  "settings.koharu.translationModel.help":
+    "\u683c\u5f0f\uff1amodel_id\uff0c\u4e0d\u5305\u542b provider \u524d\u7db4\u3002",
   "settings.koharu.translationProvider.label": "Koharu \u7ffb\u8b6f provider ID",
   "settings.koharu.diagnostics.title": "Koharu \u8a3a\u65b7\u8cc7\u8a0a",
   "settings.koharu.host.executable.label": "主機 Koharu 執行檔",
-  "settings.koharu.host.executable.help": "選擇 Windows 主機上的 koharu.exe。此路徑儲存在 GUI 使用者資料，不會寫入專案資料夾。",
+  "settings.koharu.host.executable.help":
+    "選擇 Windows 主機上的 koharu.exe。此路徑儲存在 GUI 使用者資料，不會寫入專案資料夾。",
   "settings.koharu.host.executable.browse": "選擇執行檔",
   "settings.koharu.host.executable.dialogTitle": "選擇 koharu.exe",
   "settings.koharu.host.executable.pickFailed": "選擇 Koharu 執行檔失敗",
   "settings.koharu.host.autoStart.label": "桌面 APP 啟動時自動檢查並啟動 Koharu",
-  "settings.koharu.host.autoStart.help": "先連接現有的 127.0.0.1:4000；無法連線時才啟動上方執行檔。APP 只會關閉由自己啟動的 Koharu。",
+  "settings.koharu.host.autoStart.help":
+    "先連接現有的 127.0.0.1:4000；無法連線時才啟動上方執行檔。APP 只會關閉由自己啟動的 Koharu。",
   "settings.koharu.host.status.label": "主機 Koharu",
   "settings.koharu.host.status.checking": "檢查中",
   "settings.koharu.host.status.downloading": "下載中",
@@ -187,12 +193,14 @@ export const settingsMessagesZhTW = {
   "settings.koharu.host.status.failed": "啟動失敗",
   "settings.ao.runtimeLabel": "AO \u670d\u52d9",
   "settings.ao.title": "AO \u54c1\u8cea\u8207\u5b78\u7fd2",
-  "settings.ao.description": "\u7ba1\u7406 AO \u9023\u7dda\u3001\u6a21\u578b\u3001\u54c1\u8cea\u6aa2\u67e5\u8207\u9032\u968e\u903e\u6642\u3002",
+  "settings.ao.description":
+    "\u7ba1\u7406 AO \u9023\u7dda\u3001\u6a21\u578b\u3001\u54c1\u8cea\u6aa2\u67e5\u8207\u9032\u968e\u903e\u6642\u3002",
   "settings.ao.baseUrl.label": "AO Base URL",
   "settings.ao.baseUrl.unavailable": "\u5c1a\u672a\u8f09\u5165 AO \u670d\u52d9\u4f4d\u5740\u3002",
   "settings.ao.connection.connect": "\u6e2c\u8a66\u9023\u7dda",
   "settings.ao.connection.connecting": "\u9023\u7dda\u4e2d...",
-  "settings.ao.connection.success": (params?: Record<string, string | number>) => `AO \u9023\u7dda\u6210\u529f\uff1a${params?.url}`,
+  "settings.ao.connection.success": (params?: Record<string, string | number>) =>
+    `AO \u9023\u7dda\u6210\u529f\uff1a${params?.url}`,
   "settings.ao.connection.failed": "AO \u9023\u7dda\u5931\u6557",
   "settings.ao.model.label": "AO \u6a21\u578b",
   "settings.ao.model.help": "\u683c\u5f0f\uff1aprovider_id/model_id\u3002",
@@ -200,7 +208,8 @@ export const settingsMessagesZhTW = {
   "settings.ao.models.placeholder": "\u9078\u64c7 AO \u6a21\u578b",
   "settings.ao.models.refresh": "\u91cd\u65b0\u6574\u7406",
   "settings.ao.models.refreshing": "\u8f09\u5165\u4e2d...",
-  "settings.ao.models.loaded": (params?: Record<string, string | number>) => `\u5df2\u8f09\u5165 ${params?.count} \u500b AO \u6a21\u578b\u3002`,
+  "settings.ao.models.loaded": (params?: Record<string, string | number>) =>
+    `\u5df2\u8f09\u5165 ${params?.count} \u500b AO \u6a21\u578b\u3002`,
   "settings.ao.models.failed": "\u8f09\u5165 AO \u6a21\u578b\u5931\u6557",
   "settings.ao.apiKey.label": "AO API Key",
   "settings.ao.agentName.label": "Agent \u540d\u7a31",
@@ -228,12 +237,14 @@ export const settingsMessagesZhTW = {
   "settings.maintenance.executing": "清理中...",
   "settings.maintenance.confirm": "確定要執行清理嗎？刪除的檔案無法復原。",
   "settings.maintenance.executed": "清理已執行。",
-  "settings.maintenance.summary": (params?: Record<string, string | number>) => `刪除 ${params?.deleted} 項，釋放 ${params?.freed}`,
+  "settings.maintenance.summary": (params?: Record<string, string | number>) =>
+    `刪除 ${params?.deleted} 項，釋放 ${params?.freed}`,
   "settings.maintenance.target.logs": "Logs",
   "settings.maintenance.target.translated": "翻譯輸出",
   "settings.maintenance.target.workspaces": "工作區",
   "settings.maintenance.target.postedit": "後編輯文件",
-  "settings.reset.confirm": "\u78ba\u5b9a\u8981\u91cd\u8a2d\u4ecb\u9762\u504f\u597d\u3001AO \u9023\u7dda\u8207\u6a21\u578b\u3001Koharu \u7ffb\u8b6f\u6a21\u578b\u3001\u54c1\u8cea\u958b\u95dc\u548c\u5f15\u64ce\u8a2d\u5b9a\uff1f\u4e0d\u6703\u522a\u9664\u6f2b\u756b\u6216\u7ffb\u8b6f\u8cc7\u6599\u3002",
+  "settings.reset.confirm":
+    "\u78ba\u5b9a\u8981\u91cd\u8a2d\u4ecb\u9762\u504f\u597d\u3001AO \u9023\u7dda\u8207\u6a21\u578b\u3001Koharu \u7ffb\u8b6f\u6a21\u578b\u3001\u54c1\u8cea\u958b\u95dc\u548c\u5f15\u64ce\u8a2d\u5b9a\uff1f\u4e0d\u6703\u522a\u9664\u6f2b\u756b\u6216\u7ffb\u8b6f\u8cc7\u6599\u3002",
 };
 
 export const settingsMessagesEnUS = {
@@ -277,11 +288,13 @@ export const settingsMessagesEnUS = {
   "settings.validation.ok": "ok",
   "settings.editable.title": "Editable settings",
   "settings.language.title": "Interface language",
-  "settings.language.description": "Choose the GUI display language. After saving, the main navigation and settings UI will follow it.",
+  "settings.language.description":
+    "Choose the GUI display language. After saving, the main navigation and settings UI will follow it.",
   "settings.language.label": "GUI language",
   "settings.language.option.zhTW": "Traditional Chinese",
   "settings.language.option.enUS": "English",
-  "settings.language.help": "This pass covers the main navigation, the settings page, and shared strategy cards. Other pages can adopt the same module incrementally.",
+  "settings.language.help":
+    "This pass covers the main navigation, the settings page, and shared strategy cards. Other pages can adopt the same module incrementally.",
   "settings.folders.title": "Folders",
   "settings.folders.description": "Choose the output and optional reference folders used by new jobs.",
   "settings.folders.output.label": "Output folder",
@@ -320,14 +333,16 @@ export const settingsMessagesEnUS = {
   "settings.koharu.description": "Configure the Koharu base URL and the engine IDs used in the pipeline.",
   "settings.koharu.baseUrl.label": "Koharu base URL",
   "settings.koharu.baseUrl.help": "The HTTP address of the Koharu backend.",
-  "settings.koharu.engineHelp": (params?: Record<string, string | number>) => `Engine ID for the ${params?.engine} stage.`,
+  "settings.koharu.engineHelp": (params?: Record<string, string | number>) =>
+    `Engine ID for the ${params?.engine} stage.`,
   "settings.koharu.engineSelect.placeholder": "Select engine",
   "settings.koharu.engineCatalog.loading": "Loading Koharu engines...",
   "settings.koharu.engineCatalog.failed": "Could not load Koharu engines. Check that Koharu is running.",
   "settings.koharu.engineUnavailable": (params?: Record<string, string | number>) =>
     `${params?.engine} (not in current catalog)`,
   "settings.koharu.paths.title": "Koharu data locations",
-  "settings.koharu.paths.help": "This app does not delete Koharu projects or models automatically. These are the folders Koharu is using.",
+  "settings.koharu.paths.help":
+    "This app does not delete Koharu projects or models automatically. These are the folders Koharu is using.",
   "settings.koharu.paths.loading": "Loading Koharu paths...",
   "settings.koharu.paths.failed": "Could not read Koharu paths.",
   "settings.koharu.paths.unknown": "Not detected yet",
@@ -340,7 +355,8 @@ export const settingsMessagesEnUS = {
   "settings.koharu.paths.projectApiError": (params?: Record<string, string | number>) =>
     `Project API could not be read: ${params?.error}`,
   "settings.storage.title": "Storage and data locations",
-  "settings.storage.description": "View the actual locations used by the GUI, backend, and Koharu. Host-accessible locations can be opened directly.",
+  "settings.storage.description":
+    "View the actual locations used by the GUI, backend, and Koharu. Host-accessible locations can be opened directly.",
   "settings.storage.group.gui": "Desktop app",
   "settings.storage.group.guiDescription": "Preferences and your selected working folders",
   "settings.storage.group.backend": "Backend API",
@@ -397,25 +413,29 @@ export const settingsMessagesEnUS = {
   "settings.preferences.title": "GUI preferences",
   "settings.preferences.description": "Manage the display language, default output folder, and Reference folder.",
   "settings.backend.title": "Backend connection",
-  "settings.backend.description": "The desktop app connects to this REST API first and starts its bundled local backend when the endpoint is unavailable.",
+  "settings.backend.description":
+    "The desktop app connects to this REST API first and starts its bundled local backend when the endpoint is unavailable.",
   "settings.backend.baseUrl.label": "Backend API address",
   "settings.backend.baseUrl.help": "Takes effect after restart. The Docker default is http://127.0.0.1:4001.",
   "settings.backend.baseUrl.invalid": "The Backend API address must be a valid HTTP or HTTPS URL.",
   "settings.backend.activeAddress": "Currently using:",
   "settings.runtime.unavailable": "Unavailable",
   "settings.koharu.translationTitle": "Koharu translation and recognition",
-  "settings.koharu.translationDescription": "Manage the Koharu service, translation model, and image-processing engines.",
+  "settings.koharu.translationDescription":
+    "Manage the Koharu service, translation model, and image-processing engines.",
   "settings.koharu.translationModel.label": "Koharu translation model ID",
   "settings.koharu.translationModel.help": "Format: model_id, without a provider prefix.",
   "settings.koharu.translationProvider.label": "Koharu translation provider ID",
   "settings.koharu.diagnostics.title": "Koharu diagnostics",
   "settings.koharu.host.executable.label": "Host Koharu executable",
-  "settings.koharu.host.executable.help": "Select koharu.exe on the Windows host. This path is stored in the GUI user-data folder, not in the project directory.",
+  "settings.koharu.host.executable.help":
+    "Select koharu.exe on the Windows host. This path is stored in the GUI user-data folder, not in the project directory.",
   "settings.koharu.host.executable.browse": "Choose executable",
   "settings.koharu.host.executable.dialogTitle": "Select koharu.exe",
   "settings.koharu.host.executable.pickFailed": "Failed to select the Koharu executable",
   "settings.koharu.host.autoStart.label": "Check and start Koharu when the desktop app opens",
-  "settings.koharu.host.autoStart.help": "The app first connects to 127.0.0.1:4000 and starts the selected executable only when needed. It stops only the Koharu process it started.",
+  "settings.koharu.host.autoStart.help":
+    "The app first connects to 127.0.0.1:4000 and starts the selected executable only when needed. It stops only the Koharu process it started.",
   "settings.koharu.host.status.label": "Host Koharu",
   "settings.koharu.host.status.checking": "Checking",
   "settings.koharu.host.status.downloading": "Downloading",
@@ -430,7 +450,8 @@ export const settingsMessagesEnUS = {
   "settings.ao.baseUrl.unavailable": "The AO service address has not loaded.",
   "settings.ao.connection.connect": "Test connection",
   "settings.ao.connection.connecting": "Connecting...",
-  "settings.ao.connection.success": (params?: Record<string, string | number>) => `AO connection successful: ${params?.url}`,
+  "settings.ao.connection.success": (params?: Record<string, string | number>) =>
+    `AO connection successful: ${params?.url}`,
   "settings.ao.connection.failed": "AO connection failed",
   "settings.ao.model.label": "AO model",
   "settings.ao.model.help": "Format: provider_id/model_id.",
@@ -452,7 +473,8 @@ export const settingsMessagesEnUS = {
   "settings.ao.timeout.modelSilenceTimeoutMs": "Model silence timeout (ms)",
   "settings.actions.title": "Save and reset settings",
   "settings.maintenance.title": "Maintenance cleanup",
-  "settings.maintenance.description": "Preview or run cleanup for logs, translated output, workspaces, and post-edit documents. 0 disables an item.",
+  "settings.maintenance.description":
+    "Preview or run cleanup for logs, translated output, workspaces, and post-edit documents. 0 disables an item.",
   "settings.maintenance.logRetentionDays": "Log retention days (0=disabled)",
   "settings.maintenance.logMaxFiles": "Max log files to keep",
   "settings.maintenance.translatedRetentionDays": "Translated output retention days (0=disabled)",
@@ -466,10 +488,12 @@ export const settingsMessagesEnUS = {
   "settings.maintenance.executing": "Cleaning...",
   "settings.maintenance.confirm": "Run cleanup now? Deleted files cannot be restored.",
   "settings.maintenance.executed": "Cleanup completed.",
-  "settings.maintenance.summary": (params?: Record<string, string | number>) => `Deleted ${params?.deleted} items, freed ${params?.freed}`,
+  "settings.maintenance.summary": (params?: Record<string, string | number>) =>
+    `Deleted ${params?.deleted} items, freed ${params?.freed}`,
   "settings.maintenance.target.logs": "Logs",
   "settings.maintenance.target.translated": "Translated output",
   "settings.maintenance.target.workspaces": "Workspaces",
   "settings.maintenance.target.postedit": "Post-edit documents",
-  "settings.reset.confirm": "Reset GUI preferences, AO connection and model, Koharu translation model, quality checks, and engines? Manga and translation data will not be deleted.",
+  "settings.reset.confirm":
+    "Reset GUI preferences, AO connection and model, Koharu translation model, quality checks, and engines? Manga and translation data will not be deleted.",
 };

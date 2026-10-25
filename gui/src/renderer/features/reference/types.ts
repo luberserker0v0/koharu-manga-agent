@@ -85,7 +85,7 @@ export type ReferenceSetMap = Map<string, ReferenceSetSummary>;
 export type LatestReferenceJobResolver = (
   jobs: GuiJob[],
   referenceSetId: string,
-  type: "reference_extraction" | "reference_ingestion"
+  type: "reference_extraction" | "reference_ingestion",
 ) => GuiJob | null;
 
 export type ReferenceWorklistActionHandlers = {
@@ -94,10 +94,10 @@ export type ReferenceWorklistActionHandlers = {
   runWorklistIngestion: () => Promise<void>;
   runWorklistItemExtraction: (
     referenceSet: ReferenceSetSummary,
-    worklistEntry: ImportedReferenceBinding | null
+    worklistEntry: ImportedReferenceBinding | null,
   ) => Promise<void>;
   runWorklistItemIngestion: (
     referenceSet: ReferenceSetSummary,
-    worklistEntry: ImportedReferenceBinding | null
+    worklistEntry: ImportedReferenceBinding | null,
   ) => Promise<void>;
 };

@@ -572,6 +572,11 @@ HTTP `200` when Koharu-backed jobs can run and HTTP `503` when Koharu is unavail
 optional dependency at this level because some translation modes do not use it; when Koharu is
 ready but AO is unavailable, the response is HTTP `200` with `status: "degraded"`.
 
+In native mode, backend startup and Koharu-backed requests may call the managed runtime's
+`ensureRunning()`. In Docker mode, `koharuRuntime.managed` is `false`: the backend only probes
+`http://host.docker.internal:4000`. The desktop GUI may own that Windows host process, or an operator
+must start it with `--host 0.0.0.0 --port 4000 --headless` before submitting Koharu-backed work.
+
 ```json
 {
   "ok": false,
@@ -623,6 +628,7 @@ GET /runtime/status
 Returns:
 - backend status
 - Koharu configured base URL
+- Koharu ownership mode (`managed` for native runtime or `external` for Docker)
 - AO configured base URL and agent selection
 - quality runtime summary
 - translation runtime summary

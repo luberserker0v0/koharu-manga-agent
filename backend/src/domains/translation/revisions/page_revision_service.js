@@ -23,13 +23,20 @@ class PageRevisionService {
   resolveRootJob(rootJobId) {
     const root = this.store.getJob(rootJobId);
     if (!root || root.type !== "translation") {
-      throw apiError("Translation revision root Job was not found.", 404, "revision_root_not_found");
+      throw apiError(
+        "Translation revision root Job was not found.",
+        404,
+        "revision_root_not_found",
+      );
     }
-    if (root.payload?.revision?.rootJobId && root.payload.revision.rootJobId !== root.id) {
+    if (
+      root.payload?.revision?.rootJobId &&
+      root.payload.revision.rootJobId !== root.id
+    ) {
       throw apiError(
         `Job ${root.id} is not a revision root; use ${root.payload.revision.rootJobId}.`,
         409,
-        "revision_root_required"
+        "revision_root_required",
       );
     }
     return root;
@@ -40,14 +47,19 @@ class PageRevisionService {
   }
 
   jobsForRoot(rootJobId) {
-    return this.store.listJobs({ includeDeleted: false })
-      .filter((job) =>
-        job.type === "translation" &&
-        job.status === "succeeded" &&
-        (job.id === rootJobId || job.payload?.revision?.rootJobId === rootJobId)
+    return this.store
+      .listJobs({ includeDeleted: false })
+      .filter(
+        (job) =>
+          job.type === "translation" &&
+          job.status === "succeeded" &&
+          (job.id === rootJobId ||
+            job.payload?.revision?.rootJobId === rootJobId),
       )
-      .sort((left, right) =>
-        String(left.createdAt).localeCompare(String(right.createdAt)) || left.id.localeCompare(right.id)
+      .sort(
+        (left, right) =>
+          String(left.createdAt).localeCompare(String(right.createdAt)) ||
+          left.id.localeCompare(right.id),
       );
   }
 
@@ -57,86 +69,139 @@ class PageRevisionService {
       throw apiError(
         "Translation Job does not retain a source preflight.",
         409,
-        "source_preflight_unavailable"
+        "source_preflight_unavailable",
       );
     }
-    let manifest;
+    const manifest = this.getPreflightManifest(preflightId);
+    const images = this.selectSourceImages(manifest, job);
+    return { preflightId, manifest, images };
+  }
+
+  getPreflightManifest(preflightId) {
     try {
-      manifest = this.sourcePreflightModule.get(preflightId);
+      return this.sourcePreflightModule.get(preflightId);
     } catch {
       throw apiError(
         "The retained source preflight is unavailable.",
         409,
-        "source_preflight_unavailable"
+        "source_preflight_unavailable",
       );
     }
-    const ordered = (manifest.images || []).slice().sort((left, right) => left.orderIndex - right.orderIndex);
-    const selectedIds = job.payload?.revision?.reason === "selective_retranslation"
-      ? new Set(job.payload.sourceImageIds || [])
-      : null;
-    const images = selectedIds ? ordered.filter((image) => selectedIds.has(image.id)) : ordered;
+  }
+
+  selectSourceImages(manifest, job) {
+    const ordered = (manifest.images || [])
+      .slice()
+      .sort((left, right) => left.orderIndex - right.orderIndex);
+    const selectedIds =
+      job.payload?.revision?.reason === "selective_retranslation"
+        ? new Set(job.payload.sourceImageIds || [])
+        : null;
+    const images = selectedIds
+      ? ordered.filter((image) => selectedIds.has(image.id))
+      : ordered;
     if (selectedIds && images.length !== selectedIds.size) {
       throw apiError(
         "The retranslation source-image selection no longer matches its retained preflight.",
         409,
-        "source_preflight_mismatch"
+        "source_preflight_mismatch",
       );
     }
-    return { preflightId, manifest, images };
+    return images;
   }
 
-  async synchronizeJob(jobId, { allowRunning = false } = {}) {
+  synchronizableJob(jobId, allowRunning) {
     const job = this.store.getJob(jobId);
     if (!job || job.type !== "translation") {
       throw apiError("Translation Job was not found.", 404, "translation_job_not_found");
     }
-    if (job.status !== "succeeded" && !(allowRunning && job.status === "running")) return [];
+    const eligible = job.status === "succeeded" || (allowRunning && job.status === "running");
+    return { job, eligible };
+  }
+
+  assertOutputCount(translated, sourceImages) {
+    if (translated.images.length === sourceImages.length) return;
+    throw apiError(
+      `Translated output count ${translated.images.length} does not match selected source count ${sourceImages.length}.`,
+      409,
+      "translated_image_mapping_mismatch",
+    );
+  }
+
+  async synchronizeJob(jobId, { allowRunning = false } = {}) {
+    const { job, eligible } = this.synchronizableJob(jobId, allowRunning);
+    if (!eligible) return [];
     const rootJobId = this.rootJobIdFor(job);
-    const existing = this.store.listTranslationPageRevisions(rootJobId)
+    const existing = this.store
+      .listTranslationPageRevisions(rootJobId)
       .filter((entry) => entry.jobId === job.id);
     if (existing.length > 0) return existing;
 
     const { preflightId, images: sourceImages } = this.loadSourceImages(job);
     const artifacts = this.store.getArtifacts(job.id);
-    const translated = await this.translatedImageService.prepare({ jobId: job.id, artifacts });
-    if (translated.images.length !== sourceImages.length) {
-      throw apiError(
-        `Translated output count ${translated.images.length} does not match selected source count ${sourceImages.length}.`,
-        409,
-        "translated_image_mapping_mismatch"
-      );
-    }
-
+    const translated = await this.translatedImageService.prepare({
+      jobId: job.id,
+      artifacts,
+    });
+    this.assertOutputCount(translated, sourceImages);
     const current = this.store.listTranslationPageRevisions(rootJobId);
-    const pending = [];
-    for (let index = 0; index < sourceImages.length; index += 1) {
-      const source = sourceImages[index];
-      const output = translated.images[index];
-      const revisionNumber = current.filter((entry) => entry.sourceImageId === source.id).length + 1;
-      pending.push({
-        revisionId: revisionId(rootJobId, source.id, job.id),
-        rootJobId,
-        parentJobId: job.payload?.revision?.parentJobId || null,
-        jobId: job.id,
-        sourcePreflightId: preflightId,
-        sourceImageId: source.id,
-        sourceOrderIndex: source.orderIndex,
-        jobImageId: output.id,
-        jobImageIndex: output.index,
-        fileName: output.fileName,
-        mediaType: output.mediaType,
-        size: output.size,
-        revisionNumber,
-        translationTarget: job.payload?.translationTarget || job.result?.translationTarget || null,
-        sourceLanguage: job.payload?.sourceLanguage || null,
-        targetLanguage: job.payload?.targetLanguage || null,
-        instructions: job.payload?.instructions || null,
-        createdAt: job.createdAt,
-      });
-    }
+    const pending = this.buildPendingRevisions(
+      rootJobId,
+      job,
+      preflightId,
+      sourceImages,
+      translated.images,
+      current,
+    );
     return this.store.registerTranslationPageRevisions(pending, {
       initializeActive: job.id === rootJobId,
     });
+  }
+
+  buildPendingRevisions(
+    rootJobId,
+    job,
+    preflightId,
+    sourceImages,
+    translatedImages,
+    current,
+  ) {
+    return sourceImages.map((source, index) =>
+      this.buildPendingRevision(
+        rootJobId,
+        job,
+        preflightId,
+        source,
+        translatedImages[index],
+        current,
+      ),
+    );
+  }
+
+  buildPendingRevision(rootJobId, job, preflightId, source, output, current) {
+    const revisionNumber =
+      current.filter((entry) => entry.sourceImageId === source.id).length + 1;
+    return {
+      revisionId: revisionId(rootJobId, source.id, job.id),
+      rootJobId,
+      parentJobId: job.payload?.revision?.parentJobId || null,
+      jobId: job.id,
+      sourcePreflightId: preflightId,
+      sourceImageId: source.id,
+      sourceOrderIndex: source.orderIndex,
+      jobImageId: output.id,
+      jobImageIndex: output.index,
+      fileName: output.fileName,
+      mediaType: output.mediaType,
+      size: output.size,
+      revisionNumber,
+      translationTarget:
+        job.payload?.translationTarget || job.result?.translationTarget || null,
+      sourceLanguage: job.payload?.sourceLanguage || null,
+      targetLanguage: job.payload?.targetLanguage || null,
+      instructions: job.payload?.instructions || null,
+      createdAt: job.createdAt,
+    };
   }
 
   async synchronizeRoot(rootJobId) {
@@ -174,27 +239,12 @@ class PageRevisionService {
   async list(rootJobId) {
     const root = this.resolveRootJob(rootJobId);
     await this.synchronizeRoot(rootJobId);
-    const manifest = this.sourcePreflightModule.get(root.payload.sourcePreflightId);
-    const revisions = this.store.listTranslationPageRevisions(rootJobId);
-    const activeBySource = new Map(
-      this.store.listActiveTranslationPageRevisions(rootJobId)
-        .map((entry) => [entry.sourceImageId, entry.revisionId])
+    const manifest = this.sourcePreflightModule.get(
+      root.payload.sourcePreflightId,
     );
-    const pages = (manifest.images || [])
-      .slice()
-      .sort((left, right) => left.orderIndex - right.orderIndex)
-      .map((source) => {
-        const activeRevisionId = activeBySource.get(source.id) || null;
-        return {
-          sourceImageId: source.id,
-          sourceOrderIndex: source.orderIndex,
-          sourceFileName: source.fileName,
-          activeRevisionId,
-          revisions: revisions
-            .filter((entry) => entry.sourceImageId === source.id)
-            .map((entry) => this.publicRevision(entry, activeRevisionId)),
-        };
-      });
+    const revisions = this.store.listTranslationPageRevisions(rootJobId);
+    const activeBySource = this.activeRevisionMap(rootJobId);
+    const pages = this.buildRevisionPages(manifest, revisions, activeBySource);
     return {
       rootJobId,
       sourcePreflightId: root.payload.sourcePreflightId,
@@ -203,72 +253,127 @@ class PageRevisionService {
     };
   }
 
+  activeRevisionMap(rootJobId) {
+    return new Map(
+      this.store
+        .listActiveTranslationPageRevisions(rootJobId)
+        .map((entry) => [entry.sourceImageId, entry.revisionId]),
+    );
+  }
+
+  buildRevisionPages(manifest, revisions, activeBySource) {
+    return (manifest.images || [])
+      .slice()
+      .sort((left, right) => left.orderIndex - right.orderIndex)
+      .map((source) =>
+        this.buildRevisionPage(source, revisions, activeBySource),
+      );
+  }
+
+  buildRevisionPage(source, revisions, activeBySource) {
+    const activeRevisionId = activeBySource.get(source.id) || null;
+    return {
+      sourceImageId: source.id,
+      sourceOrderIndex: source.orderIndex,
+      sourceFileName: source.fileName,
+      activeRevisionId,
+      revisions: revisions
+        .filter((entry) => entry.sourceImageId === source.id)
+        .map((entry) => this.publicRevision(entry, activeRevisionId)),
+    };
+  }
+
   async activate(rootJobId, selections) {
+    this.validatePageRevisionSelections(selections);
+    await this.synchronizeRoot(rootJobId);
+    this.store.activateTranslationPageRevisions(
+      rootJobId,
+      selections.map((entry) => ({
+        sourceImageId: entry.sourceImageId.trim(),
+        revisionId: entry.revisionId.trim(),
+      })),
+    );
+    return this.list(rootJobId);
+  }
+
+  validatePageRevisionSelections(selections) {
     if (!Array.isArray(selections) || selections.length === 0) {
-      throw apiError("selections must be a non-empty array.", 400, "invalid_page_revision_selection");
+      throw apiError(
+        "selections must be a non-empty array.",
+        400,
+        "invalid_page_revision_selection",
+      );
     }
     const sourceIds = new Set();
-    for (const selection of selections) {
-      if (!selection || typeof selection !== "object" || Array.isArray(selection) ||
-          Object.keys(selection).some((key) => !["sourceImageId", "revisionId"].includes(key))) {
-        throw apiError(
-          "Every selection must contain only sourceImageId and revisionId.",
-          400,
-          "invalid_page_revision_selection"
-        );
-      }
-      const sourceImageId = typeof selection?.sourceImageId === "string" ? selection.sourceImageId.trim() : "";
-      const selectedRevisionId = typeof selection?.revisionId === "string" ? selection.revisionId.trim() : "";
-      if (!sourceImageId || !selectedRevisionId) {
-        throw apiError(
-          "Every selection requires sourceImageId and revisionId.",
-          400,
-          "invalid_page_revision_selection"
-        );
-      }
-      if (sourceIds.has(sourceImageId)) {
-        throw apiError(
-          `Duplicate sourceImageId in selections: ${sourceImageId}.`,
-          400,
-          "duplicate_source_image_selection"
-        );
-      }
-      sourceIds.add(sourceImageId);
+    for (const selection of selections)
+      this.validatePageRevisionSelection(selection, sourceIds);
+  }
+
+  validateSelectionShape(selection) {
+    const invalid = !selection || typeof selection !== "object" || Array.isArray(selection)
+      || Object.keys(selection).some((key) => !["sourceImageId", "revisionId"].includes(key));
+    if (invalid) throw apiError(
+      "Every selection must contain only sourceImageId and revisionId.",
+      400,
+      "invalid_page_revision_selection",
+    );
+  }
+
+  selectionIds(selection) {
+    const sourceImageId = typeof selection.sourceImageId === "string" ? selection.sourceImageId.trim() : "";
+    const selectedRevisionId = typeof selection.revisionId === "string" ? selection.revisionId.trim() : "";
+    if (!sourceImageId || !selectedRevisionId) throw apiError(
+      "Every selection requires sourceImageId and revisionId.", 400, "invalid_page_revision_selection",
+    );
+    return { sourceImageId, selectedRevisionId };
+  }
+
+  validatePageRevisionSelection(selection, sourceIds) {
+    this.validateSelectionShape(selection);
+    const { sourceImageId } = this.selectionIds(selection);
+    if (sourceIds.has(sourceImageId)) {
+      throw apiError(
+        `Duplicate sourceImageId in selections: ${sourceImageId}.`,
+        400,
+        "duplicate_source_image_selection",
+      );
     }
-    await this.synchronizeRoot(rootJobId);
-    this.store.activateTranslationPageRevisions(rootJobId, selections.map((entry) => ({
-      sourceImageId: entry.sourceImageId.trim(),
-      revisionId: entry.revisionId.trim(),
-    })));
-    return this.list(rootJobId);
+    sourceIds.add(sourceImageId);
+  }
+
+  revisionLookup(rootJobId, jobId) {
+    const activeBySource = new Map(this.store.listActiveTranslationPageRevisions(rootJobId)
+      .map((entry) => [entry.sourceImageId, entry.revisionId]));
+    const byImageId = new Map(this.store.listTranslationPageRevisions(rootJobId)
+      .filter((entry) => entry.jobId === jobId)
+      .map((entry) => [entry.jobImageId, entry]));
+    return { activeBySource, byImageId };
+  }
+
+  enrichImage(image, lookup) {
+    const entry = lookup.byImageId.get(image.id);
+    if (!entry) return image;
+    return {
+      ...image,
+      sourceImageId: entry.sourceImageId,
+      sourceOrderIndex: entry.sourceOrderIndex,
+      revisionId: entry.revisionId,
+      revisionNumber: entry.revisionNumber,
+      active: lookup.activeBySource.get(entry.sourceImageId) === entry.revisionId,
+    };
   }
 
   async enrichTranslatedImages(jobId, response) {
     const job = this.store.getJob(jobId);
-    if (!job || job.type !== "translation" || job.status !== "succeeded") return response;
-    await this.synchronizeRoot(this.rootJobIdFor(job));
-    const activeBySource = new Map(
-      this.store.listActiveTranslationPageRevisions(this.rootJobIdFor(job))
-        .map((entry) => [entry.sourceImageId, entry.revisionId])
-    );
-    const revisions = this.store.listTranslationPageRevisions(this.rootJobIdFor(job))
-      .filter((entry) => entry.jobId === jobId);
-    const byImageId = new Map(revisions.map((entry) => [entry.jobImageId, entry]));
+    if (!job || job.type !== "translation" || job.status !== "succeeded")
+      return response;
+    const rootJobId = this.rootJobIdFor(job);
+    await this.synchronizeRoot(rootJobId);
+    const lookup = this.revisionLookup(rootJobId, jobId);
     return {
       ...response,
-      rootJobId: this.rootJobIdFor(job),
-      images: response.images.map((image) => {
-        const entry = byImageId.get(image.id);
-        if (!entry) return image;
-        return {
-          ...image,
-          sourceImageId: entry.sourceImageId,
-          sourceOrderIndex: entry.sourceOrderIndex,
-          revisionId: entry.revisionId,
-          revisionNumber: entry.revisionNumber,
-          active: activeBySource.get(entry.sourceImageId) === entry.revisionId,
-        };
-      }),
+      rootJobId,
+      images: response.images.map((image) => this.enrichImage(image, lookup)),
     };
   }
 }

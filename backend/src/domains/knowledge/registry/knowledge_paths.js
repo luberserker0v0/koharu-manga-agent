@@ -37,25 +37,21 @@ function isValidChapterId(chapterId) {
 
 function assertValidMangaId(mangaId) {
   if (!isValidMangaId(mangaId)) {
-    throw new Error(
-      `Invalid mangaId: ${mangaId}. Use lowercase ASCII letters, numbers, and underscores only.`
-    );
+    throw new Error(`Invalid mangaId: ${mangaId}. Use lowercase ASCII letters, numbers, and underscores only.`);
   }
 }
 
 function assertValidTranslatorId(translatorId) {
   if (!isValidTranslatorId(translatorId)) {
     throw new Error(
-      `Invalid translatorId: ${translatorId}. Use lowercase ASCII letters, numbers, and underscores only.`
+      `Invalid translatorId: ${translatorId}. Use lowercase ASCII letters, numbers, and underscores only.`,
     );
   }
 }
 
 function assertValidChapterId(chapterId) {
   if (!isValidChapterId(chapterId)) {
-    throw new Error(
-      `Invalid chapterId: ${chapterId}. Use lowercase ASCII letters, numbers, and underscores only.`
-    );
+    throw new Error(`Invalid chapterId: ${chapterId}. Use lowercase ASCII letters, numbers, and underscores only.`);
   }
 }
 
@@ -73,7 +69,9 @@ function ensureKnowledgeIndex() {
 }
 
 function normalizeSystemId(prefix, value) {
-  const normalized = String(value || "").trim().normalize("NFKC");
+  const normalized = String(value || "")
+    .trim()
+    .normalize("NFKC");
   if (!normalized) {
     return null;
   }
@@ -121,9 +119,7 @@ function normalizeChapter(entry, sortOrder = 0) {
   return {
     chapterId: resolvedChapterId,
     chapterTitle:
-      typeof entry?.chapterTitle === "string" && entry.chapterTitle.trim()
-        ? entry.chapterTitle.trim()
-        : null,
+      typeof entry?.chapterTitle === "string" && entry.chapterTitle.trim() ? entry.chapterTitle.trim() : null,
     sortOrder: typeof entry?.sortOrder === "number" ? entry.sortOrder : sortOrder,
     createdAt,
     updatedAt,
@@ -159,31 +155,30 @@ function buildMangaPaths(mangaId) {
   };
 }
 
+function resolveTranslatorId(entry) {
+  return typeof entry?.translatorId === "string" && entry.translatorId ? entry.translatorId : DEFAULT_TRANSLATOR_ID;
+}
+
+function normalizeTranslatorChapters(entry) {
+  const chapters = Array.isArray(entry?.chapters)
+    ? entry.chapters.map((chapter, index) => normalizeChapter(chapter, index))
+    : [];
+  chapters.sort((left, right) => left.sortOrder - right.sortOrder);
+  return chapters.map((chapter, index) => ({
+    ...chapter,
+    sortOrder: index,
+  }));
+}
+
 function normalizeTranslatorProfile(entry, mangaId) {
-  const translatorId =
-    typeof entry?.translatorId === "string" && entry.translatorId
-      ? entry.translatorId
-      : DEFAULT_TRANSLATOR_ID;
+  const translatorId = resolveTranslatorId(entry);
   assertValidTranslatorId(translatorId);
   const createdAt = entry?.createdAt || nowIso();
   const updatedAt = entry?.updatedAt || createdAt;
   const normalizedPaths = buildTranslatorPaths(mangaId, translatorId);
-  const chapters = Array.isArray(entry?.chapters)
-    ? entry.chapters.map((chapter, index) => normalizeChapter(chapter, index))
-    : [];
-
-  chapters.sort((left, right) => left.sortOrder - right.sortOrder);
-  const normalizedChapters = chapters.map((chapter, index) => ({
-    ...chapter,
-    sortOrder: index,
-  }));
-
   return {
     translatorId,
-    label:
-      typeof entry?.label === "string" && entry.label.trim()
-        ? entry.label.trim()
-        : DEFAULT_TRANSLATOR_LABEL,
+    label: typeof entry?.label === "string" && entry.label.trim() ? entry.label.trim() : DEFAULT_TRANSLATOR_LABEL,
     language: entry?.language || "zh-TW",
     profileKind: entry?.profileKind === "learning_clone" ? "learning_clone" : "standard",
     styleSourceTranslatorId:
@@ -200,7 +195,7 @@ function normalizeTranslatorProfile(entry, mangaId) {
       typeof entry?.reportPath === "string" && entry.reportPath
         ? entry.reportPath
         : toRelativeProjectPath(normalizedPaths.reportPath),
-    chapters: normalizedChapters,
+    chapters: normalizeTranslatorChapters(entry),
   };
 }
 
@@ -303,10 +298,7 @@ function writeKnowledgeIndex(index) {
   try {
     fs.renameSync(tempPath, indexPath);
   } catch (error) {
-    if (
-      error &&
-      (error.code === "EPERM" || error.code === "EBUSY" || error.code === "EACCES")
-    ) {
+    if (error && (error.code === "EPERM" || error.code === "EBUSY" || error.code === "EACCES")) {
       fs.writeFileSync(indexPath, payload);
       fs.unlinkSync(tempPath);
     } else {
@@ -342,11 +334,61 @@ function resolveReferenceManifestLabel(referenceSetId) {
 
   const manifestPath = path.join(paths.referenceManifests, `${referenceSetId}.json`);
   const manifest = readJsonIfExists(manifestPath);
-  const label =
-    typeof manifest?.label === "string" && manifest.label.trim()
-      ? manifest.label.trim()
-      : null;
+  const label = typeof manifest?.label === "string" && manifest.label.trim() ? manifest.label.trim() : null;
   return label;
+}
+
+function resolveRecoveredChapterIdentity(chapterKey, chapterValue) {
+  const chapter = chapterValue && typeof chapterValue === "object" ? chapterValue : {};
+  const referenceSetId =
+    Array.isArray(chapter.referenceSetIds) && chapter.referenceSetIds.length > 0
+      ? chapter.referenceSetIds[0]
+      : chapterKey.startsWith("reference_")
+        ? chapterKey.slice("reference_".length)
+        : null;
+  const chapterTitle =
+    typeof chapter.chapterTitle === "string" && chapter.chapterTitle.trim()
+      ? chapter.chapterTitle.trim()
+      : resolveReferenceManifestLabel(referenceSetId) || chapterKey;
+  const chapterId =
+    typeof chapter.chapterId === "string" && isValidChapterId(chapter.chapterId)
+      ? chapter.chapterId
+      : normalizeSystemId("chapter", referenceSetId || chapterTitle || chapterKey);
+  return { chapterTitle, chapterId, updatedAt: chapter.updatedAt };
+}
+
+function finalizeRecoveredChapters(translator, series) {
+  translator.chapters = (translator.chapters || [])
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((chapter, indexNumber) => ({
+      ...chapter,
+      sortOrder: indexNumber,
+    }));
+  translator.updatedAt = nowIso();
+  series.updatedAt = nowIso();
+}
+
+function pushRecoveredChapter(translator, existingIds, chapterKey, chapterValue) {
+  const { chapterTitle, chapterId, updatedAt } = resolveRecoveredChapterIdentity(chapterKey, chapterValue);
+  if (!chapterId || existingIds.has(chapterId)) {
+    return false;
+  }
+
+  translator.chapters.push(
+    normalizeChapter(
+      {
+        chapterId,
+        chapterTitle,
+        sortOrder: (translator.chapters || []).length,
+        createdAt: updatedAt || nowIso(),
+        updatedAt: updatedAt || nowIso(),
+      },
+      (translator.chapters || []).length,
+    ),
+  );
+  existingIds.add(chapterId);
+  return true;
 }
 
 function recoverTranslatorChaptersFromAssets(series, translator) {
@@ -365,52 +407,13 @@ function recoverTranslatorChaptersFromAssets(series, translator) {
   let changed = false;
 
   for (const [chapterKey, chapterValue] of chapterEntries) {
-    const chapter = chapterValue && typeof chapterValue === "object" ? chapterValue : {};
-    const referenceSetId =
-      Array.isArray(chapter.referenceSetIds) && chapter.referenceSetIds.length > 0
-        ? chapter.referenceSetIds[0]
-        : chapterKey.startsWith("reference_")
-          ? chapterKey.slice("reference_".length)
-          : null;
-    const chapterTitle =
-      typeof chapter.chapterTitle === "string" && chapter.chapterTitle.trim()
-        ? chapter.chapterTitle.trim()
-        : resolveReferenceManifestLabel(referenceSetId) || chapterKey;
-    const chapterId =
-      typeof chapter.chapterId === "string" && isValidChapterId(chapter.chapterId)
-        ? chapter.chapterId
-        : normalizeSystemId("chapter", referenceSetId || chapterTitle || chapterKey);
-
-    if (!chapterId || existingIds.has(chapterId)) {
-      continue;
+    if (pushRecoveredChapter(translator, existingIds, chapterKey, chapterValue)) {
+      changed = true;
     }
-
-    translator.chapters.push(
-      normalizeChapter(
-        {
-          chapterId,
-          chapterTitle,
-          sortOrder: (translator.chapters || []).length,
-          createdAt: chapter.updatedAt || nowIso(),
-          updatedAt: chapter.updatedAt || nowIso(),
-        },
-        (translator.chapters || []).length
-      )
-    );
-    existingIds.add(chapterId);
-    changed = true;
   }
 
   if (changed) {
-    translator.chapters = (translator.chapters || [])
-      .slice()
-      .sort((left, right) => left.sortOrder - right.sortOrder)
-      .map((chapter, indexNumber) => ({
-        ...chapter,
-        sortOrder: indexNumber,
-      }));
-    translator.updatedAt = nowIso();
-    series.updatedAt = nowIso();
+    finalizeRecoveredChapters(translator, series);
   }
 
   return changed;
@@ -463,34 +466,30 @@ function listKnowledgeSeries() {
   }));
 }
 
-function resolveKnowledgePaths({ mangaId = null, translatorId = null } = {}) {
-  if (!mangaId) {
-    return {
-      mangaId: null,
-      translatorId: null,
-      knowledgeBasePath: paths.knowledgeBase,
-      reportPath: paths.reports,
-      indexPath: knowledgeIndexPath(),
-      mode: "legacy",
-    };
-  }
+function buildLegacyKnowledgePaths() {
+  return {
+    mangaId: null,
+    translatorId: null,
+    knowledgeBasePath: paths.knowledgeBase,
+    reportPath: paths.reports,
+    indexPath: knowledgeIndexPath(),
+    mode: "legacy",
+  };
+}
 
-  assertValidMangaId(mangaId);
+function buildScopedKnowledgePaths(mangaId) {
+  return {
+    mangaId,
+    translatorId: null,
+    knowledgeBasePath: path.join(knowledgeBaseRoot(), "self", mangaId, "knowledge.json"),
+    reportPath: path.join(knowledgeBaseRoot(), "reports", mangaId, "extract_report.json"),
+    indexPath: knowledgeIndexPath(),
+    mode: "scoped",
+  };
+}
 
-  if (!translatorId) {
-    return {
-      mangaId,
-      translatorId: null,
-      knowledgeBasePath: path.join(knowledgeBaseRoot(), "self", mangaId, "knowledge.json"),
-      reportPath: path.join(knowledgeBaseRoot(), "reports", mangaId, "extract_report.json"),
-      indexPath: knowledgeIndexPath(),
-      mode: "scoped",
-    };
-  }
-
-  assertValidTranslatorId(translatorId);
+function buildTranslatorScopedKnowledgePaths(mangaId, translatorId) {
   const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
-
   return {
     mangaId,
     translatorId,
@@ -501,36 +500,47 @@ function resolveKnowledgePaths({ mangaId = null, translatorId = null } = {}) {
   };
 }
 
-function resolveKnowledgeAssetPaths({ mangaId, translatorId = null }) {
+function resolveKnowledgePaths({ mangaId = null, translatorId = null } = {}) {
+  if (!mangaId) {
+    return buildLegacyKnowledgePaths();
+  }
+
   assertValidMangaId(mangaId);
 
   if (!translatorId) {
-    const baseDir = path.join(knowledgeBaseRoot(), "self", mangaId);
-    return {
-      mangaId,
-      translatorId: null,
-      baseDir,
-      glossaryPath: path.join(baseDir, "canonical_glossary.json"),
-      candidateTermsPath: path.join(baseDir, "candidate_terms.json"),
-      storyContextPath: path.join(baseDir, "story_context.json"),
-      storyGraphPath: path.join(baseDir, "story_graph.json"),
-      socialGraphPath: path.join(baseDir, "social_graph.json"),
-      styleEvidencePath: path.join(baseDir, "style_evidence.json"),
-      styleProfilePath: path.join(baseDir, "style_profile.json"),
-      translationContextPath: path.join(baseDir, "translation_context.json"),
-      bilingualEvidencePath: path.join(baseDir, "bilingual_evidence.json"),
-      bilingualRunsDir: path.join(baseDir, "bilingual_runs"),
-      bilingualCheckpointStoreDir: path.join(baseDir, "bilingual_runs", "checkpoints"),
-      bilingualEvidenceLedgerPath: path.join(baseDir, "bilingual_evidence_ledger.json"),
-      bilingualLedgerRevisionsDir: path.join(baseDir, "bilingual_ledger_revisions"),
-    };
+    return buildScopedKnowledgePaths(mangaId);
   }
 
   assertValidTranslatorId(translatorId);
-  const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
+  return buildTranslatorScopedKnowledgePaths(mangaId, translatorId);
+}
+
+function buildMangaAssetPaths(mangaId) {
+  const baseDir = path.join(knowledgeBaseRoot(), "self", mangaId);
   return {
     mangaId,
-    translatorId,
+    translatorId: null,
+    baseDir,
+    glossaryPath: path.join(baseDir, "canonical_glossary.json"),
+    candidateTermsPath: path.join(baseDir, "candidate_terms.json"),
+    storyContextPath: path.join(baseDir, "story_context.json"),
+    storyGraphPath: path.join(baseDir, "story_graph.json"),
+    socialGraphPath: path.join(baseDir, "social_graph.json"),
+    styleEvidencePath: path.join(baseDir, "style_evidence.json"),
+    styleProfilePath: path.join(baseDir, "style_profile.json"),
+    translationContextPath: path.join(baseDir, "translation_context.json"),
+    bilingualEvidencePath: path.join(baseDir, "bilingual_evidence.json"),
+    bilingualRunsDir: path.join(baseDir, "bilingual_runs"),
+    bilingualCheckpointStoreDir: path.join(baseDir, "bilingual_runs", "checkpoints"),
+    bilingualEvidenceLedgerPath: path.join(baseDir, "bilingual_evidence_ledger.json"),
+    bilingualLedgerRevisionsDir: path.join(baseDir, "bilingual_ledger_revisions"),
+  };
+}
+
+function buildTranslatorAssetPaths(translatorPaths) {
+  return {
+    mangaId: null,
+    translatorId: null,
     baseDir: translatorPaths.baseDir,
     glossaryPath: translatorPaths.glossaryPath,
     candidateTermsPath: translatorPaths.candidateTermsPath,
@@ -546,6 +556,21 @@ function resolveKnowledgeAssetPaths({ mangaId, translatorId = null }) {
     bilingualEvidenceLedgerPath: translatorPaths.bilingualEvidenceLedgerPath,
     bilingualLedgerRevisionsDir: translatorPaths.bilingualLedgerRevisionsDir,
   };
+}
+
+function resolveKnowledgeAssetPaths({ mangaId, translatorId = null }) {
+  assertValidMangaId(mangaId);
+
+  if (!translatorId) {
+    return buildMangaAssetPaths(mangaId);
+  }
+
+  assertValidTranslatorId(translatorId);
+  const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
+  const result = buildTranslatorAssetPaths(translatorPaths);
+  result.mangaId = mangaId;
+  result.translatorId = translatorId;
+  return result;
 }
 
 function ensureSeriesEntry(index, { mangaId, label = null, language = DEFAULT_LANGUAGE_TAG }) {
@@ -575,40 +600,57 @@ function ensureSeriesEntry(index, { mangaId, label = null, language = DEFAULT_LA
   return series;
 }
 
-function ensureTranslatorProfile(index, { mangaId, translatorId, label = null, language = DEFAULT_LANGUAGE_TAG, profileKind = null, styleSourceTranslatorId = null }) {
+function buildNewTranslatorProfile(input) {
+  const { translatorId, label, resolvedLanguage, profileKind, styleSourceTranslatorId, translatorPaths } = input;
+  return {
+    translatorId,
+    label: label || translatorId,
+    language: resolvedLanguage,
+    profileKind: profileKind === "learning_clone" ? "learning_clone" : "standard",
+    styleSourceTranslatorId: styleSourceTranslatorId || null,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+    knowledgePath: toRelativeProjectPath(translatorPaths.knowledgeBasePath),
+    reportPath: toRelativeProjectPath(translatorPaths.reportPath),
+    chapters: [],
+  };
+}
+
+function updateTranslatorProfile(translator, input) {
+  const { label, language, resolvedLanguage, profileKind, styleSourceTranslatorId } = input;
+  if (label) {
+    translator.label = label;
+  }
+  if (language) {
+    translator.language = resolvedLanguage;
+  }
+  if (profileKind === "learning_clone") translator.profileKind = "learning_clone";
+  if (styleSourceTranslatorId) translator.styleSourceTranslatorId = styleSourceTranslatorId;
+  translator.updatedAt = nowIso();
+}
+
+function ensureTranslatorProfile(index, input) {
+  const params = { label: null, language: DEFAULT_LANGUAGE_TAG, profileKind: null, styleSourceTranslatorId: null, ...input };
+  const { mangaId, translatorId, label, language, profileKind, styleSourceTranslatorId } = params;
   const resolvedLanguage = normalizeLanguageTag(language);
   const series = ensureSeriesEntry(index, { mangaId, language: resolvedLanguage });
   assertValidTranslatorId(translatorId);
-
   let translator = getTranslatorEntry(index, mangaId, translatorId);
   if (!translator) {
     const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
-    translator = {
+    translator = buildNewTranslatorProfile({
       translatorId,
-      label: label || translatorId,
-      language: resolvedLanguage,
-      profileKind: profileKind === "learning_clone" ? "learning_clone" : "standard",
-      styleSourceTranslatorId: styleSourceTranslatorId || null,
-      createdAt: nowIso(),
-      updatedAt: nowIso(),
-      knowledgePath: toRelativeProjectPath(translatorPaths.knowledgeBasePath),
-      reportPath: toRelativeProjectPath(translatorPaths.reportPath),
-      chapters: [],
-    };
+      label,
+      resolvedLanguage,
+      profileKind,
+      styleSourceTranslatorId,
+      translatorPaths,
+    });
     series.translators.push(translator);
     series.translators.sort((left, right) => left.label.localeCompare(right.label, "zh-Hant"));
   } else {
-    if (label) {
-      translator.label = label;
-    }
-    if (language) {
-      translator.language = resolvedLanguage;
-    }
-    if (profileKind === "learning_clone") translator.profileKind = "learning_clone";
-    if (styleSourceTranslatorId) translator.styleSourceTranslatorId = styleSourceTranslatorId;
-    translator.updatedAt = nowIso();
+    updateTranslatorProfile(translator, { label, language, resolvedLanguage, profileKind, styleSourceTranslatorId });
   }
-
   series.updatedAt = nowIso();
   return translator;
 }
@@ -627,7 +669,11 @@ function createMangaRecord({ label, language = DEFAULT_LANGUAGE_TAG }) {
     return existing;
   }
 
-  const created = ensureSeriesEntry(index, { mangaId, label, language: normalizeLanguageTag(language) });
+  const created = ensureSeriesEntry(index, {
+    mangaId,
+    label,
+    language: normalizeLanguageTag(language),
+  });
   writeKnowledgeIndex(index);
   return created;
 }
@@ -637,22 +683,18 @@ function reconcileReferenceBindings(bindings) {
     .filter((entry) => entry?.mangaId && entry?.translatorId && entry?.chapterId)
     .slice()
     .sort((left, right) => {
-      const scope = `${left.mangaId}/${left.translatorId}`.localeCompare(
-        `${right.mangaId}/${right.translatorId}`
-      );
+      const scope = `${left.mangaId}/${left.translatorId}`.localeCompare(`${right.mangaId}/${right.translatorId}`);
       if (scope !== 0) return scope;
       return String(left.chapterTitle || left.chapterId).localeCompare(
         String(right.chapterTitle || right.chapterId),
         undefined,
-        { numeric: true, sensitivity: "base" }
+        { numeric: true, sensitivity: "base" },
       );
     });
   for (const binding of ordered) {
     syncMangaManagementBinding({
       mangaId: binding.mangaId,
-      label: binding.mangaLabel && binding.mangaLabel !== binding.mangaId
-        ? binding.mangaLabel
-        : null,
+      label: binding.mangaLabel && binding.mangaLabel !== binding.mangaId ? binding.mangaLabel : null,
       language: binding.language || DEFAULT_LANGUAGE_TAG,
       translatorId: binding.translatorId,
       translatorLabel: binding.translatorLabel || binding.translatorId,
@@ -663,6 +705,31 @@ function reconcileReferenceBindings(bindings) {
   return listKnowledgeSeries();
 }
 
+function handleExistingTranslatorProfile(existing, styleSourceTranslatorId) {
+  if (
+    styleSourceTranslatorId &&
+    (existing.profileKind !== "learning_clone" || existing.styleSourceTranslatorId !== styleSourceTranslatorId)
+  ) {
+    throw new Error(
+      `Translator profile ${existing.translatorId} already exists and is not the requested learning clone.`,
+    );
+  }
+  return existing;
+}
+
+function validateStyleSourceTranslator(index, mangaId, styleSourceTranslatorId, translatorId) {
+  if (!styleSourceTranslatorId) {
+    return;
+  }
+  assertValidTranslatorId(styleSourceTranslatorId);
+  if (!getTranslatorEntry(index, mangaId, styleSourceTranslatorId)) {
+    throw new Error(`Style source translator profile not found: ${styleSourceTranslatorId}`);
+  }
+  if (styleSourceTranslatorId === translatorId) {
+    throw new Error("A learning clone cannot use itself as its style source.");
+  }
+}
+
 function createTranslatorProfile({ mangaId, label, language = DEFAULT_LANGUAGE_TAG, styleSourceTranslatorId = null }) {
   assertValidMangaId(mangaId);
   const translatorId = normalizeSystemId("translator", label);
@@ -670,26 +737,10 @@ function createTranslatorProfile({ mangaId, label, language = DEFAULT_LANGUAGE_T
   const index = loadKnowledgeIndex();
   const existing = getTranslatorEntry(index, mangaId, translatorId);
   if (existing) {
-    if (
-      styleSourceTranslatorId &&
-      (existing.profileKind !== "learning_clone" ||
-        existing.styleSourceTranslatorId !== styleSourceTranslatorId)
-    ) {
-      throw new Error(
-        `Translator profile ${translatorId} already exists and is not the requested learning clone.`
-      );
-    }
-    return existing;
+    return handleExistingTranslatorProfile(existing, styleSourceTranslatorId);
   }
-  if (styleSourceTranslatorId) {
-    assertValidTranslatorId(styleSourceTranslatorId);
-    if (!getTranslatorEntry(index, mangaId, styleSourceTranslatorId)) {
-      throw new Error(`Style source translator profile not found: ${styleSourceTranslatorId}`);
-    }
-    if (styleSourceTranslatorId === translatorId) {
-      throw new Error("A learning clone cannot use itself as its style source.");
-    }
-  }
+
+  validateStyleSourceTranslator(index, mangaId, styleSourceTranslatorId, translatorId);
 
   const created = ensureTranslatorProfile(index, {
     mangaId,
@@ -716,21 +767,34 @@ function listChapterRegistry({ mangaId, translatorId }) {
   return translator ? (translator.chapters || []).slice().sort((left, right) => left.sortOrder - right.sortOrder) : [];
 }
 
+function sortTranslatorChapters(translator) {
+  translator.chapters = (translator.chapters || [])
+    .slice()
+    .sort((left, right) => left.sortOrder - right.sortOrder)
+    .map((chapter, indexNumber) => ({
+      ...chapter,
+      sortOrder: indexNumber,
+    }));
+}
+
+function updateSeriesUpdatedAt(index, mangaId) {
+  const series = getSeriesEntry(index, mangaId);
+  if (series) {
+    series.updatedAt = nowIso();
+  }
+}
+
 function createChapterRecord({ mangaId, translatorId, chapterTitle = null }) {
   assertValidMangaId(mangaId);
   assertValidTranslatorId(translatorId);
   const chapterId = normalizeSystemId("chapter", chapterTitle || `chapter_${Date.now()}`);
   assertValidChapterId(chapterId);
   const index = loadKnowledgeIndex();
-  const translator = ensureTranslatorProfile(index, {
-    mangaId,
-    translatorId,
-  });
+  const translator = ensureTranslatorProfile(index, { mangaId, translatorId });
   const existing = (translator.chapters || []).find((chapter) => chapter.chapterId === chapterId);
   if (existing) {
     return existing;
   }
-
   const nextChapter = normalizeChapter(
     {
       chapterId,
@@ -739,21 +803,12 @@ function createChapterRecord({ mangaId, translatorId, chapterTitle = null }) {
       createdAt: nowIso(),
       updatedAt: nowIso(),
     },
-    (translator.chapters || []).length
+    (translator.chapters || []).length,
   );
   translator.chapters.push(nextChapter);
-  translator.chapters = translator.chapters
-    .slice()
-    .sort((left, right) => left.sortOrder - right.sortOrder)
-    .map((chapter, indexNumber) => ({
-      ...chapter,
-      sortOrder: indexNumber,
-    }));
+  sortTranslatorChapters(translator);
   translator.updatedAt = nowIso();
-  const series = getSeriesEntry(index, mangaId);
-  if (series) {
-    series.updatedAt = nowIso();
-  }
+  updateSeriesUpdatedAt(index, mangaId);
   writeKnowledgeIndex(index);
   return nextChapter;
 }
@@ -771,8 +826,7 @@ function updateChapterRecord({ mangaId, translatorId, chapterId, chapterTitle = 
   if (!chapter) {
     throw new Error(`Chapter not found: ${chapterId}`);
   }
-  chapter.chapterTitle =
-    typeof chapterTitle === "string" && chapterTitle.trim() ? chapterTitle.trim() : null;
+  chapter.chapterTitle = typeof chapterTitle === "string" && chapterTitle.trim() ? chapterTitle.trim() : null;
   chapter.updatedAt = nowIso();
   translator.updatedAt = nowIso();
   const series = getSeriesEntry(index, mangaId);
@@ -783,20 +837,11 @@ function updateChapterRecord({ mangaId, translatorId, chapterId, chapterTitle = 
   return chapter;
 }
 
-function reorderChapterRegistry({ mangaId, translatorId, orderedChapterIds }) {
-  assertValidMangaId(mangaId);
-  assertValidTranslatorId(translatorId);
+function validateReorderIds(current, orderedChapterIds) {
   if (!Array.isArray(orderedChapterIds) || orderedChapterIds.length === 0) {
     throw new Error("orderedChapterIds must be a non-empty array.");
   }
 
-  const index = loadKnowledgeIndex();
-  const translator = getTranslatorEntry(index, mangaId, translatorId);
-  if (!translator) {
-    throw new Error(`Translator profile not found: ${translatorId}`);
-  }
-
-  const current = translator.chapters || [];
   const currentIds = current.map((chapter) => chapter.chapterId);
   if (
     currentIds.length !== orderedChapterIds.length ||
@@ -804,20 +849,50 @@ function reorderChapterRegistry({ mangaId, translatorId, orderedChapterIds }) {
   ) {
     throw new Error("orderedChapterIds must contain the same chapter ids as the current registry.");
   }
+}
 
-  const chapterMap = new Map(current.map((chapter) => [chapter.chapterId, chapter]));
+function applyReorderedChapters(translator, orderedChapterIds) {
+  const chapterMap = new Map((translator.chapters || []).map((chapter) => [chapter.chapterId, chapter]));
   translator.chapters = orderedChapterIds.map((chapterId, indexNumber) => ({
     ...chapterMap.get(chapterId),
     sortOrder: indexNumber,
     updatedAt: nowIso(),
   }));
   translator.updatedAt = nowIso();
+}
+
+function reorderChapterRegistry({ mangaId, translatorId, orderedChapterIds }) {
+  assertValidMangaId(mangaId);
+  assertValidTranslatorId(translatorId);
+
+  const index = loadKnowledgeIndex();
+  const translator = getTranslatorEntry(index, mangaId, translatorId);
+  if (!translator) {
+    throw new Error(`Translator profile not found: ${translatorId}`);
+  }
+
+  validateReorderIds(translator.chapters || [], orderedChapterIds);
+  applyReorderedChapters(translator, orderedChapterIds);
+
   const series = getSeriesEntry(index, mangaId);
   if (series) {
     series.updatedAt = nowIso();
   }
   writeKnowledgeIndex(index);
   return translator.chapters;
+}
+
+function deleteChapterFromTranslator(translator, chapterId) {
+  const nextChapters = (translator.chapters || []).filter((entry) => entry.chapterId !== chapterId);
+  if (nextChapters.length === (translator.chapters || []).length) {
+    throw new Error(`Chapter not found: ${chapterId}`);
+  }
+  translator.chapters = nextChapters.map((chapter, indexNumber) => ({
+    ...chapter,
+    sortOrder: indexNumber,
+    updatedAt: nowIso(),
+  }));
+  translator.updatedAt = nowIso();
 }
 
 function deleteChapterRecord({ mangaId, translatorId, chapterId }) {
@@ -829,16 +904,9 @@ function deleteChapterRecord({ mangaId, translatorId, chapterId }) {
   if (!translator) {
     throw new Error(`Translator profile not found: ${translatorId}`);
   }
-  const nextChapters = (translator.chapters || []).filter((entry) => entry.chapterId !== chapterId);
-  if (nextChapters.length === (translator.chapters || []).length) {
-    throw new Error(`Chapter not found: ${chapterId}`);
-  }
-  translator.chapters = nextChapters.map((chapter, indexNumber) => ({
-    ...chapter,
-    sortOrder: indexNumber,
-    updatedAt: nowIso(),
-  }));
-  translator.updatedAt = nowIso();
+
+  deleteChapterFromTranslator(translator, chapterId);
+
   const series = getSeriesEntry(index, mangaId);
   if (series) {
     series.updatedAt = nowIso();
@@ -853,27 +921,32 @@ function deleteChapterRecord({ mangaId, translatorId, chapterId }) {
   };
 }
 
+function requireTranslatorScope(index, mangaId, translatorId) {
+  const series = getSeriesEntry(index, mangaId);
+  if (!series) throw new Error(`Manga not found: ${mangaId}`);
+  const translator = getTranslatorEntry(index, mangaId, translatorId);
+  if (!translator) throw new Error(`Translator profile not found: ${translatorId}`);
+  return { series, translator };
+}
+
+function removeTranslatorDataDirectories(translatorPaths) {
+  fs.rmSync(translatorPaths.baseDir, { recursive: true, force: true });
+  const reportDir = path.dirname(translatorPaths.reportPath);
+  fs.rmSync(reportDir, { recursive: true, force: true });
+  return reportDir;
+}
+
 function deleteTranslatorProfile({ mangaId, translatorId }) {
   assertValidMangaId(mangaId);
   assertValidTranslatorId(translatorId);
   const index = loadKnowledgeIndex();
-  const series = getSeriesEntry(index, mangaId);
-  if (!series) {
-    throw new Error(`Manga not found: ${mangaId}`);
-  }
-  const translator = getTranslatorEntry(index, mangaId, translatorId);
-  if (!translator) {
-    throw new Error(`Translator profile not found: ${translatorId}`);
-  }
+  const { series, translator } = requireTranslatorScope(index, mangaId, translatorId);
   series.translators = (series.translators || []).filter((entry) => entry.translatorId !== translatorId);
   series.updatedAt = nowIso();
   writeKnowledgeIndex(index);
   const deletedPostEditDocuments = postEditWorkspaceModule.deleteByBinding({ mangaId, translatorId });
-
   const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
-  fs.rmSync(translatorPaths.baseDir, { recursive: true, force: true });
-  fs.rmSync(path.dirname(translatorPaths.reportPath), { recursive: true, force: true });
-
+  removeTranslatorDataDirectories(translatorPaths);
   return {
     mangaId,
     translatorId,
@@ -887,30 +960,19 @@ function clearTranslatorIngestionData({ mangaId, translatorId }) {
   assertValidMangaId(mangaId);
   assertValidTranslatorId(translatorId);
   const index = loadKnowledgeIndex();
-  const series = getSeriesEntry(index, mangaId);
-  if (!series) {
-    throw new Error(`Manga not found: ${mangaId}`);
-  }
-  const translator = getTranslatorEntry(index, mangaId, translatorId);
-  if (!translator) {
-    throw new Error(`Translator profile not found: ${translatorId}`);
-  }
-
+  const { series, translator } = requireTranslatorScope(index, mangaId, translatorId);
   const translatorPaths = buildTranslatorPaths(mangaId, translatorId);
-  fs.rmSync(translatorPaths.baseDir, { recursive: true, force: true });
-  fs.rmSync(path.dirname(translatorPaths.reportPath), { recursive: true, force: true });
-
+  const reportDir = removeTranslatorDataDirectories(translatorPaths);
   translator.updatedAt = nowIso();
   series.updatedAt = nowIso();
   writeKnowledgeIndex(index);
-
   return {
     mangaId,
     translatorId,
     label: translator.label,
     deleted: true,
     clearedKnowledgeBaseDir: translatorPaths.baseDir,
-    clearedReportDir: path.dirname(translatorPaths.reportPath),
+    clearedReportDir: reportDir,
   };
 }
 
@@ -923,7 +985,9 @@ function deleteMangaRecord({ mangaId }) {
   }
   index.series = index.series.filter((entry) => entry.mangaId !== mangaId);
   writeKnowledgeIndex(index);
-  const deletedPostEditDocuments = postEditWorkspaceModule.deleteByBinding({ mangaId });
+  const deletedPostEditDocuments = postEditWorkspaceModule.deleteByBinding({
+    mangaId,
+  });
 
   const mangaPaths = buildMangaPaths(mangaId);
   fs.rmSync(mangaPaths.selfDir, { recursive: true, force: true });
@@ -937,72 +1001,42 @@ function deleteMangaRecord({ mangaId }) {
   };
 }
 
-function upsertKnowledgeIndexEntry({
-  mangaId,
-  translatorId = null,
-  label = null,
-  translatorLabel = null,
-  language = "zh-TW",
-  knowledgeBasePath,
-  reportPath,
-  chapterId = null,
-  chapterTitle = null,
-}) {
-  assertValidMangaId(mangaId);
-  const index = loadKnowledgeIndex();
-  const resolvedTranslatorId = translatorId || DEFAULT_TRANSLATOR_ID;
-  const translator = ensureTranslatorProfile(index, {
-    mangaId,
-    translatorId: resolvedTranslatorId,
-    label: translatorLabel || (resolvedTranslatorId === DEFAULT_TRANSLATOR_ID ? DEFAULT_TRANSLATOR_LABEL : resolvedTranslatorId),
-    language,
-  });
-  const series = ensureSeriesEntry(index, { mangaId, label, language });
-
+function applyTranslatorPaths(translator, knowledgeBasePath, reportPath) {
   if (knowledgeBasePath) {
     translator.knowledgePath = toRelativeProjectPath(knowledgeBasePath);
   }
   if (reportPath) {
     translator.reportPath = toRelativeProjectPath(reportPath);
   }
-  translator.updatedAt = nowIso();
-  series.updatedAt = nowIso();
+}
 
-  if (chapterId) {
-    assertValidChapterId(chapterId);
-    const existingChapter = (translator.chapters || []).find((entry) => entry.chapterId === chapterId);
-    if (existingChapter) {
-      if (chapterTitle && chapterTitle.trim()) {
-        existingChapter.chapterTitle = chapterTitle.trim();
-      }
-      existingChapter.updatedAt = nowIso();
-    } else {
-      translator.chapters.push(
-        normalizeChapter(
-          {
-            chapterId,
-            chapterTitle,
-            sortOrder: (translator.chapters || []).length,
-            createdAt: nowIso(),
-            updatedAt: nowIso(),
-          },
-          (translator.chapters || []).length
-        )
-      );
+function upsertChapterEntry(translator, chapterId, chapterTitle) {
+  const existingChapter = (translator.chapters || []).find((entry) => entry.chapterId === chapterId);
+  if (existingChapter) {
+    if (chapterTitle && chapterTitle.trim()) {
+      existingChapter.chapterTitle = chapterTitle.trim();
     }
+    existingChapter.updatedAt = nowIso();
+    return;
   }
 
-  translator.chapters = (translator.chapters || [])
-    .slice()
-    .sort((left, right) => left.sortOrder - right.sortOrder)
-    .map((chapter, indexNumber) => ({
-      ...chapter,
-      sortOrder: indexNumber,
-    }));
+  translator.chapters.push(
+    normalizeChapter(
+      {
+        chapterId,
+        chapterTitle,
+        sortOrder: (translator.chapters || []).length,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+      (translator.chapters || []).length,
+    ),
+  );
+}
 
-  writeKnowledgeIndex(index);
+function buildUpsertResult(series, translator) {
   return {
-    mangaId,
+    mangaId: series.mangaId,
     label: series.label,
     translatorId: translator.translatorId,
     translatorLabel: translator.label,
@@ -1013,75 +1047,97 @@ function upsertKnowledgeIndexEntry({
   };
 }
 
-function syncMangaManagementBinding({
-  mangaId,
-  label = null,
-  language = "zh-TW",
-  translatorId = null,
-  translatorLabel = null,
-  chapterId = null,
-  chapterTitle = null,
-  profileKind = null,
-  styleSourceTranslatorId = null,
-}) {
+function upsertKnowledgeIndexEntry(input) {
+  const params = { translatorId: null, label: null, translatorLabel: null, language: "zh-TW", chapterId: null, chapterTitle: null, ...input };
+  const { mangaId, label, language, knowledgeBasePath, reportPath, chapterId, chapterTitle } = params;
   assertValidMangaId(mangaId);
   const index = loadKnowledgeIndex();
+  const resolvedTranslatorId = params.translatorId || DEFAULT_TRANSLATOR_ID;
+  const translator = ensureTranslatorProfile(index, {
+    mangaId,
+    translatorId: resolvedTranslatorId,
+    label:
+      params.translatorLabel ||
+      (resolvedTranslatorId === DEFAULT_TRANSLATOR_ID ? DEFAULT_TRANSLATOR_LABEL : resolvedTranslatorId),
+    language,
+  });
   const series = ensureSeriesEntry(index, { mangaId, label, language });
+  applyTranslatorPaths(translator, knowledgeBasePath, reportPath);
+  translator.updatedAt = nowIso();
+  series.updatedAt = nowIso();
+  if (chapterId) {
+    assertValidChapterId(chapterId);
+    upsertChapterEntry(translator, chapterId, chapterTitle);
+  }
+  sortTranslatorChapters(translator);
+  writeKnowledgeIndex(index);
+  return buildUpsertResult(series, translator);
+}
 
-  let translator = null;
-  if (translatorId) {
-    translator = ensureTranslatorProfile(index, {
-      mangaId,
-      translatorId,
-      label: translatorLabel || translatorId,
-      language,
-      profileKind,
-      styleSourceTranslatorId,
-    });
+function ensureBindingTranslator(index, input) {
+  const { mangaId, translatorId, translatorLabel, language, profileKind, styleSourceTranslatorId } = input;
+  return ensureTranslatorProfile(index, {
+    mangaId,
+    translatorId,
+    label: translatorLabel || translatorId,
+    language,
+    profileKind,
+    styleSourceTranslatorId,
+  });
+}
 
-    if (chapterId) {
-      assertValidChapterId(chapterId);
-      const existingChapter = (translator.chapters || []).find((entry) => entry.chapterId === chapterId);
-      if (existingChapter) {
-        if (chapterTitle && chapterTitle.trim()) {
-          existingChapter.chapterTitle = chapterTitle.trim();
-        }
-        existingChapter.updatedAt = nowIso();
-      } else {
-        translator.chapters.push(
-          normalizeChapter(
-            {
-              chapterId,
-              chapterTitle,
-              sortOrder: (translator.chapters || []).length,
-              createdAt: nowIso(),
-              updatedAt: nowIso(),
-            },
-            (translator.chapters || []).length
-          )
-        );
-      }
-      translator.chapters = (translator.chapters || [])
-        .slice()
-        .sort((left, right) => left.sortOrder - right.sortOrder)
-        .map((chapter, indexNumber) => ({
-          ...chapter,
-          sortOrder: indexNumber,
-        }));
-      translator.updatedAt = nowIso();
+function applyBindingChapter(translator, chapterId, chapterTitle) {
+  assertValidChapterId(chapterId);
+  const existingChapter = (translator.chapters || []).find((entry) => entry.chapterId === chapterId);
+  if (existingChapter) {
+    if (chapterTitle && chapterTitle.trim()) {
+      existingChapter.chapterTitle = chapterTitle.trim();
     }
+    existingChapter.updatedAt = nowIso();
+    return;
   }
 
-  series.updatedAt = nowIso();
-  writeKnowledgeIndex(index);
+  translator.chapters.push(
+    normalizeChapter(
+      {
+        chapterId,
+        chapterTitle,
+        sortOrder: (translator.chapters || []).length,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+      },
+      (translator.chapters || []).length,
+    ),
+  );
+  sortTranslatorChapters(translator);
+  translator.updatedAt = nowIso();
+}
+
+function buildBindingResult(series, translator, chapterId, chapterTitle) {
   return {
-    mangaId,
+    mangaId: series.mangaId,
     label: series.label,
     translatorId: translator?.translatorId || null,
     translatorLabel: translator?.label || null,
     chapterId: chapterId || null,
     chapterTitle: chapterTitle || null,
   };
+}
+
+function syncMangaManagementBinding(input) {
+  const params = { label: null, language: "zh-TW", translatorId: null, translatorLabel: null, chapterId: null, chapterTitle: null, profileKind: null, styleSourceTranslatorId: null, ...input };
+  const { mangaId, label, language, translatorId, chapterId, chapterTitle } = params;
+  assertValidMangaId(mangaId);
+  const index = loadKnowledgeIndex();
+  const series = ensureSeriesEntry(index, { mangaId, label, language });
+  let translator = null;
+  if (translatorId) {
+    translator = ensureBindingTranslator(index, params);
+    if (chapterId) applyBindingChapter(translator, chapterId, chapterTitle);
+  }
+  series.updatedAt = nowIso();
+  writeKnowledgeIndex(index);
+  return buildBindingResult(series, translator, chapterId, chapterTitle);
 }
 
 module.exports = {

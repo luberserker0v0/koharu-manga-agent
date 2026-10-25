@@ -22,35 +22,35 @@ function interpolate(template: string, params?: Record<string, string | number>)
 
 export const MESSAGES: Record<AppLocale, MessageDictionary> = {
   "zh-TW": {
-  ...appMessagesZhTW,
-  ...jobDetailMessagesZhTW,
-  ...jobListMessagesZhTW,
-  ...jobsMessagesZhTW,
-  ...mangaMessagesZhTW,
-  ...postEditMessagesZhTW,
-  ...referenceExtraMessagesZhTW,
-  ...settingsMessagesZhTW,
-  ...sharedExtraMessagesZhTW,
-  ...referenceMessagesZhTW,
-  ...sharedMessagesZhTW,
+    ...appMessagesZhTW,
+    ...jobDetailMessagesZhTW,
+    ...jobListMessagesZhTW,
+    ...jobsMessagesZhTW,
+    ...mangaMessagesZhTW,
+    ...postEditMessagesZhTW,
+    ...referenceExtraMessagesZhTW,
+    ...settingsMessagesZhTW,
+    ...sharedExtraMessagesZhTW,
+    ...referenceMessagesZhTW,
+    ...sharedMessagesZhTW,
   },
   "en-US": {
-  ...appMessagesEnUS,
-  ...jobDetailMessagesEnUS,
-  ...jobListMessagesEnUS,
-  ...jobsMessagesEnUS,
-  ...mangaMessagesEnUS,
-  ...postEditMessagesEnUS,
-  ...referenceExtraMessagesEnUS,
-  ...settingsMessagesEnUS,
-  ...sharedExtraMessagesEnUS,
-  ...referenceMessagesEnUS,
-  ...sharedMessagesEnUS,
+    ...appMessagesEnUS,
+    ...jobDetailMessagesEnUS,
+    ...jobListMessagesEnUS,
+    ...jobsMessagesEnUS,
+    ...mangaMessagesEnUS,
+    ...postEditMessagesEnUS,
+    ...referenceExtraMessagesEnUS,
+    ...settingsMessagesEnUS,
+    ...sharedExtraMessagesEnUS,
+    ...referenceMessagesEnUS,
+    ...sharedMessagesEnUS,
   },
 };
 
 export function translateLiteral(locale: AppLocale, text: string): string {
-  return locale === "zh-TW" ? zhTwLegacyLiteralOverrides[text] ?? text : text;
+  return locale === "zh-TW" ? (zhTwLegacyLiteralOverrides[text] ?? text) : text;
 }
 
 export function translate(locale: AppLocale, key: string, params?: Record<string, string | number>) {

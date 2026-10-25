@@ -13,12 +13,18 @@ node backend/server.js
 The backend can run as a standalone Linux container while AO and Koharu remain external HTTP services:
 
 ```bash
-docker compose -p manga-backend up -d --build
+docker compose build --pull backend
+docker compose up -d --force-recreate backend
 curl http://127.0.0.1:4001/health
 curl http://127.0.0.1:4001/ready
 ```
 
 See `docs/DOCKER_BACKEND.md` for persistence, external-service addressing, browser CORS, authentication, and operational details.
+
+The Compose service contains only the backend. In Docker mode, Koharu remains a Windows host
+service on port `4000`; the container reaches it as `http://host.docker.internal:4000`. The desktop
+GUI can download, start, and stop that host process when Koharu auto-start is enabled. When running
+Compose without the GUI, start Koharu yourself with `--host 0.0.0.0 --port 4000 --headless`.
 
 After host Koharu is available, `scripts/rest_translation_workflow.mjs` exercises the complete REST lifecycle from image upload through artifact download. See `docs/REST_WORKFLOW.md`.
 
@@ -28,7 +34,7 @@ Release installers support both an existing REST backend and a bundled local-pro
 Docker remains the preferred always-on backend:
 
 ```bash
-docker compose -p manga-backend up -d --build
+docker compose up -d --build
 ```
 
 The packaged GUI first connects to the configured backend address (default
@@ -103,20 +109,21 @@ checkbox to delete application-owned user data. Without that checkbox, uninstall
 - GUI-managed Koharu: `%LOCALAPPDATA%\Koharu Manga Agent\gui\koharu-runtime\<version>\koharu.exe`
 - Native backend configuration: `%APPDATA%\Koharu Manga Agent\backend\koharu.json`
 - Native backend data: `%LOCALAPPDATA%\Koharu Manga Agent\backend`
-- Docker backend data and configuration: the `manga-backend_backend-data` named volume
+- Docker backend data and configuration: the `koharu-manga-agent_backend-data` named volume
 
 The uninstaller provides two unchecked cleanup levels:
 
 - **Application data** removes GUI preferences, GUI-managed Koharu, and native backend config/data.
 - **ALL local data** additionally removes `%LOCALAPPDATA%\Koharu` projects/models and attempts to
-  remove the `manga-backend-backend-1` container and `manga-backend_backend-data` Docker volume.
+  remove the `koharu-manga-agent-backend-1` container and
+  `koharu-manga-agent_backend-data` Docker volume.
 
 Both options are irreversible. The full cleanup deliberately does not recursively delete the GUI's
 selected output/reference folders because those can be broad user-owned locations such as Downloads
 and may contain unrelated files. Exported files outside application-owned roots must be reviewed and
 deleted by the user; this prevents an uninstall checkbox from erasing an entire shared folder.
 
-`docker compose -p manga-backend down` removes only the container and network. Adding `-v` also
+`docker compose down` removes only the container and network. Adding `-v` also
 deletes the named volume and all backend jobs, Knowledge, Reference data, uploads, and exports; use it
 only when permanent data removal is intended.
 
@@ -152,7 +159,9 @@ the matching page capture when screenshots are ready.
 
 ## Runtime Shape
 - local HTTP backend for future CLI and GUI clients
-- workflow engine inside the process
+- `JobManager` is a façade over job factory, queue, lifecycle, retry, query, event, runtime, and
+  domain-workflow modules under `backend/src/domains/jobs/`
+- workflow engine inside the backend process
 - AO API is the only LLM execution boundary for quality and knowledge tasks
 - AO task stages record `import_manifest.json` and `export_manifest.json`
 - AO conversations are created per stage, initialized over HTTP, polled until `ready=true`, then used for task messages
@@ -241,7 +250,8 @@ volume. `MANGA_TRANSLATION_CONFIG_PATH` can override the location.
 
 Important fields:
 - `api.baseUrl`
-- `llm.defaultModel`
+- `agent.baseUrl`, `agent.apiKey`, `agent.model`, and AO timeout fields
+- `koharuRuntime.managed`, `koharuRuntime.host`, and `koharuRuntime.port`
 - `timeouts.*`
 - `paths.*`
 - `defaults.targetLanguage`
@@ -255,6 +265,18 @@ npm run test:unit --prefix tests
 npm run test:integration --prefix tests
 npm run test:e2e --prefix tests
 npm run test:coverage --prefix tests
+node scripts/check_function_lengths.mjs 30
+```
+
+The three live Koharu suites probe `config.api.baseUrl` and skip their external assertions when the
+service is unavailable. To exercise them rather than skip them, first start host Koharu on port
+`4000`, then run:
+
+```bash
+npm test --prefix tests -- --runInBand \
+  e2e/live_backend_smoke.test.js \
+  e2e/pipeline.test.js \
+  e2e/knowledge_base.test.js
 ```
 
 AO-runtime specific coverage now includes:
@@ -274,7 +296,6 @@ AO-runtime specific coverage now includes:
 - `docs/JOB_DETAIL_SPEC.md`
 - `docs/E2E_MATRIX.md`
 - `docs/BUILD_AND_PACKAGE.md`
-- `docs/GUI_SCAFFOLD_PLAN.md`
 - `docs/GUI_SMOKE_CHECKLIST.md`
 - `docs/QUALITY_KNOWLEDGE_REFERENCE_SPEC.md`
 

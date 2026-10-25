@@ -2,12 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const {
-  ensureDir,
-  loadReferenceManifest,
-  normalizeSceneTexts,
-  referenceSetPaths,
-} = require("../sets/reference_sets");
+const { ensureDir, loadReferenceManifest, normalizeSceneTexts, referenceSetPaths } = require("../sets/reference_sets");
 
 const REVIEW_SCHEMA_VERSION = 1;
 
@@ -103,10 +98,7 @@ function buildReviewPages(rawTexts, currentTexts) {
   const rawPages = new Map((rawTexts?.pages || []).map((page) => [String(page.pageId), page]));
   return (currentTexts?.pages || []).map((page) => {
     const rawPage = rawPages.get(String(page.pageId));
-    const rawNodes = new Map((rawPage?.texts || []).map((node, index) => [
-      String(node.nodeId),
-      { node, index },
-    ]));
+    const rawNodes = new Map((rawPage?.texts || []).map((node, index) => [String(node.nodeId), { node, index }]));
     const currentIds = new Set((page.texts || []).map((node) => String(node.nodeId)));
     return {
       ...page,
@@ -115,15 +107,15 @@ function buildReviewPages(rawTexts, currentTexts) {
         return {
           ...node,
           originalIndex: original ? original.index : null,
-          changeType: !original
-            ? "added"
-            : fingerprint(original.node) === fingerprint(node)
-              ? "unchanged"
-              : "modified",
+          changeType: !original ? "added" : fingerprint(original.node) === fingerprint(node) ? "unchanged" : "modified",
         };
       }),
       removedTexts: (rawPage?.texts || [])
-        .map((node, index) => ({ ...node, originalIndex: index, changeType: "deleted" }))
+        .map((node, index) => ({
+          ...node,
+          originalIndex: index,
+          changeType: "deleted",
+        }))
         .filter((node) => !currentIds.has(String(node.nodeId))),
     };
   });
@@ -131,7 +123,11 @@ function buildReviewPages(rawTexts, currentTexts) {
 
 function rawRevisionPaths(referenceSetId, revisionId) {
   const root = path.join(referenceSetPaths(referenceSetId).rawRevisionsDir, revisionId);
-  return { root, scenePath: path.join(root, "scene.json"), textsPath: path.join(root, "texts.json") };
+  return {
+    root,
+    scenePath: path.join(root, "scene.json"),
+    textsPath: path.join(root, "texts.json"),
+  };
 }
 
 function reviewRevisionPaths(referenceSetId, revision) {
@@ -149,50 +145,86 @@ function loadReviewMetadata(referenceSetId) {
 }
 
 function saveReviewMetadata(referenceSetId, metadata) {
-  const next = { ...metadata, schemaVersion: REVIEW_SCHEMA_VERSION, updatedAt: new Date().toISOString() };
+  const next = {
+    ...metadata,
+    schemaVersion: REVIEW_SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+  };
   writeJsonAtomic(referenceSetPaths(referenceSetId).reviewMetadataPath, next);
   return next;
+}
+
+function createRevisionId(rawFingerprint) {
+  return [
+    new Date().toISOString().replace(/[-:.TZ]/g, ""),
+    rawFingerprint.slice(0, 12),
+    crypto.randomUUID().replace(/-/g, "").slice(0, 8),
+  ].join("_");
+}
+
+function writeRawRevision(rawPaths, scene, texts, resolvedPaths) {
+  ensureDir(rawPaths.root);
+  writeJsonAtomic(rawPaths.scenePath, scene);
+  writeJsonAtomic(rawPaths.textsPath, texts);
+  writeJsonAtomic(resolvedPaths.scenePath, scene);
+  writeJsonAtomic(resolvedPaths.textsPath, texts);
+  fs.rmSync(resolvedPaths.draftScenePath, { force: true });
+  fs.rmSync(resolvedPaths.draftTextsPath, { force: true });
+}
+
+function buildInitialReviewMetadata(input) {
+  return {
+    referenceSetId: input.referenceSetId,
+    status: "awaiting_review",
+    projectId: input.projectId || null,
+    projectName: input.projectName || null,
+    rawRevisionId: input.revisionId,
+    rawScenePath: input.rawPaths.scenePath,
+    rawTextsPath: input.rawPaths.textsPath,
+    reviewRevision: Number(input.previousMetadata?.reviewRevision || 0),
+    rawFingerprint: input.rawFingerprint,
+    currentFingerprint: input.rawFingerprint,
+    draftFingerprint: null,
+    rawSummary: summarizeTexts(input.texts),
+    currentSummary: summarizeTexts(input.texts),
+    draftSummary: null,
+    reviewDiff: { added: 0, deleted: 0, changed: 0 },
+    pageContract: pageContract(input.scene),
+    orderDraft: null,
+    extractedAt: new Date().toISOString(),
+    reviewedAt: null,
+  };
+}
+
+function persistConfirmedReview(resolvedPaths, revisionPaths, draftScene, orderedTexts) {
+  ensureDir(revisionPaths.root);
+  writeJsonAtomic(revisionPaths.scenePath, draftScene);
+  writeJsonAtomic(revisionPaths.textsPath, orderedTexts);
+  writeJsonAtomic(resolvedPaths.scenePath, draftScene);
+  writeJsonAtomic(resolvedPaths.textsPath, orderedTexts);
 }
 
 function initializeExtractionReview({ referenceSetId, projectId, projectName, scene, texts }) {
   const resolvedPaths = referenceSetPaths(referenceSetId);
   const previousMetadata = loadReviewMetadata(referenceSetId);
   const rawFingerprint = fingerprint(texts);
-  const revisionId = [
-    new Date().toISOString().replace(/[-:.TZ]/g, ""),
-    rawFingerprint.slice(0, 12),
-    crypto.randomUUID().replace(/-/g, "").slice(0, 8),
-  ].join("_");
+  const revisionId = createRevisionId(rawFingerprint);
   const rawPaths = rawRevisionPaths(referenceSetId, revisionId);
-  ensureDir(rawPaths.root);
-  writeJsonAtomic(rawPaths.scenePath, scene);
-  writeJsonAtomic(rawPaths.textsPath, texts);
-  // Extraction is immediately usable. Human review creates a corrected revision later.
-  writeJsonAtomic(resolvedPaths.scenePath, scene);
-  writeJsonAtomic(resolvedPaths.textsPath, texts);
-  fs.rmSync(resolvedPaths.draftScenePath, { force: true });
-  fs.rmSync(resolvedPaths.draftTextsPath, { force: true });
-  return saveReviewMetadata(referenceSetId, {
+  writeRawRevision(rawPaths, scene, texts, resolvedPaths);
+  return saveReviewMetadata(
     referenceSetId,
-    status: "awaiting_review",
-    projectId: projectId || null,
-    projectName: projectName || null,
-    rawRevisionId: revisionId,
-    rawScenePath: rawPaths.scenePath,
-    rawTextsPath: rawPaths.textsPath,
-    reviewRevision: Number(previousMetadata?.reviewRevision || 0),
-    rawFingerprint,
-    currentFingerprint: rawFingerprint,
-    draftFingerprint: null,
-    rawSummary: summarizeTexts(texts),
-    currentSummary: summarizeTexts(texts),
-    draftSummary: null,
-    reviewDiff: { added: 0, deleted: 0, changed: 0 },
-    pageContract: pageContract(scene),
-    orderDraft: null,
-    extractedAt: new Date().toISOString(),
-    reviewedAt: null,
-  });
+    buildInitialReviewMetadata({
+      referenceSetId,
+      projectId,
+      projectName,
+      revisionId,
+      rawPaths,
+      rawFingerprint,
+      texts,
+      previousMetadata,
+      scene,
+    }),
+  );
 }
 
 function ensureLegacyReviewMetadata(referenceSetId) {
@@ -218,7 +250,10 @@ function syncDraftFromScene(referenceSetId, scene) {
   const rawScene = readJson(rawPaths.scenePath);
   const rawTexts = readJson(rawPaths.textsPath);
   assertPageContract(rawScene, scene);
-  const draftTexts = { referenceSetId, ...normalizeSceneTexts(scene, "koharu_review") };
+  const draftTexts = {
+    referenceSetId,
+    ...normalizeSceneTexts(scene, "koharu_review"),
+  };
   const resolvedPaths = referenceSetPaths(referenceSetId);
   writeJsonAtomic(resolvedPaths.draftScenePath, scene);
   writeJsonAtomic(resolvedPaths.draftTextsPath, draftTexts);
@@ -236,7 +271,8 @@ function validateOrderDraft(draftTexts, pages) {
   if (!Array.isArray(pages)) throw reviewError("Extraction review order requires a pages array.");
   const receivedPages = new Map(pages.map((page) => [String(page.pageId), page]));
   const expectedPages = new Map((draftTexts.pages || []).map((page) => [String(page.pageId), page]));
-  if (receivedPages.size !== expectedPages.size) throw reviewError("Extraction review order must include every page exactly once.");
+  if (receivedPages.size !== expectedPages.size)
+    throw reviewError("Extraction review order must include every page exactly once.");
   for (const [pageId, page] of expectedPages) {
     const submitted = receivedPages.get(pageId);
     if (!submitted || !Array.isArray(submitted.nodeIds)) throw reviewError(`Missing node order for page ${pageId}.`);
@@ -247,7 +283,10 @@ function validateOrderDraft(draftTexts, pages) {
       throw reviewError(`Node order for page ${pageId} must contain every current text node exactly once.`);
     }
   }
-  return pages.map((page) => ({ pageId: String(page.pageId), nodeIds: page.nodeIds.map(String) }));
+  return pages.map((page) => ({
+    pageId: String(page.pageId),
+    nodeIds: page.nodeIds.map(String),
+  }));
 }
 
 function saveOrderDraft(referenceSetId, pages) {
@@ -282,7 +321,10 @@ function applyOrder(draftTexts, orderDraft) {
     ...draftTexts,
     pages: draftTexts.pages.map((page) => {
       const byId = new Map(page.texts.map((node) => [String(node.nodeId), node]));
-      return { ...page, texts: orderByPage.get(String(page.pageId)).map((nodeId) => byId.get(nodeId)) };
+      return {
+        ...page,
+        texts: orderByPage.get(String(page.pageId)).map((nodeId) => byId.get(nodeId)),
+      };
     }),
   };
 }
@@ -299,11 +341,7 @@ function confirmExtractionReview(referenceSetId) {
   const orderedTexts = applyOrder(draftTexts, orderDraft);
   const revision = Number(metadata.reviewRevision || 0) + 1;
   const revisionPaths = reviewRevisionPaths(referenceSetId, revision);
-  ensureDir(revisionPaths.root);
-  writeJsonAtomic(revisionPaths.scenePath, draftScene);
-  writeJsonAtomic(revisionPaths.textsPath, orderedTexts);
-  writeJsonAtomic(resolvedPaths.scenePath, draftScene);
-  writeJsonAtomic(resolvedPaths.textsPath, orderedTexts);
+  persistConfirmedReview(resolvedPaths, revisionPaths, draftScene, orderedTexts);
   const reviewedAt = new Date().toISOString();
   const next = saveReviewMetadata(referenceSetId, {
     ...metadata,
@@ -328,10 +366,7 @@ function getReviewDocument(referenceSetId) {
   const resolvedPaths = referenceSetPaths(referenceSetId);
   const rawPaths = rawRevisionPaths(referenceSetId, metadata.rawRevisionId);
   const rawTexts = readJson(rawPaths.textsPath);
-  const currentTexts =
-    readJson(resolvedPaths.draftTextsPath) ||
-    readJson(resolvedPaths.textsPath) ||
-    rawTexts;
+  const currentTexts = readJson(resolvedPaths.draftTextsPath) || readJson(resolvedPaths.textsPath) || rawTexts;
   return {
     ...metadata,
     pages: buildReviewPages(rawTexts, currentTexts),

@@ -23,19 +23,24 @@ export const postEditMessagesZhTW = {
   "postEdit.button.reset": "重設譯文",
   "postEdit.button.save": "儲存編修文件",
   "postEdit.button.export": "從編修文件匯出",
-  "postEdit.workspace.summary": (params?: Record<string, string | number>) => `${params?.pages} \u9801 / ${params?.nodes} \u500b\u5c0d\u8a71\u6846`,
+  "postEdit.workspace.summary": (params?: Record<string, string | number>) =>
+    `${params?.pages} \u9801 / ${params?.nodes} \u500b\u5c0d\u8a71\u6846`,
   "postEdit.workspace.pages": "\u9801\u9762",
   "postEdit.workspace.searchPages": "\u641c\u5c0b\u9801\u9762",
   "postEdit.workspace.preview": "\u6f2b\u756b\u9810\u89bd",
   "postEdit.workspace.dialogues": "\u5c0d\u8a71\u6846",
   "postEdit.workspace.pageNumber": (params?: Record<string, string | number>) => `\u7b2c ${params?.page} \u9801`,
-  "postEdit.workspace.pagePosition": (params?: Record<string, string | number>) => `\u7b2c ${params?.page} / ${params?.total} \u9801`,
+  "postEdit.workspace.pagePosition": (params?: Record<string, string | number>) =>
+    `\u7b2c ${params?.page} / ${params?.total} \u9801`,
   "postEdit.workspace.nodeCount": (params?: Record<string, string | number>) => `${params?.count} \u6846`,
-  "postEdit.workspace.dialogueNumber": (params?: Record<string, string | number>) => `\u5c0d\u8a71\u6846 ${params?.number}`,
+  "postEdit.workspace.dialogueNumber": (params?: Record<string, string | number>) =>
+    `\u5c0d\u8a71\u6846 ${params?.number}`,
   "postEdit.status.saveFailed": "\u5132\u5b58\u7de8\u4fee\u5931\u6557\u3002",
   "postEdit.status.exportFailed": "\u5efa\u7acb\u532f\u51fa\u5de5\u4f5c\u5931\u6557\u3002",
-  "postEdit.export.outputRequired": "\u8acb\u5148\u5728\u8a2d\u5b9a\u9801\u9762\u6307\u5b9a\u532f\u51fa\u8cc7\u6599\u593e\u3002",
-  "postEdit.export.outputInvalid": (params?: Record<string, string | number>) => `\u532f\u51fa\u8cc7\u6599\u593e\u4e0d\u53ef\u7528\uff1a${params?.reason}`,
+  "postEdit.export.outputRequired":
+    "\u8acb\u5148\u5728\u8a2d\u5b9a\u9801\u9762\u6307\u5b9a\u532f\u51fa\u8cc7\u6599\u593e\u3002",
+  "postEdit.export.outputInvalid": (params?: Record<string, string | number>) =>
+    `\u532f\u51fa\u8cc7\u6599\u593e\u4e0d\u53ef\u7528\uff1a${params?.reason}`,
   "postEdit.branch.open": "\u53e6\u5b58\u70ba\u65b0\u8b6f\u8005",
   "postEdit.branch.create": "\u5efa\u7acb\u65b0\u8b6f\u8005",
   "postEdit.branch.cancel": "\u53d6\u6d88",
@@ -49,7 +54,8 @@ export const postEditMessagesZhTW = {
   "postEdit.branch.documentRequired": "\u76ee\u524d\u6c92\u6709\u53ef\u53e6\u5b58\u7684\u7de8\u4fee\u6587\u4ef6\u3002",
   "postEdit.branch.translatorRequired": "\u8acb\u5148\u8f38\u5165\u65b0\u8b6f\u8005\u540d\u7a31\u3002",
   "postEdit.branch.untitledChapter": "\u672a\u547d\u540d\u7ae0\u7bc0",
-  "postEdit.branch.created": (params?: Record<string, string | number>) => `\u5df2\u5efa\u7acb\u8b6f\u8005\u300c${params?.translator}\u300d\u8207\u7ae0\u7bc0\u300c${params?.chapter}\u300d\uff0c\u4e26\u7522\u751f Reference\u3002`,
+  "postEdit.branch.created": (params?: Record<string, string | number>) =>
+    `\u5df2\u5efa\u7acb\u8b6f\u8005\u300c${params?.translator}\u300d\u8207\u7ae0\u7bc0\u300c${params?.chapter}\u300d\uff0c\u4e26\u7522\u751f Reference\u3002`,
   "postEdit.branch.failed": "\u53e6\u5b58\u70ba\u65b0\u8b6f\u8005\u5931\u6557\u3002",
 };
 
@@ -69,7 +75,8 @@ export const postEditMessagesEnUS = {
   "postEdit.nodeOrder.empty": "Select a page first.",
   "postEdit.nodeOrder.noPreview": "No page preview available.",
   "postEdit.image.loading": "Loading the translated image from the backend…",
-  "postEdit.image.loadFailed": "Could not load this translated image from the backend. Confirm that the backend is running, then select the job again.",
+  "postEdit.image.loadFailed":
+    "Could not load this translated image from the backend. Confirm that the backend is running, then select the job again.",
   "postEdit.nodeOrder.emptyTranslation": "(empty translation)",
   "postEdit.editor.title": "Translation editor",
   "postEdit.editor.empty": "Select a node to edit its translation.",
@@ -78,19 +85,22 @@ export const postEditMessagesEnUS = {
   "postEdit.button.reset": "Reset translation",
   "postEdit.button.save": "Save edited document",
   "postEdit.button.export": "Export from edited document",
-  "postEdit.workspace.summary": (params?: Record<string, string | number>) => `${params?.pages} pages / ${params?.nodes} dialogue boxes`,
+  "postEdit.workspace.summary": (params?: Record<string, string | number>) =>
+    `${params?.pages} pages / ${params?.nodes} dialogue boxes`,
   "postEdit.workspace.pages": "Pages",
   "postEdit.workspace.searchPages": "Search pages",
   "postEdit.workspace.preview": "Manga preview",
   "postEdit.workspace.dialogues": "Dialogue boxes",
   "postEdit.workspace.pageNumber": (params?: Record<string, string | number>) => `Page ${params?.page}`,
-  "postEdit.workspace.pagePosition": (params?: Record<string, string | number>) => `Page ${params?.page} / ${params?.total}`,
+  "postEdit.workspace.pagePosition": (params?: Record<string, string | number>) =>
+    `Page ${params?.page} / ${params?.total}`,
   "postEdit.workspace.nodeCount": (params?: Record<string, string | number>) => `${params?.count} boxes`,
   "postEdit.workspace.dialogueNumber": (params?: Record<string, string | number>) => `Dialogue ${params?.number}`,
   "postEdit.status.saveFailed": "Failed to save edited document.",
   "postEdit.status.exportFailed": "Failed to create export job.",
   "postEdit.export.outputRequired": "Set an export folder on the Settings page first.",
-  "postEdit.export.outputInvalid": (params?: Record<string, string | number>) => `Export folder unavailable: ${params?.reason}`,
+  "postEdit.export.outputInvalid": (params?: Record<string, string | number>) =>
+    `Export folder unavailable: ${params?.reason}`,
   "postEdit.branch.open": "Save as new translator",
   "postEdit.branch.create": "Create translator",
   "postEdit.branch.cancel": "Cancel",
@@ -104,6 +114,7 @@ export const postEditMessagesEnUS = {
   "postEdit.branch.documentRequired": "No editable document is available to branch.",
   "postEdit.branch.translatorRequired": "Enter the new translator name first.",
   "postEdit.branch.untitledChapter": "Untitled chapter",
-  "postEdit.branch.created": (params?: Record<string, string | number>) => `Created translator "${params?.translator}", chapter "${params?.chapter}", and a Reference.`,
+  "postEdit.branch.created": (params?: Record<string, string | number>) =>
+    `Created translator "${params?.translator}", chapter "${params?.chapter}", and a Reference.`,
   "postEdit.branch.failed": "Failed to save as a new translator.",
 };

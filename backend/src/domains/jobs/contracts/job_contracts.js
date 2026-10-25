@@ -15,10 +15,7 @@ const ATOMIC_JOB_TYPES = Object.freeze([
   "translation_quality_repair",
 ]);
 
-const WORKFLOW_JOB_TYPES = Object.freeze([
-  "reference_ingestion",
-  "reference_bilingual_enrichment",
-]);
+const WORKFLOW_JOB_TYPES = Object.freeze(["reference_ingestion", "reference_bilingual_enrichment"]);
 
 const JOB_STATUSES = Object.freeze([
   "queued",

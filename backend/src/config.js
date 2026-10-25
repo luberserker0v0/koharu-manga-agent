@@ -11,7 +11,7 @@ function defaultDataRoot() {
     return path.join(
       process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"),
       APP_DIRECTORY_NAME,
-      "backend"
+      "backend",
     );
   }
   if (process.platform === "darwin") {
@@ -20,7 +20,7 @@ function defaultDataRoot() {
   return path.join(
     process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share"),
     APP_DIRECTORY_SLUG,
-    "backend"
+    "backend",
   );
 }
 
@@ -30,7 +30,7 @@ function defaultConfigPath() {
       process.env.APPDATA || process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Roaming"),
       APP_DIRECTORY_NAME,
       "backend",
-      "koharu.json"
+      "koharu.json",
     );
   }
   if (process.platform === "darwin") {
@@ -40,16 +40,12 @@ function defaultConfigPath() {
     process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
     APP_DIRECTORY_SLUG,
     "backend",
-    "koharu.json"
+    "koharu.json",
   );
 }
 
-const DATA_ROOT = path.resolve(
-  process.env.MANGA_TRANSLATION_DATA_ROOT || defaultDataRoot()
-);
-const PROJECT_CONFIG_PATH = path.resolve(
-  process.env.MANGA_TRANSLATION_CONFIG_PATH || defaultConfigPath()
-);
+const DATA_ROOT = path.resolve(process.env.MANGA_TRANSLATION_DATA_ROOT || defaultDataRoot());
+const PROJECT_CONFIG_PATH = path.resolve(process.env.MANGA_TRANSLATION_CONFIG_PATH || defaultConfigPath());
 const DEFAULT_CONFIG = {
   api: {
     baseUrl: "http://127.0.0.1:4000",
@@ -190,9 +186,7 @@ function deepMerge(base, override) {
 }
 
 function resolvePath(targetPath) {
-  return path.isAbsolute(targetPath)
-    ? targetPath
-    : path.join(DATA_ROOT, targetPath);
+  return path.isAbsolute(targetPath) ? targetPath : path.join(DATA_ROOT, targetPath);
 }
 
 const mergedConfig = deepMerge(DEFAULT_CONFIG, loadProjectConfig());

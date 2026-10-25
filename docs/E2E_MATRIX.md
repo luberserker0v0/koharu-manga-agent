@@ -141,6 +141,25 @@ It answers:
 - **Strong manual coverage already exists** for GUI startup, `Job`, `Job List`, selected-job workspace, artifacts, and raw events.
 - **Main remaining gap** is not missing documentation anymore; it is the absence of GUI automation for drag/drop, badges, pane behavior, and live-event presentation.
 
+## Live Koharu Suite Prerequisite
+
+`tests/e2e/live_backend_smoke.test.js`, `tests/e2e/pipeline.test.js`, and
+`tests/e2e/knowledge_base.test.js` call `global.checkKoharu()` before their external assertions. A
+normal Jest run remains deterministic when Koharu is absent: those assertions return early and the
+suites log an explicit skip warning. For release validation, start host Koharu on port `4000` first
+and run the three suites directly so the real assertions execute:
+
+```powershell
+npm test --prefix tests -- --runInBand `
+  e2e/live_backend_smoke.test.js `
+  e2e/pipeline.test.js `
+  e2e/knowledge_base.test.js
+```
+
+In Docker mode the host process must bind `0.0.0.0:4000`; the backend reaches it through
+`host.docker.internal:4000`. Passing `/health` alone is insufficient because it checks backend
+liveness. Release validation must also inspect `/ready` or `/runtime/status`.
+
 ## Known Gaps
 - No headless GUI automation currently validates badge transitions, pane resizing, or drag-reorder interactions.
 - `Job List` and `Job Detail` live-sync behavior is specified and manually testable, but not fully machine-asserted in desktop UI.

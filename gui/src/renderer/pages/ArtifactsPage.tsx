@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { getJob, getJobArtifacts, type GuiArtifact } from "../api/jobs";
 import { getGlossary, getStoryContext, getStyleProfile } from "../api/knowledge";
 import { openDesktopPath, readJsonFile } from "../services/desktop_api";
@@ -50,41 +50,61 @@ function prettyArtifactKind(kind: string): string {
   }
 }
 
+function describeManifestArtifact(artifact: GuiArtifact): string {
+  const stage =
+    artifact.metadata && typeof artifact.metadata === "object" && "stage" in artifact.metadata
+      ? String((artifact.metadata as Record<string, unknown>).stage)
+      : "unknown stage";
+  return `Stage: ${stage}`;
+}
+function describeComparisonArtifact(artifact: GuiArtifact): string {
+  const metadata = artifact.metadata as Record<string, unknown> | null;
+  const referenceSetId = metadata && typeof metadata.referenceSetId === "string" ? metadata.referenceSetId : null;
+  const chapterId = metadata && typeof metadata.chapterId === "string" ? metadata.chapterId : null;
+  return [referenceSetId ? `Reference: ${referenceSetId}` : null, chapterId ? `Chapter: ${chapterId}` : null]
+    .filter(Boolean)
+    .join(" / ");
+}
 function describeArtifact(artifact: GuiArtifact): string {
-  if (
-    artifact.kind === "workspace_import_manifest" ||
-    artifact.kind === "workspace_export_manifest"
-  ) {
-    const stage =
-      artifact.metadata &&
-      typeof artifact.metadata === "object" &&
-      "stage" in artifact.metadata
-        ? String((artifact.metadata as Record<string, unknown>).stage)
-        : "unknown stage";
-    return `Stage: ${stage}`;
-  }
-
+  if (artifact.kind === "workspace_import_manifest" || artifact.kind === "workspace_export_manifest")
+    return describeManifestArtifact(artifact);
   if (
     artifact.kind === "quality_validation_report" ||
     artifact.kind === "comparison_self_vs_other" ||
     artifact.kind === "comparison_review_report"
-  ) {
-    const metadata = artifact.metadata as Record<string, unknown> | null;
-    const referenceSetId =
-      metadata && typeof metadata.referenceSetId === "string" ? metadata.referenceSetId : null;
-    const chapterId =
-      metadata && typeof metadata.chapterId === "string" ? metadata.chapterId : null;
-    return [
-      referenceSetId ? `Reference: ${referenceSetId}` : null,
-      chapterId ? `Chapter: ${chapterId}` : null,
-    ]
-      .filter(Boolean)
-      .join(" / ");
-  }
-
+  )
+    return describeComparisonArtifact(artifact);
   return "";
 }
 
+function ArtifactListItem({
+  artifact,
+  onPreview,
+}: {
+  artifact: GuiArtifact;
+  onPreview?: (artifact: GuiArtifact) => void;
+}) {
+  return (
+    <li className="artifact-item">
+      <div>
+        <strong>{prettyArtifactKind(artifact.kind)}</strong>
+        <div className="job-subtext">{artifact.kind}</div>
+        {describeArtifact(artifact) ? <div className="job-subtext">{describeArtifact(artifact)}</div> : null}
+        <div className="job-subtext">{artifact.path}</div>
+      </div>
+      <div className="job-actions">
+        <button className="secondary-button" onClick={() => openDesktopPath(artifact.path)} type="button">
+          Open
+        </button>
+        {onPreview ? (
+          <button className="secondary-button" onClick={() => onPreview(artifact)} type="button">
+            Preview
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
 function ArtifactList({
   artifacts,
   title,
@@ -94,46 +114,19 @@ function ArtifactList({
   title: string;
   onPreview?: (artifact: GuiArtifact) => void;
 }) {
-  if (artifacts.length === 0) {
+  if (artifacts.length === 0)
     return (
       <article className="card">
         <h2>{title}</h2>
         <p>No artifacts available.</p>
       </article>
     );
-  }
-
   return (
     <article className="card">
       <h2>{title}</h2>
       <ul className="artifact-list">
         {artifacts.map((artifact) => (
-          <li key={artifact.id} className="artifact-item">
-            <div>
-              <strong>{prettyArtifactKind(artifact.kind)}</strong>
-              <div className="job-subtext">{artifact.kind}</div>
-              {describeArtifact(artifact) ? <div className="job-subtext">{describeArtifact(artifact)}</div> : null}
-              <div className="job-subtext">{artifact.path}</div>
-            </div>
-            <div className="job-actions">
-              <button
-                className="secondary-button"
-                onClick={() => openDesktopPath(artifact.path)}
-                type="button"
-              >
-                Open
-              </button>
-              {onPreview ? (
-                <button
-                  className="secondary-button"
-                  onClick={() => onPreview(artifact)}
-                  type="button"
-                >
-                  Preview
-                </button>
-              ) : null}
-            </div>
-          </li>
+          <ArtifactListItem key={artifact.id} artifact={artifact} onPreview={onPreview} />
         ))}
       </ul>
     </article>
@@ -145,15 +138,13 @@ function partitionArtifacts(artifacts: GuiArtifact[]) {
     (artifact) =>
       artifact.kind === "quality_validation_report" ||
       artifact.kind === "comparison_self_vs_other" ||
-      artifact.kind === "comparison_review_report"
+      artifact.kind === "comparison_review_report",
   );
   const workspaceManifests = artifacts.filter(
-    (artifact) =>
-      artifact.kind === "workspace_import_manifest" ||
-      artifact.kind === "workspace_export_manifest"
+    (artifact) => artifact.kind === "workspace_import_manifest" || artifact.kind === "workspace_export_manifest",
   );
   const general = artifacts.filter(
-    (artifact) => !comparison.includes(artifact) && !workspaceManifests.includes(artifact)
+    (artifact) => !comparison.includes(artifact) && !workspaceManifests.includes(artifact),
   );
 
   return {
@@ -163,719 +154,580 @@ function partitionArtifacts(artifacts: GuiArtifact[]) {
   };
 }
 
+type SummaryMetric = { label: string; value: unknown };
+
+function SummaryMetrics({ items }: { items: SummaryMetric[] }) {
+  return (
+    <div className="summary-grid compact-grid">
+      {items.map((item) => (
+        <div key={item.label}>
+          <strong>{item.label}</strong>
+          <span>{String(item.value ?? "n/a")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CompactList({
+  title,
+  items,
+  render,
+}: {
+  title: string;
+  items: unknown[];
+  render?: (item: unknown) => ReactNode;
+}) {
+  if (!items.length) return null;
+  return (
+    <div className="compact-list">
+      <strong>{title}</strong>
+      <ul className="plain-list">
+        {items.slice(0, 5).map((item, index) => (
+          <li key={index}>{render ? render(item) : String(item)}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ComparisonSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
-  const comparisonRecord = data as Record<string, unknown>;
-  const summary =
-    "summary" in comparisonRecord
-      ? (comparisonRecord.summary as Record<string, unknown> | undefined)
-      : undefined;
-  const issues = Array.isArray(comparisonRecord.issues)
-    ? (comparisonRecord.issues as Array<Record<string, unknown>>)
-    : [];
-  if (!summary) {
-    return null;
-  }
-
+  if (!data || typeof data !== "object") return null;
+  const record = data as Record<string, unknown>;
+  const summary = record.summary as Record<string, unknown> | undefined;
+  if (!summary) return null;
+  const metrics = [
+    { label: "Matched", value: summary.matchedItems },
+    { label: "Different", value: summary.differentTranslation },
+    { label: "Only in self", value: summary.onlyInSelf },
+    { label: "Only in other", value: summary.onlyInOther },
+  ];
+  const issues = Array.isArray(record.issues) ? record.issues : [];
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Matched</strong>
-          <span>{String(summary.matchedItems ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Different</strong>
-          <span>{String(summary.differentTranslation ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Only in self</strong>
-          <span>{String(summary.onlyInSelf ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Only in other</strong>
-          <span>{String(summary.onlyInOther ?? "n/a")}</span>
-        </div>
-      </div>
-      {issues.length > 0 ? (
-        <div className="compact-list">
-          <strong>Issues</strong>
-          <ul className="plain-list">
-            {issues.slice(0, 5).map((issue, index) => (
-              <li key={index}>
-                {String(issue.type ?? "issue")} - {String(issue.message ?? "No message")}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      <CompactList
+        title="Issues"
+        items={issues}
+        render={(value) => {
+          const issue = value as Record<string, unknown>;
+          return `${String(issue.type ?? "issue")} - ${String(issue.message ?? "No message")}`;
+        }}
+      />
     </>
   );
 }
 
 function ReviewReportSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
+  if (!data || typeof data !== "object") return null;
   const report = data as Record<string, unknown>;
-  const scores =
-    report.scores && typeof report.scores === "object"
-      ? (report.scores as Record<string, unknown>)
-      : null;
+  const scores = report.scores && typeof report.scores === "object" ? (report.scores as Record<string, unknown>) : null;
   const findings = Array.isArray(report.findings) ? report.findings : [];
   const fixes = Array.isArray(report.suggestedFixes) ? report.suggestedFixes : [];
-
+  const metrics = [
+    { label: "Overall", value: report.overall },
+    { label: "Findings", value: findings.length },
+    { label: "Suggested fixes", value: fixes.length },
+    { label: "Consistency", value: scores?.consistency },
+  ];
+  const findingText = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return `${String(item.type ?? "finding")} - ${String(item.message ?? "No message")}`;
+  };
+  const fixText = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return `${String(item.pageName ?? "unknown page")} - ${String(item.reason ?? "Suggested fix")}`;
+  };
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Overall</strong>
-          <span>{String(report.overall ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Findings</strong>
-          <span>{String(findings.length)}</span>
-        </div>
-        <div>
-          <strong>Suggested fixes</strong>
-          <span>{String(fixes.length)}</span>
-        </div>
-        <div>
-          <strong>Consistency</strong>
-          <span>{scores ? String(scores.consistency ?? "n/a") : "n/a"}</span>
-        </div>
-      </div>
-      {findings.length > 0 ? (
-        <div className="compact-list">
-          <strong>Top findings</strong>
-          <ul className="plain-list">
-            {findings.slice(0, 5).map((finding, index) => {
-              const entry = finding as Record<string, unknown>;
-              return (
-                <li key={index}>
-                  {String(entry.type ?? "finding")} - {String(entry.message ?? "No message")}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-      {fixes.length > 0 ? (
-        <div className="compact-list">
-          <strong>Top suggested fixes</strong>
-          <ul className="plain-list">
-            {fixes.slice(0, 5).map((fix, index) => {
-              const entry = fix as Record<string, unknown>;
-              return (
-                <li key={index}>
-                  {String(entry.pageName ?? "unknown page")} - {String(entry.reason ?? "Suggested fix")}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      <CompactList title="Top findings" items={findings} render={findingText} />
+      <CompactList title="Top suggested fixes" items={fixes} render={fixText} />
+    </>
+  );
+}
+
+function StyleMemorySummary({ summary }: { summary: Record<string, unknown> }) {
+  const layers = Array.isArray(summary.activeLayers) ? summary.activeLayers : [];
+  const coverage =
+    summary.coverage && typeof summary.coverage === "object" ? (summary.coverage as Record<string, unknown>) : null;
+  const metrics = [
+    { label: "Style layers", value: layers.length },
+    { label: "Preferred register", value: summary.preferredRegister },
+    { label: "Honorifics", value: formatBooleanSummary(summary.preserveHonorifics) },
+    { label: "Full-width punctuation", value: formatBooleanSummary(summary.preferFullWidth) },
+    { label: "Character voices", value: summary.characterSpeechCount ?? 0 },
+    { label: "Story anchors", value: summary.storyAnchorCount ?? 0 },
+    { label: "Dialogue examples", value: summary.dialogueExamples ?? 0 },
+    { label: "Narration examples", value: summary.narrationExamples ?? 0 },
+    { label: "Reference kind", value: summary.referenceKind },
+    { label: "Target style allowed", value: formatBooleanSummary(summary.targetStyleAllowed) },
+    { label: "Style chapters", value: coverage?.chapterCount ?? 0 },
+    { label: "Reference sets", value: coverage?.referenceSetCount ?? 0 },
+  ];
+  return (
+    <>
+      <SummaryMetrics items={metrics} />
+      <CompactList title="Active style layers" items={layers} />
     </>
   );
 }
 
 function QualityValidationSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
+  if (!data || typeof data !== "object") return null;
   const report = data as Record<string, unknown>;
   const issues = Array.isArray(report.issues) ? report.issues : [];
   const warnings = Array.isArray(report.warnings) ? report.warnings : [];
-  const passedChecks = Array.isArray(report.passedChecks) ? report.passedChecks : [];
-  const failedChecks = Array.isArray(report.failedChecks) ? report.failedChecks : [];
-  const styleMemorySummary =
+  const passed = Array.isArray(report.passedChecks) ? report.passedChecks : [];
+  const failed = Array.isArray(report.failedChecks) ? report.failedChecks : [];
+  const style =
     report.styleMemorySummary && typeof report.styleMemorySummary === "object"
       ? (report.styleMemorySummary as Record<string, unknown>)
       : null;
-  const activeLayers = Array.isArray(styleMemorySummary?.activeLayers)
-    ? styleMemorySummary.activeLayers
-    : [];
-  const coverage =
-    styleMemorySummary?.coverage && typeof styleMemorySummary.coverage === "object"
-      ? (styleMemorySummary.coverage as Record<string, unknown>)
-      : null;
-
+  const metrics = [
+    { label: "Overall", value: report.overall },
+    { label: "Score", value: report.score },
+    { label: "Issues", value: issues.length },
+    { label: "Warnings", value: warnings.length },
+  ];
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Overall</strong>
-          <span>{String(report.overall ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Score</strong>
-          <span>{String(report.score ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Issues</strong>
-          <span>{String(issues.length)}</span>
-        </div>
-        <div>
-          <strong>Warnings</strong>
-          <span>{String(warnings.length)}</span>
-        </div>
-      </div>
-      {styleMemorySummary ? (
-        <>
-          <div className="summary-grid compact-grid">
-            <div>
-              <strong>Style layers</strong>
-              <span>{String(activeLayers.length)}</span>
-            </div>
-            <div>
-              <strong>Preferred register</strong>
-              <span>{String(styleMemorySummary.preferredRegister ?? "n/a")}</span>
-            </div>
-            <div>
-              <strong>Honorifics</strong>
-              <span>{formatBooleanSummary(styleMemorySummary.preserveHonorifics)}</span>
-            </div>
-            <div>
-              <strong>Full-width punctuation</strong>
-              <span>{formatBooleanSummary(styleMemorySummary.preferFullWidth)}</span>
-            </div>
-            <div>
-              <strong>Character voices</strong>
-              <span>{String(styleMemorySummary.characterSpeechCount ?? 0)}</span>
-            </div>
-            <div>
-              <strong>Story anchors</strong>
-              <span>{String(styleMemorySummary.storyAnchorCount ?? 0)}</span>
-            </div>
-            <div>
-              <strong>Dialogue examples</strong>
-              <span>{String(styleMemorySummary.dialogueExamples ?? 0)}</span>
-            </div>
-            <div>
-              <strong>Narration examples</strong>
-              <span>{String(styleMemorySummary.narrationExamples ?? 0)}</span>
-            </div>
-            <div>
-              <strong>Reference kind</strong>
-              <span>{String(styleMemorySummary.referenceKind ?? "n/a")}</span>
-            </div>
-            <div>
-              <strong>Target style allowed</strong>
-              <span>{formatBooleanSummary(styleMemorySummary.targetStyleAllowed)}</span>
-            </div>
-            <div>
-              <strong>Style chapters</strong>
-              <span>{String(coverage?.chapterCount ?? 0)}</span>
-            </div>
-            <div>
-              <strong>Reference sets</strong>
-              <span>{String(coverage?.referenceSetCount ?? 0)}</span>
-            </div>
-          </div>
-          {activeLayers.length > 0 ? (
-            <div className="compact-list">
-              <strong>Active style layers</strong>
-              <ul className="plain-list">
-                {activeLayers.map((layer, index) => (
-                  <li key={index}>{String(layer)}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-      {failedChecks.length > 0 ? (
-        <div className="compact-list">
-          <strong>Failed checks</strong>
-          <ul className="plain-list">
-            {failedChecks.slice(0, 5).map((check, index) => (
-              <li key={index}>{String(check)}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-      {passedChecks.length > 0 ? (
-        <div className="compact-list">
-          <strong>Passed checks</strong>
-          <ul className="plain-list">
-            {passedChecks.slice(0, 5).map((check, index) => (
-              <li key={index}>{String(check)}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      {style ? <StyleMemorySummary summary={style} /> : null}
+      <CompactList title="Failed checks" items={failed} />
+      <CompactList title="Passed checks" items={passed} />
     </>
   );
 }
 
 function ManifestSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
-
+  if (!data || typeof data !== "object") return null;
   const manifest = data as Record<string, unknown>;
   const accepted = Array.isArray(manifest.accepted) ? manifest.accepted : [];
   const rejected = Array.isArray(manifest.rejected) ? manifest.rejected : [];
   const inputs = Array.isArray(manifest.inputs) ? manifest.inputs : [];
-
+  const metrics = [
+    { label: "Stage", value: manifest.stage },
+    { label: "Task type", value: manifest.taskType },
+    { label: "Accepted", value: accepted.length },
+    { label: "Rejected", value: rejected.length },
+    ...(inputs.length ? [{ label: "Inputs", value: inputs.length }] : []),
+  ];
+  const outputName = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return String(item.file ?? item.path ?? "output");
+  };
+  const rejection = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return `${String(item.file ?? "output")} - ${String(item.reason ?? "Rejected")}`;
+  };
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Stage</strong>
-          <span>{String(manifest.stage ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Task type</strong>
-          <span>{String(manifest.taskType ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Accepted</strong>
-          <span>{String(accepted.length)}</span>
-        </div>
-        <div>
-          <strong>Rejected</strong>
-          <span>{String(rejected.length)}</span>
-        </div>
-        {inputs.length > 0 ? (
-          <div>
-            <strong>Inputs</strong>
-            <span>{String(inputs.length)}</span>
-          </div>
-        ) : null}
-      </div>
-      {accepted.length > 0 ? (
-        <div className="compact-list">
-          <strong>Accepted outputs</strong>
-          <ul className="plain-list">
-            {accepted.slice(0, 5).map((entry, index) => {
-              const item = entry as Record<string, unknown>;
-              return <li key={index}>{String(item.file ?? item.path ?? "output")}</li>;
-            })}
-          </ul>
-        </div>
-      ) : null}
-      {rejected.length > 0 ? (
-        <div className="compact-list">
-          <strong>Rejected outputs</strong>
-          <ul className="plain-list">
-            {rejected.slice(0, 5).map((entry, index) => {
-              const item = entry as Record<string, unknown>;
-              return (
-                <li key={index}>
-                  {String(item.file ?? "output")} - {String(item.reason ?? "Rejected")}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      <CompactList title="Accepted outputs" items={accepted} render={outputName} />
+      <CompactList title="Rejected outputs" items={rejected} render={rejection} />
     </>
   );
 }
 
 function GlossarySummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
+  if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
   const terms = Array.isArray(record.terms) ? record.terms : [];
   const locked = terms.filter(
-    (entry) => entry && typeof entry === "object" && (entry as Record<string, unknown>).locked === true
+    (entry) => entry && typeof entry === "object" && (entry as Record<string, unknown>).locked === true,
   );
-
+  const termText = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return (
+      <>
+        {String(item.source_term ?? item.term ?? "term")} {"->"}{" "}
+        {String(item.canonical_translation ?? item.translation ?? "n/a")}
+      </>
+    );
+  };
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Total terms</strong>
-          <span>{String(terms.length)}</span>
-        </div>
-        <div>
-          <strong>Locked terms</strong>
-          <span>{String(locked.length)}</span>
-        </div>
-      </div>
-      {terms.length > 0 ? (
-        <div className="compact-list">
-          <strong>Top terms</strong>
-          <ul className="plain-list">
-            {terms.slice(0, 5).map((entry, index) => {
-              const item = entry as Record<string, unknown>;
-              return (
-                <li key={index}>
-                  {String(item.source_term ?? item.term ?? "term")} {"->"}{" "}
-                  {String(item.canonical_translation ?? item.translation ?? "n/a")}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics
+        items={[
+          { label: "Total terms", value: terms.length },
+          { label: "Locked terms", value: locked.length },
+        ]}
+      />
+      <CompactList title="Top terms" items={terms} render={termText} />
     </>
   );
 }
 
 function StoryContextSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
+  if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
   const chapters = Array.isArray(record.chapters) ? record.chapters : [];
   const relationships = Array.isArray(record.relationships) ? record.relationships : [];
   const events = Array.isArray(record.events) ? record.events : [];
-
+  const chapterText = (value: unknown) => {
+    const item = value as Record<string, unknown>;
+    return `${String(item.chapterId ?? item.id ?? "chapter")} - ${String(item.summary ?? "No summary")}`;
+  };
+  const recent = chapters.slice(-3).reverse();
+  const metrics = [
+    { label: "Chapters", value: chapters.length },
+    { label: "Relationships", value: relationships.length },
+    { label: "Events", value: events.length },
+  ];
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Chapters</strong>
-          <span>{String(chapters.length)}</span>
-        </div>
-        <div>
-          <strong>Relationships</strong>
-          <span>{String(relationships.length)}</span>
-        </div>
-        <div>
-          <strong>Events</strong>
-          <span>{String(events.length)}</span>
-        </div>
-      </div>
-      {chapters.length > 0 ? (
-        <div className="compact-list">
-          <strong>Latest chapter notes</strong>
-          <ul className="plain-list">
-            {chapters.slice(-3).reverse().map((entry, index) => {
-              const item = entry as Record<string, unknown>;
-              return (
-                <li key={index}>
-                  {String(item.chapterId ?? item.id ?? "chapter")} - {String(item.summary ?? "No summary")}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      <CompactList title="Latest chapter notes" items={recent} render={chapterText} />
     </>
   );
 }
 
 function StyleProfileSummaryCard({ data }: { data: unknown }) {
-  if (!data || typeof data !== "object") {
-    return null;
-  }
+  if (!data || typeof data !== "object") return null;
   const record = data as Record<string, unknown>;
   const notes = Array.isArray(record.notes) ? record.notes : [];
-  const honorificPolicy = Array.isArray(record.honorific_policy) ? record.honorific_policy : [];
-  const punctuationPolicy = Array.isArray(record.punctuation_policy) ? record.punctuation_policy : [];
-
+  const honorifics = Array.isArray(record.honorific_policy) ? record.honorific_policy : [];
+  const punctuation = Array.isArray(record.punctuation_policy) ? record.punctuation_policy : [];
+  const metrics = [
+    { label: "Tone", value: record.tone },
+    { label: "Register", value: record.register },
+    { label: "Honorific rules", value: honorifics.length },
+    { label: "Punctuation rules", value: punctuation.length },
+  ];
   return (
     <>
-      <div className="summary-grid compact-grid">
-        <div>
-          <strong>Tone</strong>
-          <span>{String(record.tone ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Register</strong>
-          <span>{String(record.register ?? "n/a")}</span>
-        </div>
-        <div>
-          <strong>Honorific rules</strong>
-          <span>{String(honorificPolicy.length)}</span>
-        </div>
-        <div>
-          <strong>Punctuation rules</strong>
-          <span>{String(punctuationPolicy.length)}</span>
-        </div>
-      </div>
-      {notes.length > 0 ? (
-        <div className="compact-list">
-          <strong>Notes</strong>
-          <ul className="plain-list">
-            {notes.slice(0, 5).map((note, index) => (
-              <li key={index}>{String(note)}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <SummaryMetrics items={metrics} />
+      <CompactList title="Notes" items={notes} />
     </>
   );
 }
 
-export function ArtifactsContent({ embedded = false }: { embedded?: boolean }) {
-  const selectedJobId = useUiStore((state) => state.selectedJobId);
-  const selectedMangaId = useUiStore((state) => state.selectedMangaId);
-  const selectedTranslatorId = useUiStore((state) => state.selectedTranslatorId);
-  const setSelectedMangaId = useUiStore((state) => state.setSelectedMangaId);
-  const setSelectedTranslatorId = useUiStore((state) => state.setSelectedTranslatorId);
+function ArtifactPreviewSummary({
+  previewArtifact,
+  previewData,
+}: {
+  previewArtifact: GuiArtifact | null;
+  previewData: unknown;
+}) {
+  if (!previewArtifact || !previewData) return null;
+  if (previewArtifact.kind === "comparison_self_vs_other") return <ComparisonSummaryCard data={previewData} />;
+  if (previewArtifact.kind === "quality_validation_report") return <QualityValidationSummaryCard data={previewData} />;
+  if (previewArtifact.kind === "comparison_review_report") return <ReviewReportSummaryCard data={previewData} />;
+  if (previewArtifact.kind === "workspace_import_manifest" || previewArtifact.kind === "workspace_export_manifest")
+    return <ManifestSummaryCard data={previewData} />;
+  return null;
+}
+
+function useSyncSelectedId(payloadValue: unknown, override: string, setter: (value: string | null) => void) {
+  useEffect(() => {
+    if (!override.trim() && typeof payloadValue === "string" && payloadValue.trim()) setter(payloadValue);
+  }, [override, payloadValue, setter]);
+}
+
+function useArtifactStoreContext() {
+  return {
+    selectedJobId: useUiStore((state) => state.selectedJobId),
+    selectedMangaId: useUiStore((state) => state.selectedMangaId),
+    selectedTranslatorId: useUiStore((state) => state.selectedTranslatorId),
+    setSelectedMangaId: useUiStore((state) => state.setSelectedMangaId),
+    setSelectedTranslatorId: useUiStore((state) => state.setSelectedTranslatorId),
+  };
+}
+
+function resolveArtifactIds(
+  payload: Record<string, unknown> | undefined,
+  mangaInput: string,
+  translatorInput: string,
+  store: ReturnType<typeof useArtifactStoreContext>,
+) {
+  return {
+    mangaId:
+      mangaInput.trim() ||
+      store.selectedMangaId?.trim() ||
+      (typeof payload?.mangaId === "string" ? payload.mangaId : ""),
+    translatorId:
+      translatorInput.trim() ||
+      store.selectedTranslatorId?.trim() ||
+      (typeof payload?.translatorId === "string" ? payload.translatorId : ""),
+  };
+}
+
+function useArtifactSelection() {
+  const store = useArtifactStoreContext();
   const [mangaIdInput, setMangaIdInput] = useState("");
   const [translatorIdInput, setTranslatorIdInput] = useState("");
-  const [previewArtifact, setPreviewArtifact] = useState<GuiArtifact | null>(null);
-  const [previewData, setPreviewData] = useState<unknown>(null);
-  const [previewStatus, setPreviewStatus] = useState("");
-
   const jobQuery = useQuery({
-    queryKey: ["artifacts-job", selectedJobId],
-    queryFn: () => getJob(selectedJobId as string),
-    enabled: Boolean(selectedJobId),
+    queryKey: ["artifacts-job", store.selectedJobId],
+    queryFn: () => getJob(store.selectedJobId as string),
+    enabled: Boolean(store.selectedJobId),
   });
+  useSyncSelectedId(jobQuery.data?.payload?.mangaId, mangaIdInput, store.setSelectedMangaId);
+  useSyncSelectedId(jobQuery.data?.payload?.translatorId, translatorIdInput, store.setSelectedTranslatorId);
+  const { mangaId, translatorId } = resolveArtifactIds(jobQuery.data?.payload, mangaIdInput, translatorIdInput, store);
+  return {
+    selectedJobId: store.selectedJobId,
+    mangaId,
+    translatorId,
+    mangaIdInput,
+    translatorIdInput,
+    setMangaIdInput,
+    setTranslatorIdInput,
+    setSelectedMangaId: store.setSelectedMangaId,
+    setSelectedTranslatorId: store.setSelectedTranslatorId,
+  };
+}
 
-  const artifactsQuery = useQuery({
+function useArtifactData(selectedJobId: string | null) {
+  const query = useQuery({
     queryKey: ["artifacts-list", selectedJobId],
     queryFn: () => getJobArtifacts(selectedJobId as string),
     enabled: Boolean(selectedJobId),
   });
+  const partitioned = useMemo(() => partitionArtifacts(query.data?.artifacts || []), [query.data?.artifacts]);
+  return { query, partitioned };
+}
 
-  useEffect(() => {
-    const payloadMangaId = jobQuery.data?.payload?.mangaId;
-    if (!mangaIdInput.trim() && typeof payloadMangaId === "string" && payloadMangaId.trim()) {
-      setSelectedMangaId(payloadMangaId);
-    }
-  }, [jobQuery.data?.payload, mangaIdInput, setSelectedMangaId]);
-
-  useEffect(() => {
-    const payloadTranslatorId = jobQuery.data?.payload?.translatorId;
-    if (
-      !translatorIdInput.trim() &&
-      typeof payloadTranslatorId === "string" &&
-      payloadTranslatorId.trim()
-    ) {
-      setSelectedTranslatorId(payloadTranslatorId);
-    }
-  }, [jobQuery.data?.payload, setSelectedTranslatorId, translatorIdInput]);
-
-  const effectiveMangaId = useMemo(() => {
-    const explicit = mangaIdInput.trim();
-    if (explicit) {
-      return explicit;
-    }
-    if (selectedMangaId?.trim()) {
-      return selectedMangaId.trim();
-    }
-    const payloadMangaId = jobQuery.data?.payload?.mangaId;
-    return typeof payloadMangaId === "string" ? payloadMangaId : "";
-  }, [jobQuery.data?.payload, mangaIdInput, selectedMangaId]);
-
-  const effectiveTranslatorId = useMemo(() => {
-    const explicit = translatorIdInput.trim();
-    if (explicit) {
-      return explicit;
-    }
-    if (selectedTranslatorId?.trim()) {
-      return selectedTranslatorId.trim();
-    }
-    const payloadTranslatorId = jobQuery.data?.payload?.translatorId;
-    return typeof payloadTranslatorId === "string" ? payloadTranslatorId : "";
-  }, [jobQuery.data?.payload, selectedTranslatorId, translatorIdInput]);
-
-  const glossaryQuery = useQuery({
-    queryKey: ["glossary", effectiveMangaId, effectiveTranslatorId],
-    queryFn: () => getGlossary(effectiveMangaId, effectiveTranslatorId || null),
-    enabled: Boolean(effectiveMangaId),
+function useKnowledgeData(mangaId: string, translatorId: string) {
+  const glossary = useQuery({
+    queryKey: ["glossary", mangaId, translatorId],
+    queryFn: () => getGlossary(mangaId, translatorId || null),
+    enabled: Boolean(mangaId),
   });
-
-  const storyContextQuery = useQuery({
-    queryKey: ["story-context", effectiveMangaId, effectiveTranslatorId],
-    queryFn: () => getStoryContext(effectiveMangaId, effectiveTranslatorId || null),
-    enabled: Boolean(effectiveMangaId),
+  const story = useQuery({
+    queryKey: ["story-context", mangaId, translatorId],
+    queryFn: () => getStoryContext(mangaId, translatorId || null),
+    enabled: Boolean(mangaId),
   });
-
-  const styleProfileQuery = useQuery({
-    queryKey: ["style-profile", effectiveMangaId, effectiveTranslatorId],
-    queryFn: () => getStyleProfile(effectiveMangaId, effectiveTranslatorId || null),
-    enabled: Boolean(effectiveMangaId),
+  const style = useQuery({
+    queryKey: ["style-profile", mangaId, translatorId],
+    queryFn: () => getStyleProfile(mangaId, translatorId || null),
+    enabled: Boolean(mangaId),
   });
+  return { glossary, story, style };
+}
 
-  const partitionedArtifacts = useMemo(
-    () => partitionArtifacts(artifactsQuery.data?.artifacts || []),
-    [artifactsQuery.data?.artifacts]
-  );
-
-  const handlePreview = async (artifact: GuiArtifact) => {
+function useArtifactPreview() {
+  const [artifact, setArtifact] = useState<GuiArtifact | null>(null);
+  const [data, setData] = useState<unknown>(null);
+  const [status, setStatus] = useState("");
+  const preview = async (nextArtifact: GuiArtifact) => {
     try {
-      setPreviewArtifact(artifact);
-      setPreviewStatus("Loading preview...");
-      const preview = await readJsonFile(artifact.path);
-      setPreviewData(preview.data);
-      setPreviewStatus("Preview loaded.");
+      setArtifact(nextArtifact);
+      setStatus("Loading preview...");
+      const result = await readJsonFile(nextArtifact.path);
+      setData(result.data);
+      setStatus("Preview loaded.");
     } catch (error) {
-      setPreviewData(null);
-      setPreviewStatus(
-        error instanceof Error ? `Failed to load preview: ${error.message}` : "Failed to load preview."
-      );
+      setData(null);
+      setStatus(error instanceof Error ? `Failed to load preview: ${error.message}` : "Failed to load preview.");
     }
   };
+  return { artifact, data, status, preview };
+}
 
-  const previewSummary = useMemo(() => {
-    if (!previewArtifact || !previewData) {
-      return null;
-    }
+function OverrideField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="standalone-field">
+      <span>{label}</span>
+      <input value={value} onChange={(event) => onChange(event.currentTarget.value)} />
+    </label>
+  );
+}
 
-    if (previewArtifact.kind === "comparison_self_vs_other") {
-      return <ComparisonSummaryCard data={previewData} />;
-    }
-    if (previewArtifact.kind === "quality_validation_report") {
-      return <QualityValidationSummaryCard data={previewData} />;
-    }
-    if (previewArtifact.kind === "comparison_review_report") {
-      return <ReviewReportSummaryCard data={previewData} />;
-    }
-    if (
-      previewArtifact.kind === "workspace_import_manifest" ||
-      previewArtifact.kind === "workspace_export_manifest"
-    ) {
-      return <ManifestSummaryCard data={previewData} />;
-    }
-    return null;
-  }, [previewArtifact, previewData]);
+function ArtifactContextSummary({ selection }: { selection: ReturnType<typeof useArtifactSelection> }) {
+  return (
+    <div className="summary-grid">
+      <div>
+        <strong>Selected job</strong>
+        <span>{selection.selectedJobId ?? "Not selected"}</span>
+      </div>
+      <div>
+        <strong>Resolved mangaId</strong>
+        <span>{selection.mangaId || "Not set"}</span>
+      </div>
+      <div>
+        <strong>Resolved translatorId</strong>
+        <span>{selection.translatorId || "Not set"}</span>
+      </div>
+    </div>
+  );
+}
 
+function ArtifactContextCard({
+  embedded,
+  selection,
+}: {
+  embedded: boolean;
+  selection: ReturnType<typeof useArtifactSelection>;
+}) {
+  const updateManga = (value: string) => {
+    selection.setMangaIdInput(value);
+    selection.setSelectedMangaId(value.trim() || null);
+  };
+  const updateTranslator = (value: string) => {
+    selection.setTranslatorIdInput(value);
+    selection.setSelectedTranslatorId(value.trim() || null);
+  };
+  return (
+    <article className="card">
+      <h2>{embedded ? "Artifact context" : "Current context"}</h2>
+      <ArtifactContextSummary selection={selection} />
+      <div className="form-grid">
+        <OverrideField label="Override mangaId" value={selection.mangaIdInput} onChange={updateManga} />
+        <OverrideField label="Override translatorId" value={selection.translatorIdInput} onChange={updateTranslator} />
+      </div>
+    </article>
+  );
+}
+
+function ArtifactQueryState({ data }: { data: ReturnType<typeof useArtifactData> }) {
+  if (data.query.isLoading)
+    return (
+      <article className="card">
+        <h2>Selected job artifacts</h2>
+        <p>Loading artifacts...</p>
+      </article>
+    );
+  if (data.query.isError)
+    return (
+      <article className="card">
+        <h2>Selected job artifacts</h2>
+        <p className="error-text">Failed to load artifacts.</p>
+      </article>
+    );
+  return null;
+}
+
+function SelectedJobArtifacts({
+  selectedJobId,
+  data,
+  onPreview,
+}: {
+  selectedJobId: string | null;
+  data: ReturnType<typeof useArtifactData>;
+  onPreview: (artifact: GuiArtifact) => void;
+}) {
+  if (!selectedJobId) return null;
+  if (data.query.isLoading || data.query.isError) return <ArtifactQueryState data={data} />;
+  if (!data.query.data) return null;
+  return (
+    <>
+      <ArtifactList
+        artifacts={data.partitioned.comparison}
+        title="Quality and comparison reports"
+        onPreview={onPreview}
+      />
+      <ArtifactList artifacts={data.partitioned.workspaceManifests} title="Workspace manifests" onPreview={onPreview} />
+      <ArtifactList artifacts={data.partitioned.general} title="Other job artifacts" onPreview={onPreview} />
+    </>
+  );
+}
+
+function ArtifactPreviewCard({ preview }: { preview: ReturnType<typeof useArtifactPreview> }) {
+  return (
+    <article className="card">
+      <h2>Artifact preview</h2>
+      {preview.artifact ? (
+        <>
+          <div className="summary-grid">
+            <div>
+              <strong>Artifact</strong>
+              <span>{prettyArtifactKind(preview.artifact.kind)}</span>
+            </div>
+            <div>
+              <strong>Path</strong>
+              <span>{preview.artifact.path}</span>
+            </div>
+          </div>
+          <p className="muted-text">{preview.status || "Select an artifact and press Preview."}</p>
+          <ArtifactPreviewSummary previewArtifact={preview.artifact} previewData={preview.data} />
+          {preview.data ? <pre>{formatJson(preview.data)}</pre> : null}
+        </>
+      ) : (
+        <p>Select an artifact to preview.</p>
+      )}
+    </article>
+  );
+}
+
+function KnowledgeCard({
+  title,
+  mangaId,
+  loading,
+  error,
+  data,
+  summary,
+}: {
+  title: string;
+  mangaId: string;
+  loading: boolean;
+  error: boolean;
+  data: unknown;
+  summary: ReactNode;
+}) {
+  return (
+    <article className="card">
+      <h2>{title}</h2>
+      {!mangaId ? <p>Enter a mangaId, or select a job that already includes one.</p> : null}
+      {mangaId && loading ? <p>Loading {title.toLowerCase()}...</p> : null}
+      {mangaId && error ? <p className="error-text">Failed to load {title.toLowerCase()}.</p> : null}
+      {mangaId && data ? (
+        <>
+          {summary}
+          <pre>{formatJson(data)}</pre>
+        </>
+      ) : null}
+    </article>
+  );
+}
+
+function ArtifactKnowledgeCards({
+  selection,
+  knowledge,
+}: {
+  selection: ReturnType<typeof useArtifactSelection>;
+  knowledge: ReturnType<typeof useKnowledgeData>;
+}) {
+  const card = (title: string, query: typeof knowledge.glossary, summary: ReactNode) => (
+    <KnowledgeCard
+      title={title}
+      mangaId={selection.mangaId}
+      loading={query.isLoading}
+      error={query.isError}
+      data={query.data}
+      summary={summary}
+    />
+  );
+  return (
+    <>
+      {card("Local glossary", knowledge.glossary, <GlossarySummaryCard data={knowledge.glossary.data} />)}
+      {card("Story context", knowledge.story, <StoryContextSummaryCard data={knowledge.story.data} />)}
+      {card("Style profile", knowledge.style, <StyleProfileSummaryCard data={knowledge.style.data} />)}
+    </>
+  );
+}
+export function ArtifactsContent({ embedded = false }: { embedded?: boolean }) {
+  const selection = useArtifactSelection();
+  const artifacts = useArtifactData(selection.selectedJobId);
+  const knowledge = useKnowledgeData(selection.mangaId, selection.translatorId);
+  const preview = useArtifactPreview();
   return (
     <section className="page">
       {!embedded ? <h1>Artifacts</h1> : null}
       <div className="card-stack">
-        <article className="card">
-          <h2>{embedded ? "Artifact context" : "Current context"}</h2>
-          <div className="summary-grid">
-            <div>
-              <strong>Selected job</strong>
-              <span>{selectedJobId ?? "Not selected"}</span>
-            </div>
-            <div>
-              <strong>Resolved mangaId</strong>
-              <span>{effectiveMangaId || "Not set"}</span>
-            </div>
-            <div>
-              <strong>Resolved translatorId</strong>
-              <span>{effectiveTranslatorId || "Not set"}</span>
-            </div>
-          </div>
-          <div className="form-grid">
-            <label className="standalone-field">
-              <span>Override mangaId</span>
-              <input
-                value={mangaIdInput}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setMangaIdInput(nextValue);
-                  setSelectedMangaId(nextValue.trim() || null);
-                }}
-              />
-            </label>
-            <label className="standalone-field">
-              <span>Override translatorId</span>
-              <input
-                value={translatorIdInput}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setTranslatorIdInput(nextValue);
-                  setSelectedTranslatorId(nextValue.trim() || null);
-                }}
-              />
-            </label>
-          </div>
-        </article>
-
-        {selectedJobId && artifactsQuery.isLoading ? (
-          <article className="card">
-            <h2>Selected job artifacts</h2>
-            <p>Loading artifacts...</p>
-          </article>
-        ) : null}
-
-        {selectedJobId && artifactsQuery.isError ? (
-          <article className="card">
-            <h2>Selected job artifacts</h2>
-            <p className="error-text">Failed to load artifacts.</p>
-          </article>
-        ) : null}
-
-        {selectedJobId && artifactsQuery.data ? (
-          <>
-            <ArtifactList
-              artifacts={partitionedArtifacts.comparison}
-              title="Quality and comparison reports"
-              onPreview={handlePreview}
-            />
-            <ArtifactList
-              artifacts={partitionedArtifacts.workspaceManifests}
-              title="Workspace manifests"
-              onPreview={handlePreview}
-            />
-            <ArtifactList
-              artifacts={partitionedArtifacts.general}
-              title="Other job artifacts"
-              onPreview={handlePreview}
-            />
-          </>
-        ) : null}
-
-        <article className="card">
-          <h2>Artifact preview</h2>
-          {previewArtifact ? (
-            <>
-              <div className="summary-grid">
-                <div>
-                  <strong>Artifact</strong>
-                  <span>{prettyArtifactKind(previewArtifact.kind)}</span>
-                </div>
-                <div>
-                  <strong>Path</strong>
-                  <span>{previewArtifact.path}</span>
-                </div>
-              </div>
-              <p className="muted-text">{previewStatus || "Select an artifact and press Preview."}</p>
-              {previewSummary}
-              {previewData ? <pre>{formatJson(previewData)}</pre> : null}
-            </>
-          ) : (
-            <p>Select an artifact to preview.</p>
-          )}
-        </article>
-
-        <article className="card">
-          <h2>Local glossary</h2>
-          {!effectiveMangaId ? <p>Enter a mangaId, or select a job that already includes one.</p> : null}
-          {effectiveMangaId && glossaryQuery.isLoading ? <p>Loading local glossary...</p> : null}
-          {effectiveMangaId && glossaryQuery.isError ? <p className="error-text">Failed to load local glossary.</p> : null}
-          {effectiveMangaId && glossaryQuery.data ? (
-            <>
-              <GlossarySummaryCard data={glossaryQuery.data} />
-              <pre>{formatJson(glossaryQuery.data)}</pre>
-            </>
-          ) : null}
-        </article>
-
-        <article className="card">
-          <h2>Story context</h2>
-          {!effectiveMangaId ? <p>Enter a mangaId, or select a job that already includes one.</p> : null}
-          {effectiveMangaId && storyContextQuery.isLoading ? <p>Loading story context...</p> : null}
-          {effectiveMangaId && storyContextQuery.isError ? <p className="error-text">Failed to load story context.</p> : null}
-          {effectiveMangaId && storyContextQuery.data ? (
-            <>
-              <StoryContextSummaryCard data={storyContextQuery.data} />
-              <pre>{formatJson(storyContextQuery.data)}</pre>
-            </>
-          ) : null}
-        </article>
-
-        <article className="card">
-          <h2>Style profile</h2>
-          {!effectiveMangaId ? <p>Enter a mangaId, or select a job that already includes one.</p> : null}
-          {effectiveMangaId && styleProfileQuery.isLoading ? <p>Loading style profile...</p> : null}
-          {effectiveMangaId && styleProfileQuery.isError ? <p className="error-text">Failed to load style profile.</p> : null}
-          {effectiveMangaId && styleProfileQuery.data ? (
-            <>
-              <StyleProfileSummaryCard data={styleProfileQuery.data} />
-              <pre>{formatJson(styleProfileQuery.data)}</pre>
-            </>
-          ) : null}
-        </article>
+        <ArtifactContextCard embedded={embedded} selection={selection} />
+        <SelectedJobArtifacts selectedJobId={selection.selectedJobId} data={artifacts} onPreview={preview.preview} />
+        <ArtifactPreviewCard preview={preview} />
+        <ArtifactKnowledgeCards selection={selection} knowledge={knowledge} />
       </div>
     </section>
   );

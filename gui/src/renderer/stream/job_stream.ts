@@ -26,9 +26,13 @@ type JobsStreamEvent = {
   createdAt?: string;
 };
 
+function normalizeKind(kind: unknown): JobsStreamEvent["kind"] {
+  return kind === "job" || kind === "system" || kind === "snapshot" ? kind : undefined;
+}
+
 function normalizeStreamPayload(
   rawType: string,
-  data: string
+  data: string,
 ): {
   type: string;
   payload: unknown;
@@ -44,10 +48,7 @@ function normalizeStreamPayload(
       payload: parsed.payload,
       createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : new Date().toISOString(),
       job: parsed.job,
-      kind:
-        parsed.kind === "job" || parsed.kind === "system" || parsed.kind === "snapshot"
-          ? parsed.kind
-          : undefined,
+      kind: normalizeKind(parsed.kind),
       jobs: parsed.jobs,
     };
   }

@@ -24,5 +24,11 @@ const LANGUAGE_ALIASES = new Map<string, string>([
 ]);
 
 export function normalizeReferenceLanguage(value: string | null | undefined) {
-  return LANGUAGE_ALIASES.get(String(value || "").trim().toLowerCase()) || DEFAULT_REFERENCE_LANGUAGE;
+  return (
+    LANGUAGE_ALIASES.get(
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    ) || DEFAULT_REFERENCE_LANGUAGE
+  );
 }

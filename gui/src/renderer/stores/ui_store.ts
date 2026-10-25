@@ -20,16 +20,12 @@ export const useUiStore = create<UiState>((set) => ({
   selectedJobId: null,
   selectedMangaId: null,
   selectedTranslatorId: null,
-  markHydrated: () =>
-    set((state) => (state.hydrated ? state : { hydrated: true })),
-  setSelectedPage: (selectedPage) =>
-    set((state) => (state.selectedPage === selectedPage ? state : { selectedPage })),
+  markHydrated: () => set((state) => (state.hydrated ? state : { hydrated: true })),
+  setSelectedPage: (selectedPage) => set((state) => (state.selectedPage === selectedPage ? state : { selectedPage })),
   setSelectedJobId: (selectedJobId) =>
     set((state) => (state.selectedJobId === selectedJobId ? state : { selectedJobId })),
   setSelectedMangaId: (selectedMangaId) =>
     set((state) => (state.selectedMangaId === selectedMangaId ? state : { selectedMangaId })),
   setSelectedTranslatorId: (selectedTranslatorId) =>
-    set((state) =>
-      state.selectedTranslatorId === selectedTranslatorId ? state : { selectedTranslatorId }
-    ),
+    set((state) => (state.selectedTranslatorId === selectedTranslatorId ? state : { selectedTranslatorId })),
 }));

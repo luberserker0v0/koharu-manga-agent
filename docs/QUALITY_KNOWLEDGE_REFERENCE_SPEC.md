@@ -75,7 +75,7 @@ Its job is to accumulate:
 - extract `translation_pairs`
 - merge new chapter/project evidence into manga-scoped memory
 - preserve provenance by `mangaId`, `chapterId`, and source project
-- optionally enrich with high-level Agent SDK inference
+- optionally enrich with high-level AO HTTP inference over backend-owned evidence
 
 `knowledge` should not:
 - act as a quality gate

@@ -28,23 +28,14 @@ const { createApiServer } = require("./http/server/api_server");
 const { startCleanupScheduler } = require("./domains/maintenance/cleanup_service");
 
 function applyKoharuRuntimeStatus(runtime, status) {
-  if (!status?.baseUrl) {
-    return status;
-  }
-  config.api = {
-    ...(config.api || {}),
-    baseUrl: status.baseUrl,
-  };
-  if (runtime?.client) {
-    runtime.client.defaultBaseUrl = status.baseUrl;
-  }
-  if (runtime?.extractionReviewService) {
-    runtime.extractionReviewService.baseUrl = status.baseUrl;
-  }
+  if (!status?.baseUrl) return status;
+  config.api = { ...(config.api || {}), baseUrl: status.baseUrl };
+  if (runtime?.client) runtime.client.defaultBaseUrl = status.baseUrl;
+  if (runtime?.extractionReviewService) runtime.extractionReviewService.baseUrl = status.baseUrl;
   return status;
 }
 
-function createRuntime(overrides = {}) {
+function createRuntimeBaseContext(overrides) {
   const client = overrides.client || new KoharuClient();
   const aoClient =
     overrides.aoClient ||
@@ -58,44 +49,71 @@ function createRuntime(overrides = {}) {
   const store = overrides.store || new JobStore(paths.database);
   const host = overrides.host ?? runtime.host;
   const port = overrides.port ?? runtime.port;
-  const pipelineMonitor =
-    overrides.pipelineMonitor || new PipelineMonitorModule(client);
-  const sourcePreflightModule =
-    overrides.sourcePreflightModule || new SourcePreflightModule();
-  const postEditWorkspaceModule =
-    overrides.postEditWorkspaceModule || new PostEditWorkspaceModule();
-  const uploadService = overrides.uploadService || new UploadService({
-    maxFileBytes: config.server?.maxUploadFileBytes,
-    maxFiles: config.server?.maxUploadFiles,
-  });
-  const translatedImageService = overrides.translatedImageService || new TranslatedImageService({
-    maxFileBytes: config.server?.maxTranslatedImageBytes,
-    maxFiles: config.server?.maxTranslatedImageFiles,
-    maxTotalBytes: config.server?.maxTranslatedImagesTotalBytes,
-  });
-  const translationPublicationService =
-    overrides.translationPublicationService || new TranslationPublicationService();
-  const pageRevisionService = overrides.pageRevisionService || new PageRevisionService({
-    store,
-    translatedImageService,
-    sourcePreflightModule,
-  });
+  return { client, aoClient, aoTaskRunner, store, host, port, overrides };
+}
+
+function createFileServices(ctx) {
+  const { store, overrides } = ctx;
+  const sourcePreflightModule = overrides.sourcePreflightModule || new SourcePreflightModule();
+  const postEditWorkspaceModule = overrides.postEditWorkspaceModule || new PostEditWorkspaceModule();
+  const uploadService =
+    overrides.uploadService ||
+    new UploadService({
+      maxFileBytes: config.server?.maxUploadFileBytes,
+      maxFiles: config.server?.maxUploadFiles,
+    });
+  const translatedImageService =
+    overrides.translatedImageService ||
+    new TranslatedImageService({
+      maxFileBytes: config.server?.maxTranslatedImageBytes,
+      maxFiles: config.server?.maxTranslatedImageFiles,
+      maxTotalBytes: config.server?.maxTranslatedImagesTotalBytes,
+    });
+  const translationPublicationService = overrides.translationPublicationService || new TranslationPublicationService();
+  const pageRevisionService =
+    overrides.pageRevisionService ||
+    new PageRevisionService({
+      store,
+      translatedImageService,
+      sourcePreflightModule,
+    });
+  return { sourcePreflightModule, postEditWorkspaceModule, uploadService,
+    translatedImageService, translationPublicationService, pageRevisionService };
+}
+
+function createKoharuServices(ctx) {
+  const { client, overrides } = ctx;
   const koharuRuntimeManager =
     overrides.koharuRuntimeManager ||
     new KoharuRuntimeManager({
       config: config.koharuRuntime || {},
       installRoot: paths.koharuRuntimeInstallRoot,
     });
+  const pipelineMonitor = overrides.pipelineMonitor || new PipelineMonitorModule(client);
+  return { koharuRuntimeManager, pipelineMonitor };
+}
 
-  const engine = overrides.engine || new WorkflowEngine({
+function createRuntimeModules(ctx) {
+  Object.assign(ctx, createFileServices(ctx), createKoharuServices(ctx));
+}
+
+function workflowEngineOptions(ctx) {
+  const {
+    client,
+    aoTaskRunner,
+    pipelineMonitor,
+    sourcePreflightModule,
+    postEditWorkspaceModule,
+    store,
+    translationPublicationService,
+    overrides,
+  } = ctx;
+  return {
     sourcePreflightModule,
     projectSetup: overrides.projectSetup || new ProjectSetupModule(),
     pipelineMonitor,
-    referenceExtractionModule:
-      overrides.referenceExtractionModule ||
-      new ReferenceExtractionModule(client, pipelineMonitor),
-    referenceIngestionModule:
-      overrides.referenceIngestionModule || new ReferenceIngestionModule(aoTaskRunner),
+    referenceExtractionModule: overrides.referenceExtractionModule || new ReferenceExtractionModule(client, pipelineMonitor),
+    referenceIngestionModule: overrides.referenceIngestionModule || new ReferenceIngestionModule(aoTaskRunner),
     referenceBilingualEnrichmentModule:
       overrides.referenceBilingualEnrichmentModule || new ReferenceBilingualEnrichmentModule(aoTaskRunner),
     qualityModule: overrides.qualityModule || new QualityModule(client, aoTaskRunner),
@@ -103,88 +121,133 @@ function createRuntime(overrides = {}) {
     translationDeepAuditModule: overrides.translationDeepAuditModule || new TranslationDeepAuditModule(aoTaskRunner),
     exportModule: overrides.exportModule || new ExportModule(client),
     projectLifecycle: overrides.projectLifecycle || new ProjectLifecycleModule(client),
-    postEditWorkspaceModule,
-    jobStore: store,
-    translationPublicationService,
-  });
+    postEditWorkspaceModule, jobStore: store, translationPublicationService,
+  };
+}
 
-  const jobManager = overrides.jobManager || new JobManager({
-    store,
-    engine,
-    runtimeConfig: { ...runtime, host, port },
-    resolvedConfig: config,
-    koharuRuntimeManager,
-    aoClient,
-    pageRevisionService,
-  });
+function createRuntimeEngine(ctx) {
+  ctx.engine = ctx.overrides.engine || new WorkflowEngine(workflowEngineOptions(ctx));
+}
+
+function createRuntimeJobManager(ctx) {
+  const { store, engine, koharuRuntimeManager, aoClient, pageRevisionService, host, port, overrides } = ctx;
+  const jobManager =
+    overrides.jobManager ||
+    new JobManager({
+      store,
+      engine,
+      runtimeConfig: { ...runtime, host, port },
+      resolvedConfig: config,
+      koharuRuntimeManager,
+      aoClient,
+      pageRevisionService,
+    });
+  ctx.jobManager = jobManager;
+}
+
+function createRuntimeServices(ctx) {
+  const { client, jobManager, overrides } = ctx;
   const extractionReviewService =
     overrides.extractionReviewService ||
-    new ReferenceExtractionReviewService({ client, jobManager, baseUrl: config.api.baseUrl });
+    new ReferenceExtractionReviewService({
+      client,
+      jobManager,
+      baseUrl: config.api.baseUrl,
+    });
+  const configService =
+    overrides.configService ||
+    new ConfigService({
+      effectiveConfig: config,
+      onApply(nextConfig) {
+        aoClientApply(nextConfig, ctx);
+      },
+    });
+  ctx.extractionReviewService = extractionReviewService;
+  ctx.configService = configService;
+}
 
-  const configService = overrides.configService || new ConfigService({
-    effectiveConfig: config,
-    onApply(nextConfig) {
-      aoClient.baseUrl = String(nextConfig.agent.baseUrl || "").replace(/\/+$/, "");
-      aoClient.apiKey = nextConfig.agent.apiKey || null;
-      aoClient.readyPollIntervalMs = nextConfig.agent.readyPollIntervalMs;
-      aoClient.readyTimeoutMs = nextConfig.agent.readyTimeoutMs;
-      aoTaskRunner.settings = nextConfig.agent;
-      client.defaultBaseUrl = nextConfig.api.baseUrl;
-      extractionReviewService.baseUrl = nextConfig.api.baseUrl;
-      jobManager.resolvedConfig = nextConfig;
-    },
-  });
+function aoClientApply(nextConfig, ctx) {
+  const { aoClient, aoTaskRunner, client, extractionReviewService, jobManager } = ctx;
+  aoClient.baseUrl = String(nextConfig.agent.baseUrl || "").replace(/\/+$/, "");
+  aoClient.apiKey = nextConfig.agent.apiKey || null;
+  aoClient.readyPollIntervalMs = nextConfig.agent.readyPollIntervalMs;
+  aoClient.readyTimeoutMs = nextConfig.agent.readyTimeoutMs;
+  aoTaskRunner.settings = nextConfig.agent;
+  client.defaultBaseUrl = nextConfig.api.baseUrl;
+  extractionReviewService.baseUrl = nextConfig.api.baseUrl;
+  jobManager.resolvedConfig = nextConfig;
+}
 
-  const api = createApiServer({
-    jobManager,
-    sourcePreflightModule,
-    postEditWorkspaceModule,
-    extractionReviewService,
-    uploadService,
-    translatedImageService,
-    pageRevisionService,
-    configService,
-    translationPublicationService,
-    host,
-    port,
+function apiServerOptions(ctx) {
+  return {
+    jobManager: ctx.jobManager,
+    sourcePreflightModule: ctx.sourcePreflightModule,
+    postEditWorkspaceModule: ctx.postEditWorkspaceModule,
+    extractionReviewService: ctx.extractionReviewService,
+    uploadService: ctx.uploadService,
+    translatedImageService: ctx.translatedImageService,
+    pageRevisionService: ctx.pageRevisionService,
+    configService: ctx.configService,
+    translationPublicationService: ctx.translationPublicationService,
+    host: ctx.host,
+    port: ctx.port,
     serverConfig: config.server || {},
-  });
+  };
+}
+
+function attachApiShutdown(api, ctx, cleanupTimer) {
   const closeApi = api.close.bind(api);
-  const cleanupTimer = startCleanupScheduler({
-    jobManager,
-    getConfig: () => config,
-  });
   api.close = async () => {
     try {
       if (cleanupTimer) clearInterval(cleanupTimer);
-      if (config.koharuRuntime?.stopWithBackend !== false) {
-        await koharuRuntimeManager.stopManaged();
-      }
+      if (config.koharuRuntime?.stopWithBackend !== false) await ctx.koharuRuntimeManager.stopManaged();
     } finally {
       await closeApi();
     }
   };
+  return closeApi;
+}
 
+function createRuntimeApi(ctx) {
+  const api = createApiServer(apiServerOptions(ctx));
+  const cleanupTimer = startCleanupScheduler({ jobManager: ctx.jobManager, getConfig: () => config });
+  const closeApi = attachApiShutdown(api, ctx, cleanupTimer);
+  ctx.api = api;
+  ctx.closeApi = closeApi;
+  ctx.cleanupTimer = cleanupTimer;
+}
+
+function finalizeRuntime(ctx) {
   return {
-    api,
-    jobManager,
-    engine,
-    sourcePreflightModule,
-    postEditWorkspaceModule,
-    extractionReviewService,
-    uploadService,
-    translatedImageService,
-    pageRevisionService,
-    store,
-    client,
-    aoClient,
-    aoTaskRunner,
-    configService,
-    koharuRuntimeManager,
+    api: ctx.api,
+    jobManager: ctx.jobManager,
+    engine: ctx.engine,
+    sourcePreflightModule: ctx.sourcePreflightModule,
+    postEditWorkspaceModule: ctx.postEditWorkspaceModule,
+    extractionReviewService: ctx.extractionReviewService,
+    uploadService: ctx.uploadService,
+    translatedImageService: ctx.translatedImageService,
+    pageRevisionService: ctx.pageRevisionService,
+    store: ctx.store,
+    client: ctx.client,
+    aoClient: ctx.aoClient,
+    aoTaskRunner: ctx.aoTaskRunner,
+    configService: ctx.configService,
+    koharuRuntimeManager: ctx.koharuRuntimeManager,
     applyKoharuRuntimeStatus(status) {
       return applyKoharuRuntimeStatus(this, status);
     },
   };
+}
+
+function createRuntime(overrides = {}) {
+  const ctx = createRuntimeBaseContext(overrides);
+  createRuntimeModules(ctx);
+  createRuntimeEngine(ctx);
+  createRuntimeJobManager(ctx);
+  createRuntimeServices(ctx);
+  createRuntimeApi(ctx);
+  return finalizeRuntime(ctx);
 }
 
 module.exports = {

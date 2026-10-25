@@ -8,79 +8,92 @@ import { IPC_CHANNELS } from "./channels";
 import { closeKoharuEditorWindow, openKoharuEditorWindow } from "../windows/koharu_editor_window";
 import { koharuHostProcessService } from "../services/koharu_host_process";
 
-function validateSinglePath(targetPath: string, mode: "exists" | "writable") {
-  if (!targetPath.trim()) {
-    return {
-      ok: false,
-      exists: false,
-      writable: false,
-      reason: "Path is empty.",
-    };
-  }
-
-  const exists = fs.existsSync(targetPath);
-  let writable = false;
-
-  if (exists) {
-    try {
-      fs.accessSync(targetPath, fs.constants.R_OK);
-      writable = mode === "writable" ? true : writable;
-      if (mode === "writable") {
-        fs.accessSync(targetPath, fs.constants.W_OK);
-      }
-      writable = mode === "writable";
-    } catch {
-      writable = false;
-    }
-  } else {
-    try {
-      const parentDir = path.dirname(targetPath);
-      fs.accessSync(parentDir, fs.constants.W_OK);
-      writable = true;
-    } catch {
-      writable = false;
-    }
-  }
-
-  if (!exists && mode === "exists") {
-    return {
-      ok: false,
-      exists,
-      writable,
-      reason: "Path does not exist.",
-    };
-  }
-
-  if (mode === "writable" && !writable) {
-    return {
-      ok: false,
-      exists,
-      writable,
-      reason: exists ? "Path is not writable." : "Parent directory is not writable.",
-    };
-  }
-
+function emptyPathResult() {
   return {
-    ok: true,
-    exists,
-    writable,
-    reason: "",
+    ok: false,
+    exists: false,
+    writable: false,
+    reason: "Path is empty.",
   };
 }
 
-export function registerIpcHandlers(settingsStore: SettingsStore): void {
+function existsPath(targetPath: string) {
+  return fs.existsSync(targetPath);
+}
+
+function writableExistingPath(targetPath: string, mode: "exists" | "writable") {
+  try {
+    fs.accessSync(targetPath, fs.constants.R_OK);
+    if (mode === "writable") {
+      fs.accessSync(targetPath, fs.constants.W_OK);
+    }
+    return mode === "writable";
+  } catch {
+    return false;
+  }
+}
+
+function writableMissingPath(targetPath: string) {
+  try {
+    fs.accessSync(path.dirname(targetPath), fs.constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function missingPathResult(exists: boolean, writable: boolean) {
+  return { ok: false, exists, writable, reason: "Path does not exist." };
+}
+
+function unwritablePathResult(exists: boolean, writable: boolean) {
+  return {
+    ok: false,
+    exists,
+    writable,
+    reason: exists ? "Path is not writable." : "Parent directory is not writable.",
+  };
+}
+
+function validPathResult(exists: boolean, writable: boolean) {
+  return { ok: true, exists, writable, reason: "" };
+}
+
+function validateSinglePath(targetPath: string, mode: "exists" | "writable") {
+  if (!targetPath.trim()) return emptyPathResult();
+  const exists = existsPath(targetPath);
+  const writable = exists
+    ? mode === "writable"
+      ? writableExistingPath(targetPath, mode)
+      : false
+    : writableMissingPath(targetPath);
+  if (!exists && mode === "exists") return missingPathResult(exists, writable);
+  if (mode === "writable" && !writable) return unwritablePathResult(exists, writable);
+  return validPathResult(exists, writable);
+}
+
+function registerSettingsHandlers(settingsStore: SettingsStore) {
   ipcMain.handle(IPC_CHANNELS.SETTINGS_READ, () => settingsStore.read());
   ipcMain.handle(IPC_CHANNELS.SETTINGS_WRITE, (_event, settings) => settingsStore.write(settings));
+}
+
+function registerDesktopHandlers(settingsStore: SettingsStore) {
   ipcMain.handle(IPC_CHANNELS.DESKTOP_INFO, async () => ({
     shellPaths,
     settingsFilePath: settingsStore.getFilePath(),
     backendProcess: backendProcessService.getState(),
     koharuProcess: await koharuHostProcessService.inspect(),
   }));
+}
+
+function registerOpenPathHandler() {
   ipcMain.handle(IPC_CHANNELS.OPEN_PATH, async (_event, targetPath: string) => {
     const error = await shell.openPath(targetPath);
     return { ok: !error, error: error || null };
   });
+}
+
+function registerPickFileHandler() {
   ipcMain.handle(
     IPC_CHANNELS.PICK_FILE,
     async (_event, options?: { title?: string; defaultPath?: string; extensions?: string[] }) => {
@@ -92,42 +105,48 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
       });
       if (result.canceled || result.filePaths.length === 0) return { canceled: true, path: null };
       return { canceled: false, path: result.filePaths[0] };
-    }
+    },
   );
-  ipcMain.handle(
-    IPC_CHANNELS.PICK_DIRECTORY,
-    async (_event, options?: { title?: string; defaultPath?: string }) => {
-      const result = await dialog.showOpenDialog({
-        title: options?.title || "Select directory",
-        defaultPath: options?.defaultPath || undefined,
-        properties: ["openDirectory", "createDirectory"],
-      });
-      if (result.canceled || result.filePaths.length === 0) {
-        return { canceled: true, path: null };
-      }
-      return { canceled: false, path: result.filePaths[0] };
+}
+
+function registerPickDirectoryHandler() {
+  ipcMain.handle(IPC_CHANNELS.PICK_DIRECTORY, async (_event, options?: { title?: string; defaultPath?: string }) => {
+    const result = await dialog.showOpenDialog({
+      title: options?.title || "Select directory",
+      defaultPath: options?.defaultPath || undefined,
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, path: null };
     }
-  );
+    return { canceled: false, path: result.filePaths[0] };
+  });
+}
+
+function registerKoharuHostHandlers() {
   ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STATUS, () => koharuHostProcessService.inspect());
   ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_INSTALL_START, () => koharuHostProcessService.installAndStart());
   ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_START, (_event, executablePath: string) =>
-    koharuHostProcessService.start(executablePath)
+    koharuHostProcessService.start(executablePath),
   );
   ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STOP, () => koharuHostProcessService.stopManaged());
-  ipcMain.handle(
-    IPC_CHANNELS.PICK_DIRECTORIES,
-    async (_event, options?: { title?: string; defaultPath?: string }) => {
-      const result = await dialog.showOpenDialog({
-        title: options?.title || "Select directories",
-        defaultPath: options?.defaultPath || undefined,
-        properties: ["openDirectory", "createDirectory", "multiSelections"],
-      });
-      if (result.canceled || result.filePaths.length === 0) {
-        return { canceled: true, paths: [] };
-      }
-      return { canceled: false, paths: result.filePaths };
+}
+
+function registerPickDirectoriesHandler() {
+  ipcMain.handle(IPC_CHANNELS.PICK_DIRECTORIES, async (_event, options?: { title?: string; defaultPath?: string }) => {
+    const result = await dialog.showOpenDialog({
+      title: options?.title || "Select directories",
+      defaultPath: options?.defaultPath || undefined,
+      properties: ["openDirectory", "createDirectory", "multiSelections"],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { canceled: true, paths: [] };
     }
-  );
+    return { canceled: false, paths: result.filePaths };
+  });
+}
+
+function registerConfirmDialogHandler() {
   ipcMain.handle(
     IPC_CHANNELS.CONFIRM_DIALOG,
     async (
@@ -138,7 +157,7 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
         detail?: string;
         confirmLabel?: string;
         cancelLabel?: string;
-      }
+      },
     ) => {
       const result = await dialog.showMessageBox({
         type: "warning",
@@ -150,40 +169,34 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
         message: options?.message || "Are you sure?",
         detail: options?.detail || "",
       });
-      return {
-        confirmed: result.response === 0,
-      };
-    }
+      return { confirmed: result.response === 0 };
+    },
   );
+}
+
+function registerJsonFileHandlers() {
   ipcMain.handle(IPC_CHANNELS.READ_JSON_FILE, async (_event, targetPath: string) => {
     const raw = fs.readFileSync(targetPath, "utf-8");
-    return {
-      path: targetPath,
-      data: JSON.parse(raw),
-    };
+    return { path: targetPath, data: JSON.parse(raw) };
   });
   ipcMain.handle(IPC_CHANNELS.WRITE_JSON_FILE, async (_event, targetPath: string, data: unknown) => {
     fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), "utf-8");
-    return {
-      ok: true,
-      path: targetPath,
-    };
+    return { ok: true, path: targetPath };
   });
   ipcMain.handle(IPC_CHANNELS.DELETE_PATH, async (_event, targetPath: string) => {
     fs.rmSync(targetPath, { recursive: true, force: true });
-    return {
-      ok: true,
-      path: targetPath,
-    };
+    return { ok: true, path: targetPath };
   });
-  ipcMain.handle(
-    IPC_CHANNELS.OPEN_KOHARU_EDITOR,
-    (_event, payload: { url: string; sessionId: string }) => openKoharuEditorWindow(payload)
+}
+
+function registerEditorHandlers() {
+  ipcMain.handle(IPC_CHANNELS.OPEN_KOHARU_EDITOR, (_event, payload: { url: string; sessionId: string }) =>
+    openKoharuEditorWindow(payload),
   );
-  ipcMain.handle(
-    IPC_CHANNELS.CLOSE_KOHARU_EDITOR,
-    (_event, sessionId?: string) => closeKoharuEditorWindow(sessionId)
-  );
+  ipcMain.handle(IPC_CHANNELS.CLOSE_KOHARU_EDITOR, (_event, sessionId?: string) => closeKoharuEditorWindow(sessionId));
+}
+
+function registerValidatePathsHandler() {
   ipcMain.handle(
     IPC_CHANNELS.VALIDATE_PATHS,
     (
@@ -193,26 +206,30 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
         outputFolder: string;
         referenceFolder: string;
         sourceRequired?: boolean;
-      }
+      },
     ) => ({
       sourceFolder:
         payload.sourceRequired === false && !payload.sourceFolder.trim()
-          ? {
-              ok: true,
-              exists: false,
-              writable: false,
-              reason: "",
-            }
+          ? { ok: true, exists: false, writable: false, reason: "" }
           : validateSinglePath(payload.sourceFolder, "exists"),
       outputFolder: validateSinglePath(payload.outputFolder, "writable"),
       referenceFolder: payload.referenceFolder.trim()
         ? validateSinglePath(payload.referenceFolder, "exists")
-        : {
-            ok: true,
-            exists: false,
-            writable: false,
-            reason: "",
-          },
-    })
+        : { ok: true, exists: false, writable: false, reason: "" },
+    }),
   );
+}
+
+export function registerIpcHandlers(settingsStore: SettingsStore): void {
+  registerSettingsHandlers(settingsStore);
+  registerDesktopHandlers(settingsStore);
+  registerOpenPathHandler();
+  registerPickFileHandler();
+  registerPickDirectoryHandler();
+  registerKoharuHostHandlers();
+  registerPickDirectoriesHandler();
+  registerConfirmDialogHandler();
+  registerJsonFileHandlers();
+  registerEditorHandlers();
+  registerValidatePathsHandler();
 }

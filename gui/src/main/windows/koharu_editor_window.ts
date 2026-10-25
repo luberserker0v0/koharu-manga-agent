@@ -5,21 +5,15 @@ import { getMainWindow } from "./main_window";
 let editorWindow: BrowserWindow | null = null;
 let activeSessionId: string | null = null;
 
-export async function openKoharuEditorWindow(payload: { url: string; sessionId: string }) {
-  const target = new URL(payload.url);
-  if (!/^https?:$/.test(target.protocol)) {
-    throw new Error("Koharu editor URL must use HTTP or HTTPS.");
-  }
-  if (editorWindow && !editorWindow.isDestroyed()) {
-    if (activeSessionId !== payload.sessionId) {
-      throw new Error("Another Koharu editor session is already open.");
-    }
-    editorWindow.focus();
-    return { opened: true, reused: true };
-  }
+function reuseEditor(sessionId: string) {
+  if (!editorWindow || editorWindow.isDestroyed()) return null;
+  if (activeSessionId !== sessionId) throw new Error("Another Koharu editor session is already open.");
+  editorWindow.focus();
+  return { opened: true, reused: true };
+}
 
-  activeSessionId = payload.sessionId;
-  editorWindow = new BrowserWindow({
+function createEditorWindow() {
+  return new BrowserWindow({
     parent: getMainWindow() || undefined,
     width: 1500,
     height: 1000,
@@ -34,22 +28,43 @@ export async function openKoharuEditorWindow(payload: { url: string; sessionId: 
       partition: "persist:koharu-editor",
     },
   });
-  const allowedOrigin = target.origin;
-  editorWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  editorWindow.webContents.on("will-navigate", (event, url) => {
+}
+
+function restrictNavigation(window: BrowserWindow, allowedOrigin: string) {
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.on("will-navigate", (event, url) => {
     try {
       if (new URL(url).origin !== allowedOrigin) event.preventDefault();
     } catch {
       event.preventDefault();
     }
   });
-  editorWindow.once("ready-to-show", () => editorWindow?.show());
-  editorWindow.on("closed", () => {
+}
+
+function registerWindowLifecycle(window: BrowserWindow) {
+  window.once("ready-to-show", () => window.show());
+  window.on("closed", () => {
     const sessionId = activeSessionId;
     editorWindow = null;
     activeSessionId = null;
-    getMainWindow()?.webContents.send(IPC_CHANNELS.KOHARU_EDITOR_CLOSED, { sessionId });
+    getMainWindow()?.webContents.send(IPC_CHANNELS.KOHARU_EDITOR_CLOSED, {
+      sessionId,
+    });
   });
+}
+
+export async function openKoharuEditorWindow(payload: { url: string; sessionId: string }) {
+  const target = new URL(payload.url);
+  if (!/^https?:$/.test(target.protocol)) {
+    throw new Error("Koharu editor URL must use HTTP or HTTPS.");
+  }
+  const reused = reuseEditor(payload.sessionId);
+  if (reused) return reused;
+
+  activeSessionId = payload.sessionId;
+  editorWindow = createEditorWindow();
+  restrictNavigation(editorWindow, target.origin);
+  registerWindowLifecycle(editorWindow);
   try {
     await editorWindow.loadURL(target.toString());
   } catch (error) {

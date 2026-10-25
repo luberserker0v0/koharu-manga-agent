@@ -1,12 +1,35 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createQualityRepairJob, createTranslationDeepAuditJob, createTranslationKnowledgeRetryJob, getJob, getJobArtifacts, getJobEvents, resumeJob, type GuiJob, type GuiJobEvent } from "../api/jobs";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type Dispatch,
+  type MutableRefObject,
+  type ReactNode,
+  type SetStateAction,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  createQualityRepairJob,
+  createTranslationDeepAuditJob,
+  createTranslationKnowledgeRetryJob,
+  getJob,
+  getJobArtifacts,
+  getJobEvents,
+  resumeJob,
+  type GuiArtifact,
+  type GuiJob,
+  type GuiJobEvent,
+} from "../api/jobs";
 import { ArtifactsContent } from "./ArtifactsPage";
 import { translateLiteral } from "../i18n/messages";
 import { openDesktopPath } from "../services/desktop_api";
 import { subscribeToJobStream } from "../stream/job_stream";
 import { useLanguageStore } from "../stores/language_store";
-import { useSelectedJobRuntimeStore } from "../stores/selected_job_runtime_store";
+import {
+  type StreamConnectionState,
+  useSelectedJobRuntimeStore,
+} from "../stores/selected_job_runtime_store";
 import { useUiStore } from "../stores/ui_store";
 import { formatSystemDateTime } from "../features/shared/formatters/date_time";
 import { resolveJobStageLabel } from "../features/jobs/viewmodels/job_list_viewmodel";
@@ -83,7 +106,10 @@ const TRANSLATION_WORKFLOW_STAGE_DEFS: WorkflowStageDefinition[] = [
   { key: "source_preflight", eventTypes: ["source_preflight.resolved"] },
   { key: "translation_memory", eventTypes: ["translation_memory.built"] },
   { key: "setup_project", eventTypes: ["setup.completed"] },
-  { key: "monitor_pipeline", eventTypes: ["pipeline.progress", "pipeline.completed"] },
+  {
+    key: "monitor_pipeline",
+    eventTypes: ["pipeline.progress", "pipeline.completed"],
+  },
   {
     key: "quality_review",
     eventTypes: ["quality.completed"],
@@ -92,33 +118,72 @@ const TRANSLATION_WORKFLOW_STAGE_DEFS: WorkflowStageDefinition[] = [
       (["reference_style", "local_style"].includes(String(job?.payload?.translationMode)) &&
         job?.payload?.qualityCheck !== true),
   },
-  { key: "translation_snapshot", eventTypes: ["translation_snapshot.persisted"] },
+  {
+    key: "translation_snapshot",
+    eventTypes: ["translation_snapshot.persisted"],
+  },
   { key: "export", eventTypes: ["export.completed"] },
   { key: "close_project", eventTypes: ["project.closed"] },
 ];
 
 const REFERENCE_INGESTION_STAGE_DEFS: WorkflowStageDefinition[] = [
-  { key: "reference_ingestion.memory", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.ao_start", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.terminology", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.story", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.merge", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.write", eventTypes: ["reference_ingestion.progress", "job.stage"] },
-  { key: "reference_ingestion.completed", eventTypes: ["reference_ingestion.completed"] },
+  {
+    key: "reference_ingestion.memory",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.ao_start",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.terminology",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.story",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.merge",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.write",
+    eventTypes: ["reference_ingestion.progress", "job.stage"],
+  },
+  {
+    key: "reference_ingestion.completed",
+    eventTypes: ["reference_ingestion.completed"],
+  },
 ];
 
 function workflowStageDefinitions(job: GuiJob | null): WorkflowStageDefinition[] {
   if (job?.type === "reference_extraction") {
-    return [{ key: "reference_extraction", eventTypes: ["reference_extraction.completed", "job.stage"] }];
+    return [
+      {
+        key: "reference_extraction",
+        eventTypes: ["reference_extraction.completed", "job.stage"],
+      },
+    ];
   }
   if (job?.type === "reference_ingestion") {
     return REFERENCE_INGESTION_STAGE_DEFS;
   }
   if (job?.type === "translation_knowledge_commit") {
-    return [{ key: "knowledge_build", eventTypes: ["knowledge.completed", "knowledge.failed", "job.stage"] }];
+    return [
+      {
+        key: "knowledge_build",
+        eventTypes: ["knowledge.completed", "knowledge.failed", "job.stage"],
+      },
+    ];
   }
   if (job?.type === "translation_deep_audit") {
-    return [{ key: "deep_audit", eventTypes: ["deep_audit.window.completed", "job.stage", "job.completed"] }];
+    return [
+      {
+        key: "deep_audit",
+        eventTypes: ["deep_audit.window.completed", "job.stage", "job.completed"],
+      },
+    ];
   }
   return TRANSLATION_WORKFLOW_STAGE_DEFS;
 }
@@ -174,7 +239,7 @@ function extractLatestEventPayload(events: GuiJobEvent[], type: string): Record<
 function resolveCurrentWorkflowStage(
   job: { stage?: string; status?: string } | null,
   events: GuiJobEvent[],
-  definitions: WorkflowStageDefinition[]
+  definitions: WorkflowStageDefinition[],
 ): WorkflowStageKey | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
@@ -223,7 +288,6 @@ function formatProgressTimelineLabel(snapshot: ProgressSnapshot): string | null 
         ? `第 ${snapshot.pageIndex} / ${snapshot.totalPages} 頁`
         : `第 ${snapshot.pageIndex} 頁`
       : null;
-
   if (snapshot.status && TERMINAL_PIPELINE_STATUSES.has(snapshot.status)) {
     if (snapshot.status === "completed") {
       return "Pipeline 已完成";
@@ -233,7 +297,6 @@ function formatProgressTimelineLabel(snapshot: ProgressSnapshot): string | null 
     }
     return "Pipeline 已取消";
   }
-
   if (engineLabel && pageLabel) {
     return `Pipeline 進入 ${engineLabel}，${pageLabel}`;
   }
@@ -243,47 +306,55 @@ function formatProgressTimelineLabel(snapshot: ProgressSnapshot): string | null 
   if (pageLabel) {
     return `Pipeline 推進到 ${pageLabel}`;
   }
-
   return null;
 }
 
-function formatReferenceIngestionProgress(
-  payload: Record<string, unknown> | null,
-  t: TranslateFn
-): string {
+function appendReferenceBatchProgress(parts: string[], payload: Record<string, unknown>, t: TranslateFn) {
+  if (typeof payload.batch === "number" && typeof payload.batches === "number") {
+    parts.push(t("jobDetail.progress.batch", { current: payload.batch, total: payload.batches }));
+  }
+  if (typeof payload.processedNodes === "number" && typeof payload.totalNodes === "number") {
+    parts.push(t("jobDetail.progress.nodes", { completed: payload.processedNodes, total: payload.totalNodes }));
+  }
+}
+
+function appendReferenceWaitProgress(parts: string[], payload: Record<string, unknown>, t: TranslateFn) {
+  if (typeof payload.elapsedMs === "number") {
+    parts.push(t("jobDetail.progress.waitingAo", { seconds: Math.max(0, Math.round(payload.elapsedMs / 1000)) }));
+  }
+  if (typeof payload.reason === "string" && payload.reason.trim()) {
+    parts.push(t("jobDetail.progress.reason", { reason: payload.reason }));
+  }
+}
+
+function formatReferenceIngestionProgress(payload: Record<string, unknown> | null, t: TranslateFn): string {
   const stage = typeof payload?.stage === "string" ? payload.stage : "reference_ingestion";
   const stageKey = `jobDetail.workflow.${stage}`;
   const parts = [t(stageKey)];
   if (typeof payload?.percent === "number") {
     parts.push(t("jobDetail.progress.percent", { percent: payload.percent }));
   }
-  if (typeof payload?.batch === "number" && typeof payload?.batches === "number") {
-    parts.push(t("jobDetail.progress.batch", { current: payload.batch, total: payload.batches }));
-  }
-  if (typeof payload?.processedNodes === "number" && typeof payload?.totalNodes === "number") {
-    parts.push(t("jobDetail.progress.nodes", {
-      completed: payload.processedNodes,
-      total: payload.totalNodes,
-    }));
-  }
-  if (typeof payload?.elapsedMs === "number") {
-    parts.push(t("jobDetail.progress.waitingAo", {
-      seconds: Math.max(0, Math.round(payload.elapsedMs / 1000)),
-    }));
-  }
-  if (typeof payload?.reason === "string" && payload.reason.trim()) {
-    parts.push(t("jobDetail.progress.reason", { reason: payload.reason }));
-  }
+  if (payload) appendReferenceBatchProgress(parts, payload, t);
+  if (payload) appendReferenceWaitProgress(parts, payload, t);
   return parts.join(" · ");
 }
 
+const EXACT_TIMELINE_LABELS: Record<string, string> = {
+  "job.created": "工作已建立", "setup.completed": "專案建立完成",
+  "pipeline.completed": "Pipeline 已完成", "quality.completed": "品質驗證完成",
+  "knowledge.completed": "本地風格更新完成", "export.completed": "匯出完成",
+  "project.closed": "專案已關閉", "job.completed": "工作已完成",
+  "job.failed": "工作失敗", "job.canceled": "工作已取消",
+  "reference_ingestion.completed": "參考資料風格資產已更新",
+  "reference_extraction.completed": "參考資料抽取完成",
+  "source_preflight.resolved": "來源預檢完成", "translation_context.built": "翻譯風格上下文已建立",
+};
+
 function formatTimelineEventLabel(event: GuiJobEvent, t: TranslateFn): string {
   const payload = asRecord(event.payload);
-
   if (event.type === "reference_ingestion.progress") {
     return formatReferenceIngestionProgress(payload, t);
   }
-
   if (event.type === "job.stage") {
     const stage = typeof payload?.stage === "string" ? payload.stage : null;
     const status = typeof payload?.status === "string" ? payload.status : null;
@@ -294,34 +365,28 @@ function formatTimelineEventLabel(event: GuiJobEvent, t: TranslateFn): string {
       return humanizeIdentifier(stage);
     }
   }
+  return EXACT_TIMELINE_LABELS[event.type] ?? humanizeIdentifier(event.type);
+}
 
-  const exactLabels: Record<string, string> = {
-    "job.created": "工作已建立",
-    "setup.completed": "專案建立完成",
-    "pipeline.completed": "Pipeline 已完成",
-    "quality.completed": "品質驗證完成",
-    "knowledge.completed": "本地風格更新完成",
-    "export.completed": "匯出完成",
-    "project.closed": "專案已關閉",
-    "job.completed": "工作已完成",
-    "job.failed": "工作失敗",
-    "job.canceled": "工作已取消",
-    "reference_ingestion.completed": "參考資料風格資產已更新",
-    "reference_extraction.completed": "參考資料抽取完成",
-    "source_preflight.resolved": "來源預檢完成",
-    "translation_context.built": "翻譯風格上下文已建立",
-  };
+function progressSnapshotChanged(current: ProgressSnapshot, previous: ProgressSnapshot | null) {
+  const terminalChanged = Boolean(current.status && TERMINAL_PIPELINE_STATUSES.has(current.status))
+    && current.status !== previous?.status;
+  return current.engine !== previous?.engine || current.pageIndex !== previous?.pageIndex || terminalChanged;
+}
 
-  return exactLabels[event.type] ?? humanizeIdentifier(event.type);
+function timelineProgressItem(event: GuiJobEvent, snapshot: ProgressSnapshot): TimelineItem | null {
+  const label = formatProgressTimelineLabel(snapshot);
+  return label ? {
+    kind: "progress", label, when: event.createdAt ?? "live", sourceEventType: event.type,
+    engine: snapshot.engine, pageIndex: snapshot.pageIndex, totalPages: snapshot.totalPages,
+  } : null;
 }
 
 function projectTimelineEvents(events: GuiJobEvent[], t: TranslateFn): TimelineItem[] {
   const items: TimelineItem[] = [];
   let lastProgressSnapshot: ProgressSnapshot | null = null;
-
   for (const event of events) {
     const when = event.createdAt ?? "live";
-
     if (event.type !== "pipeline.progress") {
       items.push({
         kind: "event",
@@ -331,56 +396,22 @@ function projectTimelineEvents(events: GuiJobEvent[], t: TranslateFn): TimelineI
       });
       continue;
     }
-
     const snapshot = extractProgressSnapshot(event);
     if (!snapshot) {
       continue;
     }
-
-    const engineChanged = snapshot.engine !== lastProgressSnapshot?.engine;
-    const pageChanged = snapshot.pageIndex !== lastProgressSnapshot?.pageIndex;
-    const terminalChanged =
-      Boolean(snapshot.status && TERMINAL_PIPELINE_STATUSES.has(snapshot.status)) &&
-      snapshot.status !== lastProgressSnapshot?.status;
-
-    if (!engineChanged && !pageChanged && !terminalChanged) {
-      continue;
-    }
-
-    const label = formatProgressTimelineLabel(snapshot);
-    if (!label) {
-      lastProgressSnapshot = snapshot;
-      continue;
-    }
-
-    items.push({
-      kind: "progress",
-      label,
-      when,
-      sourceEventType: event.type,
-      engine: snapshot.engine,
-      pageIndex: snapshot.pageIndex,
-      totalPages: snapshot.totalPages,
-    });
+    if (!progressSnapshotChanged(snapshot, lastProgressSnapshot)) continue;
+    const item = timelineProgressItem(event, snapshot);
+    if (item) items.push(item);
     lastProgressSnapshot = snapshot;
   }
-
   return items;
 }
 
 function getEngineOrder(job: { result?: unknown } | null): string[] {
   const result = asRecord(job?.result);
   const engines = asRecord(result?.engines);
-  const preferredOrder = [
-    "detect",
-    "fontDetect",
-    "segment",
-    "bubbleSegment",
-    "ocr",
-    "translate",
-    "clean",
-    "render",
-  ];
+  const preferredOrder = ["detect", "fontDetect", "segment", "bubbleSegment", "ocr", "translate", "clean", "render"];
 
   if (!engines) {
     return preferredOrder;
@@ -427,26 +458,25 @@ function isTerminalJobStatus(status: string | null | undefined) {
   return status === "succeeded" || status === "failed" || status === "canceled";
 }
 
-function collapseEvents(events: GuiJobEvent[]) {
-  const collapsed: Array<{
-    signature: string;
-    event: GuiJobEvent;
-    count: number;
-    firstSeen: string;
-    lastSeen: string;
-  }> = [];
+type CollapsedEvent = {
+  signature: string;
+  event: GuiJobEvent;
+  count: number;
+  firstSeen: string;
+  lastSeen: string;
+};
 
+function collapseEvents(events: GuiJobEvent[]) {
+  const collapsed: CollapsedEvent[] = [];
   for (const event of events) {
     const signature = eventSignature(event);
     const seenAt = event.createdAt ?? "live";
     const previous = collapsed[collapsed.length - 1];
-
     if (previous && previous.signature === signature) {
       previous.count += 1;
       previous.lastSeen = seenAt;
       continue;
     }
-
     collapsed.push({
       signature,
       event,
@@ -455,7 +485,6 @@ function collapseEvents(events: GuiJobEvent[]) {
       lastSeen: seenAt,
     });
   }
-
   return collapsed;
 }
 
@@ -475,143 +504,476 @@ function mergeUniqueEvents(baseEvents: GuiJobEvent[], incomingEvents: GuiJobEven
   return merged;
 }
 
-function SafeInteractionPanel({
-  jobId,
-  events,
-}: {
-  jobId: string;
-  events: GuiJobEvent[];
+type InteractionSourceFilter = "all" | "backend" | "koharu" | "agent" | "llm";
+type InteractionDirectionFilter = "all" | "request" | "response" | "internal" | "error";
+type InteractionLocale = Parameters<typeof translateLiteral>[0];
+
+function interactionEventSource(event: GuiJobEvent): Exclude<InteractionSourceFilter, "all"> {
+  if (event.type.startsWith("pipeline.")) return "koharu";
+  if (event.type.startsWith("llm.")) return "llm";
+  if (event.type.startsWith("quality.") || event.type.startsWith("knowledge.")) return "agent";
+  return "backend";
+}
+
+function interactionEventDirection(event: GuiJobEvent): Exclude<InteractionDirectionFilter, "all"> {
+  const payload = event.payload && typeof event.payload === "object"
+    ? event.payload as Record<string, unknown> : null;
+  if (payload && typeof payload.error === "string") return "error";
+  if (event.type.endsWith(".requested") || event.type.endsWith(".started") || event.type === "job.created") {
+    return "request";
+  }
+  if (event.type.endsWith(".completed") || event.type.endsWith(".failed") || event.type.endsWith(".cancel_requested")) {
+    return "response";
+  }
+  return "internal";
+}
+
+function useInteractionReset(jobId: string, eventCount: number, state: {
+  setAutoFollow: (value: boolean) => void;
+  setUnreadCount: (value: number) => void;
+  lastEventCountRef: MutableRefObject<number>;
 }) {
+  useEffect(() => {
+    state.setAutoFollow(true);
+    state.setUnreadCount(0);
+    state.lastEventCountRef.current = eventCount;
+  }, [eventCount, jobId]);
+}
+
+function useInteractionUnread(
+  eventCount: number,
+  autoFollow: boolean,
+  setUnreadCount: Dispatch<SetStateAction<number>>,
+  lastEventCountRef: MutableRefObject<number>,
+) {
+  useEffect(() => {
+    if (eventCount > lastEventCountRef.current && !autoFollow) {
+      setUnreadCount((count) => count + (eventCount - lastEventCountRef.current));
+    }
+    lastEventCountRef.current = eventCount;
+  }, [autoFollow, eventCount]);
+}
+
+function useInteractionAutoScroll(
+  autoFollow: boolean,
+  events: GuiJobEvent[],
+  viewportRef: MutableRefObject<HTMLDivElement | null>,
+  setUnreadCount: (value: number) => void,
+) {
+  useEffect(() => {
+    if (!autoFollow || !viewportRef.current) return;
+    viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+    setUnreadCount(0);
+  }, [autoFollow, events, viewportRef]);
+}
+
+function useSafeInteractionPanel(jobId: string, events: GuiJobEvent[]) {
   const { locale, t } = useLanguageStore();
-  const [sourceFilter, setSourceFilter] = useState<"all" | "backend" | "koharu" | "agent" | "llm">("all");
-  const [directionFilter, setDirectionFilter] = useState<"all" | "request" | "response" | "internal" | "error">("all");
+  const [sourceFilter, setSourceFilter] = useState<InteractionSourceFilter>("all");
+  const [directionFilter, setDirectionFilter] = useState<InteractionDirectionFilter>("all");
   const [autoFollow, setAutoFollow] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const lastEventCountRef = useRef(events.length);
+  useInteractionReset(jobId, events.length, { setAutoFollow, setUnreadCount, lastEventCountRef });
+  useInteractionUnread(events.length, autoFollow, setUnreadCount, lastEventCountRef);
+  useInteractionAutoScroll(autoFollow, events, viewportRef, setUnreadCount);
+  const visibleEvents = useMemo(() => events.filter((event) =>
+    (sourceFilter === "all" || sourceFilter === interactionEventSource(event))
+    && (directionFilter === "all" || directionFilter === interactionEventDirection(event))),
+  [directionFilter, events, sourceFilter]);
+  return { locale, t, sourceFilter, setSourceFilter, directionFilter, setDirectionFilter,
+    autoFollow, setAutoFollow, unreadCount, setUnreadCount, viewportRef, visibleEvents };
+}
 
-  useEffect(() => {
-    setAutoFollow(true);
-    setUnreadCount(0);
-    lastEventCountRef.current = events.length;
-  }, [events.length, jobId]);
+type SafeInteractionState = ReturnType<typeof useSafeInteractionPanel>;
 
-  useEffect(() => {
-    if (events.length > lastEventCountRef.current && !autoFollow) {
-      setUnreadCount((count) => count + (events.length - lastEventCountRef.current));
-    }
-    lastEventCountRef.current = events.length;
-  }, [autoFollow, events.length]);
+function InteractionPanelHeader(state: SafeInteractionState) {
+  return (
+    <div className="interaction-header">
+      <div>
+        <h3>{state.t("jobDetail.liveInteraction.title")}</h3>
+        <p className="muted-text">
+          {state.autoFollow ? state.t("jobDetail.liveInteraction.following")
+            : state.t("jobDetail.liveInteraction.paused", { count: state.unreadCount })}
+        </p>
+      </div>
+      {!state.autoFollow ? (
+        <button className="primary-button" onClick={() => {
+          state.setAutoFollow(true);
+          state.setUnreadCount(0);
+        }} type="button">{state.t("jobDetail.liveInteraction.jumpLatest")}</button>
+      ) : null}
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!autoFollow || !viewportRef.current) {
-      return;
-    }
-    viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
-    setUnreadCount(0);
-  }, [autoFollow, events, viewportRef]);
+function InteractionFilterRow<T extends string>({ options, selected, onSelect, locale }: {
+  options: readonly T[]; selected: T; onSelect: (value: T) => void; locale: InteractionLocale;
+}) {
+  return (
+    <div className="filter-row">
+      {options.map((filter) => (
+        <button key={filter} className={selected === filter ? "secondary-button active-filter" : "secondary-button"}
+          onClick={() => onSelect(filter)} type="button">
+          {translateLiteral(locale, filter)}
+        </button>
+      ))}
+    </div>
+  );
+}
 
-  const visibleEvents = useMemo(() => {
-    return events.filter((event) => {
-      const source = event.type.startsWith("pipeline.")
-        ? "koharu"
-        : event.type.startsWith("llm.")
-          ? "llm"
-          : event.type.startsWith("quality.") || event.type.startsWith("knowledge.")
-            ? "agent"
-            : "backend";
-      const payload =
-        event.payload && typeof event.payload === "object"
-          ? (event.payload as Record<string, unknown>)
-          : null;
-      const direction =
-        payload && typeof payload.error === "string"
-          ? "error"
-          : event.type.endsWith(".requested") || event.type.endsWith(".started") || event.type === "job.created"
-            ? "request"
-            : event.type.endsWith(".completed") || event.type.endsWith(".failed") || event.type.endsWith(".cancel_requested")
-              ? "response"
-              : "internal";
+function InteractionEventRow({ event, index, state }: {
+  event: GuiJobEvent; index: number; state: SafeInteractionState;
+}) {
+  return (
+    <div className="event-row" key={`${event.id ?? "stream"}-${event.createdAt ?? "live"}-${index}`}>
+      <div className="event-meta">
+        <strong>{event.type}</strong>
+        <span>{event.createdAt ? formatSystemDateTime(event.createdAt) : state.t("interaction.live")}</span>
+      </div>
+      <pre>{JSON.stringify(event.payload, null, 2)}</pre>
+    </div>
+  );
+}
 
-      return (sourceFilter === "all" || sourceFilter === source) &&
-        (directionFilter === "all" || directionFilter === direction);
-    });
-  }, [directionFilter, events, sourceFilter]);
+function updateInteractionScroll(state: SafeInteractionState, target: HTMLDivElement) {
+  const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 24;
+  state.setAutoFollow(nearBottom);
+  if (nearBottom) state.setUnreadCount(0);
+}
 
+function InteractionEventViewport(state: SafeInteractionState) {
+  return (
+    <div className="interaction-viewport"
+      onScroll={(event) => updateInteractionScroll(state, event.currentTarget)}
+      ref={(node) => { state.viewportRef.current = node; }}>
+      {state.visibleEvents.map((event, index) => (
+        <InteractionEventRow event={event} index={index} state={state}
+          key={`${event.id ?? "stream"}-${event.createdAt ?? "live"}-${index}`} />
+      ))}
+    </div>
+  );
+}
+
+function SafeInteractionPanel({ jobId, events }: { jobId: string; events: GuiJobEvent[] }) {
+  const state = useSafeInteractionPanel(jobId, events);
   return (
     <article className="card interaction-card">
-      <div className="interaction-header">
-        <div>
-          <h3>{t("jobDetail.liveInteraction.title")}</h3>
-          <p className="muted-text">
-            {autoFollow ? t("jobDetail.liveInteraction.following") : t("jobDetail.liveInteraction.paused", { count: unreadCount })}
-          </p>
-        </div>
-        {!autoFollow ? (
-          <button
-            className="primary-button"
-            onClick={() => {
-              setAutoFollow(true);
-              setUnreadCount(0);
-            }}
-            type="button"
-          >
-            {t("jobDetail.liveInteraction.jumpLatest")}
-          </button>
-        ) : null}
-      </div>
-
-      <div className="filter-row">
-        {(["all", "backend", "koharu", "agent", "llm"] as const).map((filter) => (
-          <button
-            key={filter}
-            className={sourceFilter === filter ? "secondary-button active-filter" : "secondary-button"}
-            onClick={() => setSourceFilter(filter)}
-            type="button"
-          >
-            {translateLiteral(locale, filter)}
-          </button>
-        ))}
-      </div>
-
-      <div className="filter-row">
-        {(["all", "request", "response", "internal", "error"] as const).map((filter) => (
-          <button
-            key={filter}
-            className={directionFilter === filter ? "secondary-button active-filter" : "secondary-button"}
-            onClick={() => setDirectionFilter(filter)}
-            type="button"
-          >
-            {translateLiteral(locale, filter)}
-          </button>
-        ))}
-      </div>
-
-      <div
-        className="interaction-viewport"
-        onScroll={(event) => {
-          const target = event.currentTarget;
-          const nearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 24;
-          setAutoFollow(nearBottom);
-          if (nearBottom) {
-            setUnreadCount(0);
-          }
-        }}
-        ref={(node) => {
-          viewportRef.current = node;
-        }}
-      >
-        {visibleEvents.map((event, index) => (
-          <div className="event-row" key={`${event.id ?? "stream"}-${event.createdAt ?? "live"}-${index}`}>
-            <div className="event-meta">
-              <strong>{event.type}</strong>
-              <span>{event.createdAt ? formatSystemDateTime(event.createdAt) : t("interaction.live")}</span>
-            </div>
-            <pre>{JSON.stringify(event.payload, null, 2)}</pre>
-          </div>
-        ))}
-      </div>
+      <InteractionPanelHeader {...state} />
+      <InteractionFilterRow options={["all", "backend", "koharu", "agent", "llm"] as const}
+        selected={state.sourceFilter} onSelect={state.setSourceFilter} locale={state.locale} />
+      <InteractionFilterRow options={["all", "request", "response", "internal", "error"] as const}
+        selected={state.directionFilter} onSelect={state.setDirectionFilter} locale={state.locale} />
+      <InteractionEventViewport {...state} />
     </article>
+  );
+}
+
+type WorkflowSummaryEntry = { stage: string; status: string; updatedAt: string | null };
+type JobNotice = { level: "error" | "warning" | "info"; title: string; message: string };
+type PipelineProgress = Record<string, unknown> | null;
+type JobStreamEvent = GuiJobEvent & { job?: unknown };
+
+function resolveWorkflowStageStatus(
+  job: GuiJob | null,
+  definition: WorkflowStageDefinition,
+  currentStage: string | null,
+  currentStageIndex: number,
+  definitionIndex: number,
+  hasEvent: boolean,
+): string {
+  if (job?.status === "failed" && currentStage === definition.key) return "failed";
+  if (job?.status === "canceled" && currentStage === definition.key) return "canceled";
+  if (definition.optionalWhen?.(job) ?? false) return "skipped";
+  const terminal = ["succeeded", "failed", "canceled"].includes(job?.status ?? "");
+  if (currentStage === definition.key && !terminal) return "running";
+  if (hasEvent) return definition.key === "source_preflight" ? "observed" : "completed";
+  if (job?.status === "succeeded") return "completed";
+  return currentStageIndex > definitionIndex ? "observed" : "waiting";
+}
+
+function buildWorkflowSummary(job: GuiJob | null, events: GuiJobEvent[]): WorkflowSummaryEntry[] {
+  const definitions = workflowStageDefinitions(job);
+  const currentStage = resolveCurrentWorkflowStage(job, events, definitions);
+  const currentIndex = currentStage ? definitions.findIndex((entry) => entry.key === currentStage) : -1;
+  return definitions.map((definition, index) => {
+    const matched = events.filter((event) => eventMatchesStage(event, definition));
+    const latest = matched[matched.length - 1];
+    return {
+      stage: definition.key,
+      status: resolveWorkflowStageStatus(job, definition, currentStage, currentIndex, index, Boolean(latest)),
+      updatedAt: latest?.createdAt ?? null,
+    };
+  });
+}
+
+function findLatestPipelineProgress(events: GuiJobEvent[]): PipelineProgress {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type === "pipeline.progress") return asRecord(event.payload);
+  }
+  return null;
+}
+
+function resolvePipelineEngineStatus(
+  engine: string,
+  currentEngine: string | null,
+  progress: PipelineProgress,
+  terminal: boolean,
+): string {
+  if (!currentEngine) return "unknown";
+  if (currentEngine !== engine) return terminal ? "completed" : "waiting";
+  if (typeof progress?.engineStatus !== "string") return "running";
+  return terminal && progress.engineStatus === "running" ? "completed" : progress.engineStatus;
+}
+
+function buildPipelineEngines(job: GuiJob | null, progress: PipelineProgress) {
+  const engineKeys = getEngineOrder(job);
+  const terminal = job?.status === "succeeded";
+  const currentEngine =
+    typeof progress?.engine === "string"
+      ? progress.engine
+      : terminal
+        ? (engineKeys[engineKeys.length - 1] ?? "render")
+        : null;
+  return engineKeys.map((engine) => ({
+    engine,
+    status: resolvePipelineEngineStatus(engine, currentEngine, progress, terminal),
+  }));
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = toNumber(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function resolveTotalPages(
+  progress: PipelineProgress,
+  preflight: Record<string, unknown> | null,
+  job: GuiJob | null,
+  artifactMetadata: Record<string, unknown> | null,
+): number | null {
+  const pipelineSummary = asRecord(asRecord(asRecord(job?.result)?.pipeline)?.summary);
+  return firstNumber(
+    progress?.totalPages,
+    preflight?.acceptedCount,
+    pipelineSummary?.totalPages,
+    artifactMetadata?.acceptedCount,
+  );
+}
+
+function resolveCompletedPages(progress: PipelineProgress, totalPages: number | null): number | null {
+  if (typeof progress?.completedPages === "number") return progress.completedPages;
+  if (typeof progress?.progress !== "number" || totalPages === null) return null;
+  return Math.max(0, Math.min(totalPages, Math.round(totalPages * progress.progress)));
+}
+
+function buildPageProgress(
+  job: GuiJob | null,
+  progress: PipelineProgress,
+  sourcePreflight: unknown,
+  artifactMetadata: unknown,
+) {
+  const totalPages = resolveTotalPages(progress, asRecord(sourcePreflight), job, asRecord(artifactMetadata));
+  const terminal = job?.status === "succeeded";
+  const completedPages = resolveCompletedPages(progress, totalPages) ?? (terminal ? totalPages : null);
+  const engineKeys = getEngineOrder(job);
+  return {
+    totalPages,
+    completedPages,
+    currentPageIndex: firstNumber(progress?.currentPageIndex, terminal ? totalPages : null),
+    currentPageName: typeof progress?.currentPageName === "string" ? progress.currentPageName : null,
+    currentEngine:
+      typeof progress?.engine === "string"
+        ? progress.engine
+        : terminal
+          ? (engineKeys[engineKeys.length - 1] ?? "render")
+          : null,
+  };
+}
+
+function buildFailureNotice(job: GuiJob | null, t: TranslateFn): JobNotice | null {
+  if (!job?.error) return null;
+  const source = job.diagnostics?.failureSource || "unknown";
+  const failureType = job.diagnostics?.resourceFailureType || "unknown";
+  const stage = job.diagnostics?.failureStage || job.stage;
+  return {
+    level: "error",
+    title: t("jobDetail.notice.jobError"),
+    message: t("jobDetail.failure.notice", {
+      source: t(`jobDetail.failure.source.${source}`),
+      stage: resolveJobStageLabel(stage, t),
+      type: t(`jobList.resourceFailure.${failureType}`),
+    }),
+  };
+}
+
+function buildConfigurationNotices(job: GuiJob | null, t: TranslateFn): JobNotice[] {
+  const notices: JobNotice[] = [];
+  const mode = job?.payload?.translationMode;
+  const qualityEnabled =
+    mode === "learning_style" ||
+    (["reference_style", "local_style"].includes(String(mode)) && job?.payload?.qualityCheck === true);
+  const knowledgeEnabled = mode === "learning_style" || mode === "local_style";
+  if (!qualityEnabled) {
+    notices.push({
+      level: "info",
+      title: t("jobDetail.notice.qualitySkipped"),
+      message: t("jobDetail.notice.qualitySkippedMessage"),
+    });
+  }
+  if (!knowledgeEnabled) {
+    notices.push({
+      level: "info",
+      title: t("jobDetail.notice.localStyleSkipped"),
+      message: t("jobDetail.notice.localStyleSkippedMessage"),
+    });
+  }
+  return notices;
+}
+
+function buildJobNotices(job: GuiJob | null, progress: PipelineProgress, t: TranslateFn): JobNotice[] {
+  const failure = buildFailureNotice(job, t);
+  const notices = [...(failure ? [failure] : []), ...buildConfigurationNotices(job, t)];
+  if (!progress) {
+    notices.push({
+      level: "warning",
+      title: t("jobDetail.notice.limitedPipeline"),
+      message: t("jobDetail.notice.limitedPipelineMessage"),
+    });
+  }
+  return notices;
+}
+
+const ARTIFACT_REFRESH_EVENTS = new Set([
+  "reference_ingestion.completed", "quality.completed", "knowledge.completed", "export.completed",
+  "job.completed", "job.failed", "job.canceled", "project.closed",
+]);
+const JOB_REFRESH_EVENTS = new Set(["job.stage", "job.completed", "job.failed", "job.canceled"]);
+
+function mergeStreamJob(queryClient: QueryClient, selectedJobId: string, nextJob: GuiJob) {
+  queryClient.setQueryData<GuiJob>(["job", selectedJobId], (current) => ({
+    ...current,
+    ...nextJob,
+    events: nextJob.events || current?.events || [],
+    artifacts: nextJob.artifacts || current?.artifacts || [],
+    children: nextJob.children ?? current?.children,
+  }));
+  queryClient.setQueryData<{ jobs: GuiJob[] }>(["jobs"], (current) => {
+    if (!current) return current;
+    return { jobs: current.jobs.map((job) => (job.id === nextJob.id ? { ...job, ...nextJob } : job)) };
+  });
+}
+
+type JobStreamContext = {
+  queryClient: QueryClient;
+  selectedJobId: string;
+  appendEvent: (event: GuiJobEvent) => void;
+  hydrateJob: (job: GuiJob) => void;
+  refetchJob: () => unknown;
+  refetchArtifacts: () => unknown;
+};
+
+function handleJobStreamEvent(event: JobStreamEvent, context: JobStreamContext) {
+  context.appendEvent(event);
+  if (event.job && typeof event.job === "object") {
+    const nextJob = event.job as GuiJob;
+    context.hydrateJob(nextJob);
+    mergeStreamJob(context.queryClient, context.selectedJobId, nextJob);
+  }
+  if (ARTIFACT_REFRESH_EVENTS.has(event.type)) {
+    void context.refetchJob();
+    void context.refetchArtifacts();
+  } else if (JOB_REFRESH_EVENTS.has(event.type)) {
+    void context.refetchJob();
+  }
+}
+
+function clearReconnectTimer(timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>) {
+  if (!timerRef.current) return;
+  clearTimeout(timerRef.current);
+  timerRef.current = null;
+}
+
+function scheduleReconnectNotice(
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  setConnectionState: (state: StreamConnectionState) => void,
+) {
+  if (timerRef.current) return;
+  timerRef.current = setTimeout(() => {
+    timerRef.current = null;
+    setConnectionState("reconnecting");
+  }, RECONNECTING_NOTICE_DELAY_MS);
+}
+
+function openJobStream(
+  jobId: string,
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  setConnectionState: (state: StreamConnectionState) => void,
+  context: Omit<JobStreamContext, "selectedJobId">,
+) {
+  setConnectionState("connecting");
+  const streamContext = { ...context, selectedJobId: jobId };
+  return subscribeToJobStream(jobId, {
+    onOpen: () => {
+      clearReconnectTimer(timerRef);
+      setConnectionState("live");
+    },
+    onError: () => scheduleReconnectNotice(timerRef, setConnectionState),
+    onEvent: (event) => handleJobStreamEvent(event, streamContext),
+  });
+}
+
+function useSelectedJobStream(
+  jobId: string | null,
+  status: string | undefined,
+  timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
+  setConnectionState: (state: StreamConnectionState) => void,
+  context: Omit<JobStreamContext, "selectedJobId">,
+) {
+  useEffect(() => {
+    if (!jobId || isTerminalJobStatus(status)) {
+      if (isTerminalJobStatus(status)) setConnectionState("closed");
+      return;
+    }
+    const unsubscribe = openJobStream(jobId, timerRef, setConnectionState, context);
+    return () => {
+      clearReconnectTimer(timerRef);
+      unsubscribe();
+      setConnectionState("closed");
+    };
+  }, [context, jobId, setConnectionState, status, timerRef]);
+}
+
+function formatCollapsedEventTime(value: string, t: TranslateFn) {
+  return value === "live" ? t("interaction.live") : formatSystemDateTime(value);
+}
+
+function CollapsedEventRow({ entry, index, t }: { entry: CollapsedEvent; index: number; t: TranslateFn }) {
+  const range = t("jobDetail.events.collapsed", {
+    from: formatCollapsedEventTime(entry.firstSeen, t),
+    to: formatCollapsedEventTime(entry.lastSeen, t),
+  });
+  return (
+    <div className="event-row" key={`${entry.signature}-${entry.lastSeen}-${index}`}>
+      <div className="event-meta">
+        <strong>{entry.event.type} {entry.count > 1 ? ` x${entry.count}` : ""}</strong>
+        <span>{formatCollapsedEventTime(entry.lastSeen, t)}</span>
+      </div>
+      {entry.count > 1 ? <p className="muted-text">{range}</p> : null}
+      <pre>{JSON.stringify(entry.event.payload, null, 2)}</pre>
+    </div>
   );
 }
 
@@ -625,14 +987,510 @@ export function JobDetailPage() {
   );
 }
 
-export function JobDetailContent({ embedded }: { embedded: boolean }) {
-  const queryClient = useQueryClient();
+function WorkflowCard({ entries, t }: { entries: WorkflowSummaryEntry[]; t: TranslateFn }) {
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.workflow.title")}</h2>
+      <div className="workflow-card-grid">
+        {entries.map((entry) => (
+          <div key={entry.stage} className={`workflow-card workflow-card-${statusTone(entry.status)}`}>
+            <span className="workflow-card-label">{translateWorkflowStageValue(entry.stage, t)}</span>
+            <strong className="workflow-card-status">{translateJobStatusValue(entry.status, t)}</strong>
+            {entry.updatedAt ? <span className="job-subtext">{formatSystemDateTime(entry.updatedAt)}</span> : null}
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function PipelineCard({ engines, progress, t }: {
+  engines: ReturnType<typeof buildPipelineEngines>; progress: PipelineProgress; t: TranslateFn;
+}) {
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.pipeline.title")}</h2>
+      <div className="engine-card-grid">
+        {engines.map((entry) => (
+          <div key={entry.engine} className={`engine-card engine-card-${statusTone(entry.status)}`}>
+            <span className="engine-card-label">{formatEngineLabel(entry.engine) ?? entry.engine}</span>
+            <strong className="engine-card-status">{translateJobStatusValue(entry.status, t)}</strong>
+          </div>
+        ))}
+      </div>
+      {!progress ? <p className="muted-text">{t("jobDetail.pipeline.pending")}</p> : null}
+    </article>
+  );
+}
+
+function completedPageLabel(progress: ReturnType<typeof buildPageProgress>, t: TranslateFn) {
+  if (progress.completedPages !== null && progress.totalPages !== null) {
+    return `${progress.completedPages} / ${progress.totalPages}`;
+  }
+  return progress.totalPages !== null ? `0 / ${progress.totalPages}` : t("jobDetail.status.notReported");
+}
+
+function PageProgressItem({ label, value }: { label: string; value: string | number }) {
+  return <div className="page-progress-item"><span className="overview-card-label">{label}</span><strong>{value}</strong></div>;
+}
+
+function PageProgressCard({ progress, t }: { progress: ReturnType<typeof buildPageProgress>; t: TranslateFn }) {
+  const missing = t("jobDetail.status.notReported");
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.pageProgress.title")}</h2>
+      <div className="page-progress-hero">
+        <div className="page-progress-main">
+          <span className="overview-card-label">{t("jobDetail.pageProgress.completed")}</span>
+          <strong className="page-progress-value">{completedPageLabel(progress, t)}</strong>
+        </div>
+        <div className="page-progress-side">
+          <PageProgressItem label={t("jobDetail.pageProgress.currentEngine")} value={formatEngineLabel(progress.currentEngine) ?? missing} />
+          <PageProgressItem label={t("jobDetail.pageProgress.currentPage")} value={progress.currentPageName ?? missing} />
+          <PageProgressItem label={t("jobDetail.pageProgress.pageIndex")} value={progress.currentPageIndex ?? missing} />
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function NoticesCard({ notices, t }: { notices: JobNotice[]; t: TranslateFn }) {
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.warnings.title")}</h2>
+      {notices.length === 0 ? <p className="muted-text">{t("jobDetail.warnings.none")}</p> : (
+        <div className="notice-card-stack">
+          {notices.map((notice, index) => (
+            <div key={`${notice.title}-${index}`} className={`notice-card notice-card-${notice.level}`}>
+              <strong>{notice.title}</strong><p>{notice.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function TimelineCard({ timeline, t }: { timeline: TimelineItem[]; t: TranslateFn }) {
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.timeline.title")}</h2>
+      {timeline.length === 0 ? <p>{t("jobDetail.timeline.empty")}</p> : (
+        <ul className="timeline-list">
+          {timeline.map((entry, index) => (
+            <li key={`${entry.sourceEventType}-${entry.when}-${entry.label}-${index}`}
+              className={`timeline-item ${entry.kind === "progress" ? "timeline-item-progress" : ""}`}>
+              <strong>{entry.label}</strong>
+              <span>{formatCollapsedEventTime(entry.when, t)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+function ResultCard({ job, t }: { job: GuiJob; t: TranslateFn }) {
+  return (
+    <article className="card">
+      <h2>{t("jobDetail.result.title")}</h2>
+      {job.error ? <JobFailurePanel job={job} t={t} /> : <pre>{JSON.stringify(job.result, null, 2)}</pre>}
+    </article>
+  );
+}
+
+function translateJobStatusValue(value: string | null | undefined, t: TranslateFn) {
+  if (!value) return t("jobDetail.status.notReported");
+  const key = `jobDetail.status.${value}`;
+  const translated = t(key);
+  return translated === key ? humanizeIdentifier(value) : translated;
+}
+
+function translateWorkflowStageValue(value: string, t: TranslateFn) {
+  const key = `jobDetail.workflow.${value}`;
+  const translated = t(key);
+  return translated === key ? resolveJobStageLabel(value, t) : translated;
+}
+
+type DetailTab = "preflight" | "artifacts" | "reference" | "events";
+type TranslationModeView = { label: string; description: string };
+
+function DetailTabBar({ active, select, t }: {
+  active: DetailTab; select: Dispatch<SetStateAction<DetailTab>>; t: TranslateFn;
+}) {
+  const tabs: DetailTab[] = ["preflight", "artifacts", "reference", "events"];
+  return (
+    <div className="detail-tab-bar">
+      {tabs.map((tab) => (
+        <button className={active === tab ? "nav-button active" : "nav-button"}
+          onClick={() => select(tab)} type="button" key={tab}>
+          {t(`jobDetail.tabs.${tab}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function PreflightArtifactRow({ artifact, t }: { artifact: GuiArtifact; t: TranslateFn }) {
+  return (
+    <li className="artifact-item">
+      <div><strong>{artifact.kind}</strong><div className="job-subtext">{artifact.path}</div>
+        <div className="job-subtext">{formatValue(artifact.metadata)}</div></div>
+      <button className="secondary-button" onClick={() => openDesktopPath(artifact.path)} type="button">
+        {t("jobDetail.preflight.open")}
+      </button>
+    </li>
+  );
+}
+
+function PreflightPanel({ job, artifacts, loading, t }: {
+  job: GuiJob; artifacts: GuiArtifact[]; loading: boolean; t: TranslateFn;
+}) {
+  return (
+    <div className="detail-tab-panel">
+      <div className="summary-grid">
+        <div><strong>{t("jobDetail.preflight.sourceFolder")}</strong><span>{formatValue(job.payload.sourceFolder)}</span></div>
+        <div><strong>{t("jobDetail.preflight.sourcePreflight")}</strong><span>{formatValue(job.payload.sourcePreflightId)}</span></div>
+      </div>
+      {loading ? <p>{t("jobDetail.preflight.loadingArtifacts")}</p> : null}
+      {artifacts.length === 0 && !loading ? <p>{t("jobDetail.preflight.emptyArtifacts")}</p> : (
+        <ul className="artifact-list">
+          {artifacts.map((artifact) => <PreflightArtifactRow artifact={artifact} t={t} key={artifact.id} />)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function referenceEnabled(job: GuiJob) {
+  const mode = job.payload.translationMode;
+  return mode === "learning_style" ||
+    (["reference_style", "local_style"].includes(String(mode)) && job.payload.qualityCheck === true);
+}
+
+function ReferencePanel({ job, mode, target, memory, t }: {
+  job: GuiJob; mode: TranslationModeView; target: string | null;
+  memory: Record<string, unknown> | null; t: TranslateFn;
+}) {
+  const enabled = t("jobDetail.reference.enabled");
+  const disabled = t("jobDetail.reference.disabled");
+  return (
+    <div className="detail-tab-panel">
+      <div className="summary-grid">
+        <div><strong>{t("jobDetail.summary.translationMode")}</strong><span>{mode.label}</span></div>
+        <div><strong>{t("jobDetail.summary.translationTarget")}</strong><span>{formatValue(target)}</span></div>
+        <div><strong>{t("jobDetail.translationMemory.fingerprint")}</strong><span>{formatValue(memory?.fingerprint)}</span></div>
+        <div><strong>{t("jobDetail.reference.referenceGlossaryStrategy")}</strong>
+          <span>{formatValue(job.payload.glossaryMode ?? job.payload.terminologyLibraryId)}</span></div>
+        <div><strong>{t("jobDetail.reference.qualityValidation")}</strong>
+          <span>{referenceEnabled(job) ? enabled : disabled}</span></div>
+        <div><strong>{t("jobDetail.reference.localStyleUpdate")}</strong>
+          <span>{["learning_style", "local_style"].includes(String(job.payload.translationMode)) ? enabled : disabled}</span></div>
+      </div>
+      <p className="muted-text">{mode.description} {t("jobDetail.reference.description")}</p>
+    </div>
+  );
+}
+
+function EventsPanel({ jobId, events, collapsed, loading, failed, t }: {
+  jobId: string; events: GuiJobEvent[]; collapsed: CollapsedEvent[];
+  loading: boolean; failed: boolean; t: TranslateFn;
+}) {
+  return (
+    <div className="detail-tab-panel">
+      <SafeInteractionPanel jobId={jobId} events={events} />
+      {loading && events.length === 0 ? <p>{t("jobDetail.events.loading")}</p> : null}
+      {failed ? <p>{t("jobDetail.events.loadFailed")}</p> : null}
+      {!loading && collapsed.length === 0 ? <p>{t("jobDetail.timeline.empty")}</p> : null}
+      {collapsed.length > 0 ? <div className="event-stack">
+        {collapsed.map((entry, index) => <CollapsedEventRow entry={entry} index={index} t={t}
+          key={`${entry.signature}-${entry.lastSeen}-${index}`} />)}
+      </div> : null}
+    </div>
+  );
+}
+
+type DetailTabsProps = {
+  active: DetailTab; select: Dispatch<SetStateAction<DetailTab>>; job: GuiJob; jobId: string;
+  artifacts: GuiArtifact[]; artifactsLoading: boolean; events: GuiJobEvent[]; collapsed: CollapsedEvent[];
+  eventsLoading: boolean; eventsFailed: boolean; mode: TranslationModeView; target: string | null;
+  memory: Record<string, unknown> | null; t: TranslateFn;
+};
+
+function DetailTabs(props: DetailTabsProps) {
+  return (
+    <article className="card">
+      <DetailTabBar active={props.active} select={props.select} t={props.t} />
+      {props.active === "preflight" ? <PreflightPanel job={props.job} artifacts={props.artifacts}
+        loading={props.artifactsLoading} t={props.t} /> : null}
+      {props.active === "artifacts" ? <div className="detail-tab-panel"><ArtifactsContent embedded /></div> : null}
+      {props.active === "reference" ? <ReferencePanel job={props.job} mode={props.mode} target={props.target}
+        memory={props.memory} t={props.t} /> : null}
+      {props.active === "events" ? <EventsPanel jobId={props.jobId} events={props.events} collapsed={props.collapsed}
+        loading={props.eventsLoading} failed={props.eventsFailed} t={props.t} /> : null}
+    </article>
+  );
+}
+
+type SummaryFieldData = { label: string; value: unknown };
+
+function SummaryField({ label, value }: SummaryFieldData) {
+  return <div><strong>{label}</strong><span>{formatValue(value)}</span></div>;
+}
+
+function SummaryFields({ fields }: { fields: SummaryFieldData[] }) {
+  return <>{fields.map((field) => <SummaryField {...field} key={field.label} />)}</>;
+}
+
+function OverviewCard({ label, value, detail }: { label: string; value: ReactNode; detail?: ReactNode }) {
+  return (
+    <div className="overview-card">
+      <span className="overview-card-label">{label}</span>
+      <strong className="overview-card-value">{value}</strong>
+      {detail}
+    </div>
+  );
+}
+
+function liveSyncDetail(job: GuiJob, lastEventAt: string | null, t: TranslateFn) {
+  if (isTerminalJobStatus(job.status)) return t("jobDetail.summary.completedLive");
+  if (lastEventAt) return t("jobDetail.summary.lastEvent", { value: formatSystemDateTime(lastEventAt) });
+  return t("jobDetail.summary.waitingEvents");
+}
+
+function JobOverviewGrid({ job, mode, connection, lastEventAt, t }: {
+  job: GuiJob; mode: TranslationModeView; connection: StreamConnectionState;
+  lastEventAt: string | null; t: TranslateFn;
+}) {
+  return (
+    <div className="overview-card-grid">
+      <OverviewCard label={t("jobDetail.summary.status")} value={translateJobStatusValue(job.status, t)}
+        detail={<span className={`pill pill-${statusTone(job.status)}`}>{translateWorkflowStageValue(job.stage, t)}</span>} />
+      <OverviewCard label={t("jobDetail.summary.jobType")} value={job.type}
+        detail={<span className="job-subtext">{job.id}</span>} />
+      {job.type === "translation" ? <OverviewCard label={t("jobDetail.summary.translationMode")}
+        value={mode.label} detail={<span className="job-subtext">{mode.description}</span>} /> : null}
+      <OverviewCard label={t("jobDetail.summary.created")} value={formatSystemDateTime(job.createdAt)}
+        detail={<span className="job-subtext">{t("jobDetail.summary.updated", { value: formatSystemDateTime(job.updatedAt) })}</span>} />
+      <OverviewCard label={t("jobDetail.summary.liveSync")}
+        value={<span className={`live-connection-badge live-connection-badge-${liveConnectionTone(connection)}`}>
+          {liveConnectionLabel(connection, t)}</span>}
+        detail={<span className="job-subtext">{liveSyncDetail(job, lastEventAt, t)}</span>} />
+    </div>
+  );
+}
+
+function jobIdentityFields(job: GuiJob, target: string | null, t: TranslateFn): SummaryFieldData[] {
+  const fields: SummaryFieldData[] = [
+    { label: t("jobDetail.summary.jobId"), value: job.id },
+    { label: t("jobDetail.summary.manga"), value: job.payload.mangaLabel ?? job.payload.mangaId },
+    { label: t("jobDetail.summary.translator"), value: job.payload.translatorLabel ?? job.payload.translatorId ?? job.payload.translator },
+    { label: t("jobDetail.summary.chapter"), value: job.payload.chapterTitle ?? job.payload.chapterLabel ?? job.payload.chapterId },
+  ];
+  if (job.type === "translation") fields.push({ label: t("jobDetail.summary.translationTarget"), value: target });
+  if (job.type === "translation_knowledge_commit") {
+    fields.push({ label: t("jobDetail.summary.sourceTranslationJob"), value: job.payload.sourceTranslationJobId });
+  } else if (["translation", "post_edit_export"].includes(job.type)) {
+    fields.push({ label: t("jobDetail.summary.outputFolder"), value: job.payload.outputFolder });
+  } else {
+    fields.push({ label: t("jobDetail.summary.referenceSet"), value: job.payload.referenceSetId });
+  }
+  if (job.outcome) fields.push({ label: t("jobDetail.outcome.label"), value: t(`jobList.outcome.${job.outcome}`) });
+  return fields;
+}
+
+function diagnosticFields(job: GuiJob, t: TranslateFn): SummaryFieldData[] {
+  if (!job.diagnostics) return [];
+  const fields: SummaryFieldData[] = [
+    { label: t("jobDetail.outcome.accepted"), value: job.diagnostics.acceptedRecordCount ?? 0 },
+    { label: t("jobDetail.outcome.quarantined"), value: job.diagnostics.quarantinedRecordCount ?? 0 },
+    { label: t("jobDetail.outcome.warnings"), value: job.diagnostics.warningCount ?? 0 },
+  ];
+  if (job.diagnostics.failedWindowId) {
+    fields.push({ label: t("jobDetail.outcome.failedWindow"), value: job.diagnostics.failedWindowId });
+  }
+  return fields;
+}
+
+function JobSummaryActions({ job, resuming, resume, openPostEdit, t }: {
+  job: GuiJob; resuming: boolean; resume: () => void; openPostEdit: () => void; t: TranslateFn;
+}) {
+  return <>
+    {job.status === "failed" && job.resumeMetadata?.resumeAvailable ? <div className="button-row">
+      <button className="primary-button" disabled={resuming} onClick={resume} type="button">
+        {resuming ? t("jobDetail.outcome.resuming") : t("jobDetail.outcome.resume")}
+      </button>
+    </div> : null}
+    {job.type === "translation" && job.status === "succeeded" ? <div className="button-row">
+      <button className="secondary-button" type="button" onClick={openPostEdit}>
+        {t("jobDetail.summary.openPostEdit")}
+      </button>
+    </div> : null}
+  </>;
+}
+
+type JobSummaryCardProps = {
+  job: GuiJob; mode: TranslationModeView; target: string | null; connection: StreamConnectionState;
+  lastEventAt: string | null; resuming: boolean; resume: () => void; openPostEdit: () => void; t: TranslateFn;
+};
+
+function JobSummaryCard(props: JobSummaryCardProps) {
+  const fields = [...jobIdentityFields(props.job, props.target, props.t), ...diagnosticFields(props.job, props.t)];
+  return (
+    <article className="card">
+      <h2>{props.t("jobDetail.summary.title")}</h2>
+      <JobOverviewGrid job={props.job} mode={props.mode} connection={props.connection}
+        lastEventAt={props.lastEventAt} t={props.t} />
+      <div className="summary-grid"><SummaryFields fields={fields} /></div>
+      <JobSummaryActions job={props.job} resuming={props.resuming} resume={props.resume}
+        openPostEdit={props.openPostEdit} t={props.t} />
+    </article>
+  );
+}
+
+type InsightData = {
+  memory: Record<string, unknown> | null; quality: Record<string, unknown> | null;
+  coverage: Record<string, unknown> | null; revisionCount: number; evidence: Record<string, unknown> | null;
+  knowledge: Record<string, unknown> | null; knowledgeChild: GuiJob | null;
+};
+
+function MemoryInsightFields({ data, t }: { data: InsightData; t: TranslateFn }) {
+  const usage = asRecord(data.memory?.usage);
+  return <SummaryFields fields={[
+    { label: t("jobDetail.translationMemory.fingerprint"), value: data.memory?.fingerprint },
+    { label: t("jobDetail.translationMemory.terminology"), value: usage?.glossaryEntries },
+    { label: t("jobDetail.translationMemory.story"), value: usage?.storyCharacters },
+    { label: t("jobDetail.translationMemory.style"), value: usage?.styleChapters },
+    { label: t("jobDetail.translationMemory.qualityChanges"), value: data.revisionCount },
+  ]} />;
+}
+
+function QualityInsightFields({ data, t }: { data: InsightData; t: TranslateFn }) {
+  const coverage = t("jobDetail.quality.semanticCoverageValue", {
+    annotated: Number(data.coverage?.annotated || 0), total: Number(data.coverage?.total || 0),
+    ratio: Math.round(Number(data.coverage?.ratio || 0) * 100),
+  });
+  return <SummaryFields fields={[
+    { label: t("jobDetail.quality.coverage"), value: `${formatValue(data.quality?.candidateCount)} / ${formatValue(data.quality?.totalTranslations)}` },
+    { label: t("jobDetail.quality.windows"), value: data.quality?.windowCount },
+    { label: t("jobDetail.quality.reasons"), value: data.quality?.candidateReasonCounts },
+    { label: t("jobDetail.quality.inputBytes"), value: data.quality?.inputBytes },
+    { label: t("jobDetail.quality.elapsed"), value: data.quality?.elapsedMs },
+    { label: t("jobDetail.quality.semanticCoverage"), value: coverage },
+  ]} />;
+}
+
+function KnowledgeInsightFields({ data, t }: { data: InsightData; t: TranslateFn }) {
+  const childResult = asRecord(data.knowledgeChild?.result);
+  return <SummaryFields fields={[
+    { label: t("jobDetail.translationMemory.knowledge"), value: data.knowledgeChild
+      ? translateJobStatusValue(data.knowledgeChild.status, t) : t("jobDetail.translationMemory.notScheduled") },
+    ...(data.knowledgeChild?.outcome ? [{ label: t("jobDetail.outcome.label"), value: t(`jobList.outcome.${data.knowledgeChild.outcome}`) }] : []),
+    { label: t("jobDetail.knowledge.evidence"), value: data.evidence?.total },
+    { label: t("jobDetail.knowledge.confidenceUpdates"), value: data.knowledge?.confidenceUpdates ?? childResult?.confidenceUpdates },
+    { label: t("jobDetail.knowledge.changes"), value: data.knowledge?.knowledgeChanges ?? childResult?.knowledgeChanges },
+    { label: t("jobDetail.knowledge.semanticRoles"), value: data.evidence?.semanticRoles },
+  ]} />;
+}
+
+type InsightActions = {
+  auditPending: boolean; repairPending: boolean; retryPending: boolean; needsRepair: boolean;
+  startAudit: () => void; startRepair: () => void; retryKnowledge: () => void; retryError: unknown;
+};
+
+function TranslationActions({ actions, t }: { actions: InsightActions; t: TranslateFn }) {
+  return <>
+    <button className="secondary-button" type="button" disabled={actions.auditPending} onClick={actions.startAudit}>
+      {t(actions.auditPending ? "jobDetail.deepAudit.starting" : "jobDetail.deepAudit.start")}
+    </button>
+    <button className="secondary-button" type="button" disabled={actions.repairPending} onClick={actions.startRepair}>
+      {actions.repairPending ? t("jobDetail.qualityRepair.starting")
+        : t(actions.needsRepair ? "jobDetail.qualityRepair.resumePartial" : "jobDetail.qualityRepair.start")}
+    </button>
+  </>;
+}
+
+function KnowledgeRetryAction({ job, child, actions, t }: {
+  job: GuiJob; child: GuiJob | null; actions: InsightActions; t: TranslateFn;
+}) {
+  if (child || !asRecord(job.result)?.knowledgePayload) return null;
+  return <button className="secondary-button" type="button" disabled={actions.retryPending}
+    onClick={actions.retryKnowledge}>
+    {t(actions.retryPending ? "jobDetail.knowledgeRetry.starting" : "jobDetail.knowledgeRetry.start")}
+  </button>;
+}
+
+function InsightActionRow({ job, child, actions, t }: {
+  job: GuiJob; child: GuiJob | null; actions: InsightActions; t: TranslateFn;
+}) {
+  if (job.status !== "succeeded") return null;
+  return <div className="button-row">
+    {job.type === "translation" ? <TranslationActions actions={actions} t={t} /> : null}
+    <KnowledgeRetryAction job={job} child={child} actions={actions} t={t} />
+  </div>;
+}
+
+function KnowledgeRetryError({ error, t }: { error: unknown; t: TranslateFn }) {
+  if (!error) return null;
+  const message = error instanceof Error ? error.message : String(error);
+  return <p className="error-text">{t("jobDetail.knowledgeRetry.failed", { message })}</p>;
+}
+
+function TranslationInsightsCard({ job, data, actions, t }: {
+  job: GuiJob; data: InsightData; actions: InsightActions; t: TranslateFn;
+}) {
+  const visible = ["translation", "translation_quality_repair", "translation_deep_audit_apply"].includes(job.type);
+  if (!visible) return null;
+  return <article className="card">
+    <h2>{t("jobDetail.translationMemory.title")}</h2>
+    <div className="summary-grid"><MemoryInsightFields data={data} t={t} />
+      <QualityInsightFields data={data} t={t} /><KnowledgeInsightFields data={data} t={t} /></div>
+    <InsightActionRow job={job} child={data.knowledgeChild} actions={actions} t={t} />
+    <KnowledgeRetryError error={actions.retryError} t={t} />
+  </article>;
+}
+
+function arrayLength(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function openAuditSource(job: GuiJob, selectJob: (id: string) => void, selectPage: (page: "post-edit") => void) {
+  selectJob(job.payload.sourceTranslationJobId as string);
+  selectPage("post-edit");
+}
+
+function DeepAuditSummaryCard({ job, selectJob, selectPage, t }: {
+  job: GuiJob; selectJob: (id: string) => void; selectPage: (page: "post-edit") => void; t: TranslateFn;
+}) {
+  if (job.type !== "translation_deep_audit") return null;
+  const result = asRecord(job.result);
+  const canOpen = job.status === "succeeded" && typeof job.payload.sourceTranslationJobId === "string";
+  return <article className="card">
+    <h2>{t("jobDetail.deepAudit.title")}</h2>
+    <div className="summary-grid"><SummaryFields fields={[
+      { label: t("jobDetail.deepAudit.windows"), value: result?.windowCount },
+      { label: t("jobDetail.deepAudit.reused"), value: result?.reusedWindows },
+      { label: t("jobDetail.deepAudit.findings"), value: arrayLength(result?.findings) },
+      { label: t("jobDetail.deepAudit.proposals"), value: arrayLength(result?.proposedTranslations) },
+    ]} /></div>
+    {canOpen ? <div className="button-row"><button className="secondary-button" type="button"
+      onClick={() => openAuditSource(job, selectJob, selectPage)}>{t("jobDetail.deepAudit.openPostEdit")}</button></div> : null}
+  </article>;
+}
+
+function useJobNavigation() {
   const { t } = useLanguageStore();
   const selectedJobId = useUiStore((state) => state.selectedJobId);
   const setSelectedJobId = useUiStore((state) => state.setSelectedJobId);
   const setSelectedPage = useUiStore((state) => state.setSelectedPage);
   const setSelectedMangaId = useUiStore((state) => state.setSelectedMangaId);
   const setSelectedTranslatorId = useUiStore((state) => state.setSelectedTranslatorId);
+  const [activeTab, setActiveTab] = useState<DetailTab>("preflight");
+  return { t, selectedJobId, setSelectedJobId, setSelectedPage, setSelectedMangaId,
+    setSelectedTranslatorId, activeTab, setActiveTab };
+}
+
+function useJobRuntimeBindings() {
   const runtimeJob = useSelectedJobRuntimeStore((state) => state.job);
   const runtimeEvents = useSelectedJobRuntimeStore((state) => state.rawEvents);
   const runtimeArtifacts = useSelectedJobRuntimeStore((state) => state.artifacts);
@@ -644,1004 +1502,219 @@ export function JobDetailContent({ embedded }: { embedded: boolean }) {
   const hydrateArtifacts = useSelectedJobRuntimeStore((state) => state.hydrateArtifacts);
   const appendEvent = useSelectedJobRuntimeStore((state) => state.appendEvent);
   const setConnectionState = useSelectedJobRuntimeStore((state) => state.setConnectionState);
-  const [activeTab, setActiveTab] = useState<"preflight" | "artifacts" | "reference" | "events">("preflight");
-  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  return { runtimeJob, runtimeEvents, runtimeArtifacts, connectionState, lastEventAt, resetForJob,
+    hydrateJob, hydrateEvents, hydrateArtifacts, appendEvent, setConnectionState };
+}
 
-  const jobQuery = useQuery({
-    queryKey: ["job", selectedJobId],
-    queryFn: () => getJob(selectedJobId as string),
-    enabled: Boolean(selectedJobId),
-  });
+function useJobDetailQueries(selectedJobId: string | null) {
+  const jobQuery = useQuery({ queryKey: ["job", selectedJobId],
+    queryFn: () => getJob(selectedJobId as string), enabled: Boolean(selectedJobId) });
+  const eventsQuery = useQuery({ queryKey: ["job-events", selectedJobId],
+    queryFn: () => getJobEvents(selectedJobId as string), enabled: Boolean(selectedJobId) });
+  const artifactsQuery = useQuery({ queryKey: ["job-artifacts", selectedJobId],
+    queryFn: () => getJobArtifacts(selectedJobId as string), enabled: Boolean(selectedJobId) });
+  return { jobQuery, eventsQuery, artifactsQuery };
+}
 
-  const eventsQuery = useQuery({
-    queryKey: ["job-events", selectedJobId],
-    queryFn: () => getJobEvents(selectedJobId as string),
-    enabled: Boolean(selectedJobId),
-  });
+function useJobDetailMutations(setSelectedJobId: (id: string) => void) {
+  const deepAuditMutation = useMutation({ mutationFn: createTranslationDeepAuditJob,
+    onSuccess: (job) => setSelectedJobId(job.id) });
+  const qualityRepairMutation = useMutation({ mutationFn: createQualityRepairJob,
+    onSuccess: (job) => setSelectedJobId(job.id) });
+  const knowledgeRetryMutation = useMutation({ mutationFn: createTranslationKnowledgeRetryJob,
+    onSuccess: (job) => setSelectedJobId(job.id) });
+  const resumeMutation = useMutation({ mutationFn: resumeJob,
+    onSuccess: (job) => setSelectedJobId(job.id) });
+  return { deepAuditMutation, qualityRepairMutation, knowledgeRetryMutation, resumeMutation };
+}
 
-  const artifactsQuery = useQuery({
-    queryKey: ["job-artifacts", selectedJobId],
-    queryFn: () => getJobArtifacts(selectedJobId as string),
-    enabled: Boolean(selectedJobId),
-  });
-  const refetchJob = jobQuery.refetch;
-  const refetchArtifacts = artifactsQuery.refetch;
-  const deepAuditMutation = useMutation({
-    mutationFn: (jobId: string) => createTranslationDeepAuditJob(jobId),
-    onSuccess: (job) => setSelectedJobId(job.id),
-  });
-  const qualityRepairMutation = useMutation({
-    mutationFn: (jobId: string) => createQualityRepairJob(jobId),
-    onSuccess: (job) => setSelectedJobId(job.id),
-  });
-  const knowledgeRetryMutation = useMutation({
-    mutationFn: (jobId: string) => createTranslationKnowledgeRetryJob(jobId),
-    onSuccess: (job) => setSelectedJobId(job.id),
-  });
-  const resumeMutation = useMutation({
-    mutationFn: (jobId: string) => resumeJob(jobId),
-    onSuccess: (job) => setSelectedJobId(job.id),
-  });
+function resolveSourcePreflight(job: GuiJob | null, events: GuiJobEvent[], manifest: GuiArtifact | null) {
+  const eventPayload = extractLatestEventPayload(events, "source_preflight.resolved");
+  if (eventPayload) return eventPayload;
+  const resultPreflight = asRecord(job?.result)?.sourcePreflight;
+  return resultPreflight || asRecord(manifest?.metadata);
+}
 
-  const timeline = useMemo(() => {
-    return projectTimelineEvents(runtimeEvents, t);
-  }, [runtimeEvents, t]);
+function useJobDerivedData(job: GuiJob | null, events: GuiJobEvent[], artifacts: GuiArtifact[], t: TranslateFn) {
+  const timeline = useMemo(() => projectTimelineEvents(events, t), [events, t]);
+  const collapsedEvents = useMemo(() => collapseEvents(events), [events]);
+  const preflightArtifacts = useMemo(() => artifacts.filter((artifact) =>
+    ["source_preflight_manifest", "reference_scene", "reference_texts"].includes(artifact.kind)), [artifacts]);
+  const manifest = useMemo(() => artifacts.find((artifact) => artifact.kind === "source_preflight_manifest") ?? null, [artifacts]);
+  const preflight = useMemo(() => resolveSourcePreflight(job, events, manifest), [events, job, manifest]);
+  const workflowSummary = useMemo(() => buildWorkflowSummary(job, events), [events, job]);
+  const latestPipelineProgress = useMemo(() => findLatestPipelineProgress(events), [events]);
+  const pipelineEngines = useMemo(() => buildPipelineEngines(job, latestPipelineProgress), [job, latestPipelineProgress]);
+  const pageProgress = useMemo(() => buildPageProgress(job, latestPipelineProgress, preflight, manifest?.metadata),
+    [job, latestPipelineProgress, manifest?.metadata, preflight]);
+  const notices = useMemo(() => buildJobNotices(job, latestPipelineProgress, t), [job, latestPipelineProgress, t]);
+  return { timeline, collapsedEvents, preflightArtifacts, workflowSummary, latestPipelineProgress,
+    pipelineEngines, pageProgress, notices };
+}
 
-  const collapsedEvents = useMemo(() => {
-    return collapseEvents(runtimeEvents);
-  }, [runtimeEvents]);
+function translationModeFor(job: GuiJob | null, t: TranslateFn): TranslationModeView {
+  const mode = String(job?.payload?.translationMode ?? "quick");
+  const key = mode === "learning_style" ? "learningStyle"
+    : mode === "reference_style" ? "referenceStyle" : mode === "local_style" ? "localStyle" : "quick";
+  return { label: t(`jobDetail.translationMode.${key}.label`),
+    description: t(`jobDetail.translationMode.${key}.description`) };
+}
 
-  const preflightArtifacts = useMemo(() => {
-    return runtimeArtifacts.filter((artifact) =>
-      ["source_preflight_manifest", "reference_scene", "reference_texts"].includes(artifact.kind)
-    );
-  }, [runtimeArtifacts]);
+function translationTargetFor(job: GuiJob | null) {
+  const target = asRecord(asRecord(job?.result)?.translationTarget) || asRecord(job?.payload?.translationTarget);
+  const providerId = typeof target?.providerId === "string" ? target.providerId : null;
+  const modelId = typeof target?.modelId === "string" ? target.modelId : null;
+  return providerId && modelId ? `${providerId} / ${modelId}` : null;
+}
 
-  const preflightManifestArtifact = useMemo(() => {
-    return runtimeArtifacts.find((artifact) => artifact.kind === "source_preflight_manifest") ?? null;
-  }, [runtimeArtifacts]);
-
-  const sourcePreflightSnapshot = useMemo(() => {
-    const eventPayload = extractLatestEventPayload(runtimeEvents, "source_preflight.resolved");
-    if (eventPayload) {
-      return eventPayload;
-    }
-    const sourcePreflight = asRecord(runtimeJob?.result)?.sourcePreflight;
-    if (sourcePreflight) {
-      return sourcePreflight;
-    }
-    const metadata =
-      preflightManifestArtifact?.metadata && typeof preflightManifestArtifact.metadata === "object"
-        ? (preflightManifestArtifact.metadata as Record<string, unknown>)
-        : null;
-    return metadata;
-  }, [preflightManifestArtifact, runtimeEvents, runtimeJob?.result]);
-
-  const workflowSummary = useMemo(() => {
-    const definitions = workflowStageDefinitions(runtimeJob);
-    const currentStage = resolveCurrentWorkflowStage(runtimeJob, runtimeEvents, definitions);
-    const currentStageIndex = currentStage
-      ? definitions.findIndex((entry) => entry.key === currentStage)
-      : -1;
-
-    return definitions.map((entry, index) => {
-      const matched = runtimeEvents.filter((event) => eventMatchesStage(event, entry));
-      const latest = matched[matched.length - 1];
-      const stageFailed = runtimeJob?.status === "failed" && currentStage === entry.key;
-      const stageCanceled = runtimeJob?.status === "canceled" && currentStage === entry.key;
-      const stageSkipped = entry.optionalWhen?.(runtimeJob ?? null) ?? false;
-
-      let status = "waiting";
-      if (stageFailed) {
-        status = "failed";
-      } else if (stageCanceled) {
-        status = "canceled";
-      } else if (stageSkipped) {
-        status = "skipped";
-      } else if (currentStage === entry.key && !["succeeded", "failed", "canceled"].includes(runtimeJob?.status ?? "")) {
-        status = "running";
-      } else if (latest) {
-        status = entry.key === "source_preflight" ? "observed" : "completed";
-      } else if (runtimeJob?.status === "succeeded") {
-        status = "completed";
-      } else if (currentStageIndex > index) {
-        status = "observed";
-      }
-
-      return {
-        stage: entry.key,
-        status,
-        updatedAt: latest?.createdAt ?? null,
-      };
-    });
-  }, [runtimeEvents, runtimeJob]);
-
-  const latestPipelineProgress = useMemo(() => {
-    const events = runtimeEvents;
-    for (let index = events.length - 1; index >= 0; index -= 1) {
-      const event = events[index];
-      if (event.type === "pipeline.progress" && event.payload && typeof event.payload === "object") {
-        return event.payload as Record<string, unknown>;
-      }
-    }
-    return null;
-  }, [runtimeEvents]);
-
-  const pipelineEngines = useMemo(() => {
-    const engineKeys = getEngineOrder(runtimeJob);
-    const currentEngine =
-      latestPipelineProgress && typeof latestPipelineProgress.engine === "string"
-        ? latestPipelineProgress.engine
-        : runtimeJob?.status === "succeeded"
-          ? engineKeys[engineKeys.length - 1] ?? "render"
-          : null;
-    const terminal = runtimeJob?.status === "succeeded";
-
-    return engineKeys.map((engine) => ({
-      engine,
-      status: currentEngine
-        ? currentEngine === engine
-          ? typeof latestPipelineProgress?.engineStatus === "string"
-            ? terminal && latestPipelineProgress.engineStatus === "running"
-              ? "completed"
-              : latestPipelineProgress.engineStatus
-            : "running"
-          : terminal
-            ? "completed"
-            : "waiting"
-        : "unknown",
-    }));
-  }, [runtimeJob, runtimeJob?.status, latestPipelineProgress]);
-
-  const pageProgress = useMemo(() => {
-    const engineKeys = getEngineOrder(runtimeJob);
-    const preflightSnapshot = asRecord(sourcePreflightSnapshot);
-    const pipelineResult = asRecord(asRecord(asRecord(runtimeJob?.result)?.pipeline)?.summary);
-    const artifactMetadata =
-      preflightManifestArtifact?.metadata && typeof preflightManifestArtifact.metadata === "object"
-        ? (preflightManifestArtifact.metadata as Record<string, unknown>)
-        : null;
-    const totalPages =
-      typeof latestPipelineProgress?.totalPages === "number"
-        ? latestPipelineProgress.totalPages
-        : typeof preflightSnapshot?.acceptedCount === "number"
-          ? preflightSnapshot.acceptedCount
-          : typeof preflightSnapshot?.acceptedCount === "string"
-            ? Number(preflightSnapshot.acceptedCount)
-              : typeof pipelineResult?.totalPages === "number"
-                ? Number(pipelineResult.totalPages)
-                : artifactMetadata && typeof artifactMetadata.acceptedCount !== "undefined"
-                  ? Number(artifactMetadata.acceptedCount)
-                  : null;
-    const progress =
-      latestPipelineProgress && typeof latestPipelineProgress.progress === "number"
-        ? latestPipelineProgress.progress
-        : null;
-    const completedPages =
-      latestPipelineProgress && typeof latestPipelineProgress.completedPages === "number"
-        ? latestPipelineProgress.completedPages
-        : typeof progress === "number" && typeof totalPages === "number"
-          ? Math.max(0, Math.min(totalPages, Math.round(totalPages * progress)))
-          : null;
-    const terminalSucceeded = runtimeJob?.status === "succeeded";
-    const finalCurrentPageIndex =
-      latestPipelineProgress && typeof latestPipelineProgress.currentPageIndex === "number"
-        ? latestPipelineProgress.currentPageIndex
-        : terminalSucceeded && typeof totalPages === "number"
-          ? totalPages
-          : null;
-    const finalCompletedPages =
-      typeof completedPages === "number"
-        ? completedPages
-        : terminalSucceeded && typeof totalPages === "number"
-          ? totalPages
-          : null;
-    const finalCurrentEngine =
-      latestPipelineProgress && typeof latestPipelineProgress.engine === "string"
-        ? latestPipelineProgress.engine
-        : terminalSucceeded
-          ? engineKeys[engineKeys.length - 1] ?? "render"
-          : null;
-
-    return {
-      totalPages,
-      completedPages: finalCompletedPages,
-      currentPageIndex: finalCurrentPageIndex,
-      currentPageName:
-        latestPipelineProgress && typeof latestPipelineProgress.currentPageName === "string"
-          ? latestPipelineProgress.currentPageName
-          : null,
-      currentEngine: finalCurrentEngine,
-    };
-  }, [latestPipelineProgress, preflightManifestArtifact, runtimeJob, sourcePreflightSnapshot]);
-
-  const notices = useMemo(() => {
-    const next = [] as Array<{
-      level: "error" | "warning" | "info";
-      title: string;
-      message: string;
-    }>;
-
-    if (runtimeJob?.error) {
-      const failureSource = runtimeJob.diagnostics?.failureSource || "unknown";
-      const failureType = runtimeJob.diagnostics?.resourceFailureType || "unknown";
-      const failureStage = runtimeJob.diagnostics?.failureStage || runtimeJob.stage;
-      next.push({
-        level: "error",
-        title: t("jobDetail.notice.jobError"),
-        message: t("jobDetail.failure.notice", {
-          source: t(`jobDetail.failure.source.${failureSource}`),
-          stage: resolveJobStageLabel(failureStage, t),
-          type: t(`jobList.resourceFailure.${failureType}`),
-        }),
-      });
-    }
-
-      const mode = runtimeJob?.payload?.translationMode;
-      const qualityEnabled = mode === "learning_style" ||
-        (["reference_style", "local_style"].includes(String(mode)) && runtimeJob?.payload?.qualityCheck === true);
-      const knowledgeEnabled = mode === "learning_style" || mode === "local_style";
-
-      if (!qualityEnabled) {
-        next.push({
-          level: "info",
-          title: t("jobDetail.notice.qualitySkipped"),
-          message: t("jobDetail.notice.qualitySkippedMessage"),
-        });
-      }
-
-      if (!knowledgeEnabled) {
-        next.push({
-          level: "info",
-          title: t("jobDetail.notice.localStyleSkipped"),
-          message: t("jobDetail.notice.localStyleSkippedMessage"),
-        });
-      }
-
-    if (!latestPipelineProgress) {
-      next.push({
-        level: "warning",
-        title: t("jobDetail.notice.limitedPipeline"),
-        message: t("jobDetail.notice.limitedPipelineMessage"),
-      });
-    }
-
-    return next;
-  }, [
-    runtimeJob?.diagnostics?.failureSource,
-    runtimeJob?.diagnostics?.failureStage,
-    runtimeJob?.diagnostics?.resourceFailureType,
-    runtimeJob?.error,
-    runtimeJob?.payload?.qualityCheck,
-    runtimeJob?.payload?.translationMode,
-    runtimeJob?.stage,
-    latestPipelineProgress,
-    t,
-  ]);
-
-  useEffect(() => {
-    const payloadMangaId = runtimeJob?.payload?.mangaId;
-    if (typeof payloadMangaId === "string" && payloadMangaId.trim()) {
-      setSelectedMangaId(payloadMangaId);
-    }
-    const payloadTranslatorId = runtimeJob?.payload?.translatorId;
-    if (typeof payloadTranslatorId === "string" && payloadTranslatorId.trim()) {
-      setSelectedTranslatorId(payloadTranslatorId);
-    }
-  }, [runtimeJob?.payload, setSelectedMangaId, setSelectedTranslatorId]);
-
-  useEffect(() => {
-    resetForJob(selectedJobId);
-  }, [resetForJob, selectedJobId]);
-
-  useEffect(() => {
-    if (jobQuery.data) {
-      hydrateJob(jobQuery.data);
-    }
-  }, [hydrateJob, jobQuery.data]);
-
-  useEffect(() => {
-    if (eventsQuery.data?.events) {
-      hydrateEvents(eventsQuery.data.events);
-    }
-  }, [eventsQuery.data, hydrateEvents]);
-
-  useEffect(() => {
-    if (artifactsQuery.data?.artifacts) {
-      hydrateArtifacts(artifactsQuery.data.artifacts);
-    }
-  }, [artifactsQuery.data, hydrateArtifacts]);
-
-  const displayJob = runtimeJob ?? jobQuery.data ?? null;
-  const effectiveConnectionState =
-    displayJob && isTerminalJobStatus(displayJob.status) ? "closed" : connectionState;
-
-  useEffect(() => {
-    if (!selectedJobId || isTerminalJobStatus(runtimeJob?.status ?? jobQuery.data?.status)) {
-      if (isTerminalJobStatus(runtimeJob?.status ?? jobQuery.data?.status)) {
-        setConnectionState("closed");
-      }
-      return;
-    }
-
-    setConnectionState("connecting");
-    const unsubscribe = subscribeToJobStream(selectedJobId, {
-      onOpen: () => {
-        if (reconnectTimerRef.current) {
-          clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = null;
-        }
-        setConnectionState("live");
-      },
-      onError: () => {
-        if (reconnectTimerRef.current) {
-          return;
-        }
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          setConnectionState("reconnecting");
-        }, RECONNECTING_NOTICE_DELAY_MS);
-      },
-      onEvent: (event) => {
-        appendEvent(event);
-
-        if (event.job && typeof event.job === "object") {
-          const nextJob = event.job as GuiJob;
-          hydrateJob(nextJob);
-          queryClient.setQueryData<GuiJob>(["job", selectedJobId], (current) => ({
-            ...current,
-            ...nextJob,
-            events: nextJob.events || current?.events || [],
-            artifacts: nextJob.artifacts || current?.artifacts || [],
-            children: nextJob.children ?? current?.children,
-          }));
-          queryClient.setQueryData<{ jobs: GuiJob[] }>(["jobs"], (current) => {
-            if (!current) return current;
-            return {
-              jobs: current.jobs.map((job) => job.id === nextJob.id ? { ...job, ...nextJob } : job),
-            };
-          });
-        }
-
-        if (
-          [
-            "reference_ingestion.completed",
-            "quality.completed",
-            "knowledge.completed",
-            "export.completed",
-            "job.completed",
-            "job.failed",
-            "job.canceled",
-            "project.closed",
-          ].includes(event.type)
-        ) {
-          void refetchJob();
-          void refetchArtifacts();
-        }
-
-        if (event.type === "job.stage" || event.type === "job.completed" || event.type === "job.failed" || event.type === "job.canceled") {
-          void refetchJob();
-        }
-      },
-    });
-
-    return () => {
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
-      unsubscribe();
-      setConnectionState("closed");
-    };
-  }, [appendEvent, hydrateJob, queryClient, refetchArtifacts, refetchJob, runtimeJob?.status, selectedJobId, setConnectionState]);
-
-  const translationModeView = useMemo(() => {
-    const mode = displayJob?.payload?.translationMode;
-    if (mode === "learning_style") {
-      return {
-        label: t("jobDetail.translationMode.learningStyle.label"),
-        description: t("jobDetail.translationMode.learningStyle.description"),
-      };
-    }
-    if (mode === "reference_style") {
-      return {
-        label: t("jobDetail.translationMode.referenceStyle.label"),
-        description: t("jobDetail.translationMode.referenceStyle.description"),
-      };
-    }
-    if (mode === "local_style") {
-      return {
-        label: t("jobDetail.translationMode.localStyle.label"),
-        description: t("jobDetail.translationMode.localStyle.description"),
-      };
-    }
-    return {
-      label: t("jobDetail.translationMode.quick.label"),
-      description: t("jobDetail.translationMode.quick.description"),
-    };
-  }, [displayJob?.payload, t]);
-  const translationTarget = useMemo(() => {
-    const resultTarget = asRecord(asRecord(displayJob?.result)?.translationTarget);
-    const payloadTarget = asRecord(displayJob?.payload?.translationTarget);
-    const target = resultTarget || payloadTarget;
-    if (!target) return null;
-    const providerId = typeof target.providerId === "string" ? target.providerId : null;
-    const modelId = typeof target.modelId === "string" ? target.modelId : null;
-    return providerId && modelId ? `${providerId} / ${modelId}` : null;
-  }, [displayJob?.payload, displayJob?.result]);
-
-  const translationMemorySummary = useMemo(
-    () => extractLatestEventPayload(runtimeEvents, "translation_memory.built"),
-    [runtimeEvents]
-  );
-  const qualitySummary = useMemo(
-    () => extractLatestEventPayload(runtimeEvents, "quality.completed"),
-    [runtimeEvents]
-  );
-  const qualityContextSummary = useMemo(
-    () => extractLatestEventPayload(runtimeEvents, "quality.context_built"),
-    [runtimeEvents]
-  );
-  const displayedQualitySummary = qualitySummary || qualityContextSummary;
-  const qualitySemanticCoverage = asRecord(displayedQualitySummary?.semanticCoverage);
-  const persistedQuality = asRecord(asRecord(displayJob?.result)?.quality);
-  const qualityNeedsRepair =
-    displayJob?.outcome === "partial" ||
-    persistedQuality?.completenessStatus === "incomplete" ||
+function buildJobInsights(job: GuiJob | null, events: GuiJobEvent[], t: TranslateFn) {
+  const translationMemorySummary = extractLatestEventPayload(events, "translation_memory.built");
+  const qualitySummary = extractLatestEventPayload(events, "quality.completed");
+  const qualityContext = extractLatestEventPayload(events, "quality.context_built");
+  const displayedQualitySummary = qualitySummary || qualityContext;
+  const persistedQuality = asRecord(asRecord(job?.result)?.quality);
+  const qualityNeedsRepair = job?.outcome === "partial" || persistedQuality?.completenessStatus === "incomplete" ||
     asRecord(persistedQuality?.semanticResult)?.outcome === "partial";
-  const qualityRevisionCount = Array.isArray(qualitySummary?.optimizedTranslations)
-    ? qualitySummary.optimizedTranslations.length
-    : 0;
-  const learningEvidenceSummary = useMemo(
-    () => extractLatestEventPayload(runtimeEvents, "learning_evidence.persisted"),
-    [runtimeEvents]
-  );
-  const knowledgeSummary = useMemo(
-    () => extractLatestEventPayload(runtimeEvents, "knowledge.completed"),
-    [runtimeEvents]
-  );
-  const knowledgeChild = useMemo(
-    () => displayJob?.children?.find((child) => child.type === "translation_knowledge_commit") || null,
-    [displayJob?.children]
-  );
-
-  const translateJobStatus = (value: string | null | undefined) => {
-    if (!value) {
-      return t("jobDetail.status.notReported");
-    }
-    const key = `jobDetail.status.${value}`;
-    const translated = t(key);
-    return translated === key ? humanizeIdentifier(value) : translated;
+  return {
+    translationModeView: translationModeFor(job, t), translationTarget: translationTargetFor(job),
+    translationMemorySummary, qualitySummary, displayedQualitySummary,
+    qualitySemanticCoverage: asRecord(displayedQualitySummary?.semanticCoverage), qualityNeedsRepair,
+    qualityRevisionCount: Array.isArray(qualitySummary?.optimizedTranslations) ? qualitySummary.optimizedTranslations.length : 0,
+    learningEvidenceSummary: extractLatestEventPayload(events, "learning_evidence.persisted"),
+    knowledgeSummary: extractLatestEventPayload(events, "knowledge.completed"),
+    knowledgeChild: job?.children?.find((child) => child.type === "translation_knowledge_commit") || null,
   };
+}
 
-  const translateWorkflowStage = (value: string) => {
-    const key = `jobDetail.workflow.${value}`;
-    const translated = t(key);
-    return translated === key ? resolveJobStageLabel(value, t) : translated;
-  };
+function useSelectionSync(
+  job: GuiJob | null,
+  setManga: (id: string | null) => void,
+  setTranslator: (id: string | null) => void,
+) {
+  useEffect(() => {
+    const mangaId = job?.payload?.mangaId;
+    if (typeof mangaId === "string" && mangaId.trim()) setManga(mangaId);
+    const translatorId = job?.payload?.translatorId;
+    if (typeof translatorId === "string" && translatorId.trim()) setTranslator(translatorId);
+  }, [job?.payload, setManga, setTranslator]);
+}
 
-  if (!selectedJobId) {
-    return (
-      <article className={embedded ? "card" : "page"}>
-        {embedded ? <h2>{t("jobDetail.selectedTitle")}</h2> : null}
-        <p>{t("jobDetail.empty")}</p>
-      </article>
-    );
+function useRuntimeHydration(
+  selectedJobId: string | null,
+  runtime: ReturnType<typeof useJobRuntimeBindings>,
+  queries: ReturnType<typeof useJobDetailQueries>,
+) {
+  useEffect(() => runtime.resetForJob(selectedJobId), [runtime.resetForJob, selectedJobId]);
+  useEffect(() => {
+    if (queries.jobQuery.data) runtime.hydrateJob(queries.jobQuery.data);
+  }, [queries.jobQuery.data, runtime.hydrateJob]);
+  useEffect(() => {
+    if (queries.eventsQuery.data?.events) runtime.hydrateEvents(queries.eventsQuery.data.events);
+  }, [queries.eventsQuery.data, runtime.hydrateEvents]);
+  useEffect(() => {
+    if (queries.artifactsQuery.data?.artifacts) runtime.hydrateArtifacts(queries.artifactsQuery.data.artifacts);
+  }, [queries.artifactsQuery.data, runtime.hydrateArtifacts]);
+}
+
+function useJobStreamBinding(
+  jobId: string | null,
+  runtime: ReturnType<typeof useJobRuntimeBindings>,
+  queries: ReturnType<typeof useJobDetailQueries>,
+) {
+  const queryClient = useQueryClient();
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const context = useMemo(() => ({ queryClient, appendEvent: runtime.appendEvent,
+    hydrateJob: runtime.hydrateJob, refetchJob: queries.jobQuery.refetch,
+    refetchArtifacts: queries.artifactsQuery.refetch }),
+  [queryClient, queries.artifactsQuery.refetch, queries.jobQuery.refetch, runtime.appendEvent, runtime.hydrateJob]);
+  useSelectedJobStream(jobId, runtime.runtimeJob?.status ?? queries.jobQuery.data?.status,
+    reconnectTimerRef, runtime.setConnectionState, context);
+}
+
+function useJobDetailModel() {
+  const navigation = useJobNavigation();
+  const runtime = useJobRuntimeBindings();
+  const queries = useJobDetailQueries(navigation.selectedJobId);
+  const mutations = useJobDetailMutations(navigation.setSelectedJobId);
+  const displayJob = runtime.runtimeJob ?? queries.jobQuery.data ?? null;
+  const derived = useJobDerivedData(runtime.runtimeJob, runtime.runtimeEvents, runtime.runtimeArtifacts, navigation.t);
+  const insights = useMemo(() => buildJobInsights(displayJob, runtime.runtimeEvents, navigation.t),
+    [displayJob, navigation.t, runtime.runtimeEvents]);
+  useSelectionSync(runtime.runtimeJob, navigation.setSelectedMangaId, navigation.setSelectedTranslatorId);
+  useRuntimeHydration(navigation.selectedJobId, runtime, queries);
+  useJobStreamBinding(navigation.selectedJobId, runtime, queries);
+  const effectiveConnectionState = displayJob && isTerminalJobStatus(displayJob.status)
+    ? "closed" as const : runtime.connectionState;
+  return { ...navigation, ...runtime, ...queries, ...mutations, ...derived, ...insights,
+    displayJob, effectiveConnectionState };
+}
+
+type JobDetailModel = ReturnType<typeof useJobDetailModel>;
+
+function EmbeddedJobIntro({ t }: { t: TranslateFn }) {
+  return <article className="card"><h2>{t("jobDetail.selectedTitle")}</h2>
+    <p className="muted-text">{t("jobDetail.selectedDescription")}</p></article>;
+}
+
+function JobDeepAuditReview({ model }: { model: JobDetailModel }) {
+  const job = model.displayJob;
+  if (!job || !["translation", "translation_quality_repair", "translation_deep_audit"].includes(job.type)) return null;
+  return <DeepAuditReviewPane job={job} onApplyCreated={(created) => model.setSelectedJobId(created.id)} />;
+}
+
+function JobDetailLayout({ model, embedded }: { model: JobDetailModel; embedded: boolean }) {
+  const job = model.displayJob as GuiJob;
+  return <div className="detail-layout">
+    {embedded ? <EmbeddedJobIntro t={model.t} /> : null}
+    <JobSummaryCard job={job} mode={model.translationModeView} target={model.translationTarget}
+      connection={model.effectiveConnectionState} lastEventAt={model.lastEventAt} resuming={model.resumeMutation.isPending}
+      resume={() => model.resumeMutation.mutate(job.id)} openPostEdit={() => model.setSelectedPage("post-edit")} t={model.t} />
+    <TranslationInsightsCard job={job} data={jobInsightData(model)} actions={jobInsightActions(model, job)} t={model.t} />
+    <JobDeepAuditReview model={model} />
+    <DeepAuditSummaryCard job={job} selectJob={model.setSelectedJobId} selectPage={model.setSelectedPage} t={model.t} />
+    <WorkflowCard entries={model.workflowSummary} t={model.t} />
+    {job.type === "translation" ? <><PipelineCard engines={model.pipelineEngines}
+      progress={model.latestPipelineProgress} t={model.t} /><PageProgressCard progress={model.pageProgress} t={model.t} /></> : null}
+    <NoticesCard notices={model.notices} t={model.t} />
+    <TimelineCard timeline={model.timeline} t={model.t} />
+    <ResultCard job={job} t={model.t} />
+    <DetailTabs active={model.activeTab} select={model.setActiveTab} job={job} jobId={model.selectedJobId as string}
+      artifacts={model.preflightArtifacts} artifactsLoading={model.artifactsQuery.isLoading} events={model.runtimeEvents}
+      collapsed={model.collapsedEvents} eventsLoading={model.eventsQuery.isLoading} eventsFailed={model.eventsQuery.isError}
+      mode={model.translationModeView} target={model.translationTarget} memory={model.translationMemorySummary} t={model.t} />
+  </div>;
+}
+
+function jobInsightData(model: JobDetailModel): InsightData {
+  return { memory: model.translationMemorySummary, quality: model.displayedQualitySummary,
+    coverage: model.qualitySemanticCoverage, revisionCount: model.qualityRevisionCount,
+    evidence: model.learningEvidenceSummary, knowledge: model.knowledgeSummary,
+    knowledgeChild: model.knowledgeChild };
+}
+
+function jobInsightActions(model: JobDetailModel, job: GuiJob): InsightActions {
+  return { auditPending: model.deepAuditMutation.isPending, repairPending: model.qualityRepairMutation.isPending,
+    retryPending: model.knowledgeRetryMutation.isPending, needsRepair: model.qualityNeedsRepair,
+    startAudit: () => model.deepAuditMutation.mutate(job.id),
+    startRepair: () => model.qualityRepairMutation.mutate(job.id),
+    retryKnowledge: () => model.knowledgeRetryMutation.mutate(job.id), retryError: model.knowledgeRetryMutation.error };
+}
+
+function JobDetailView({ model, embedded }: { model: JobDetailModel; embedded: boolean }) {
+  if (!model.selectedJobId) {
+    return <article className={embedded ? "card" : "page"}>
+      {embedded ? <h2>{model.t("jobDetail.selectedTitle")}</h2> : null}<p>{model.t("jobDetail.empty")}</p>
+    </article>;
   }
+  return <>
+    {model.jobQuery.isLoading ? <p>{model.t("jobDetail.loading")}</p> : null}
+    {model.jobQuery.isError ? <p>{model.t("jobDetail.loadFailed")}</p> : null}
+    {!model.jobQuery.isLoading && !model.jobQuery.isError && model.displayJob
+      ? <JobDetailLayout model={model} embedded={embedded} /> : null}
+  </>;
+}
 
-  return (
-    <>
-      {jobQuery.isLoading && <p>{t("jobDetail.loading")}</p>}
-      {jobQuery.isError && <p>{t("jobDetail.loadFailed")}</p>}
-      {!jobQuery.isLoading && !jobQuery.isError && displayJob && (
-        <div className="detail-layout">
-          {embedded ? (
-            <article className="card">
-              <h2>{t("jobDetail.selectedTitle")}</h2>
-              <p className="muted-text">{t("jobDetail.selectedDescription")}</p>
-            </article>
-          ) : null}
-          <article className="card">
-            <h2>{t("jobDetail.summary.title")}</h2>
-            <div className="overview-card-grid">
-              <div className="overview-card">
-                <span className="overview-card-label">{t("jobDetail.summary.status")}</span>
-                <strong className="overview-card-value">{translateJobStatus(displayJob.status)}</strong>
-                <span className={`pill pill-${statusTone(displayJob.status)}`}>{translateWorkflowStage(displayJob.stage)}</span>
-              </div>
-              <div className="overview-card">
-                <span className="overview-card-label">{t("jobDetail.summary.jobType")}</span>
-                <strong className="overview-card-value">{displayJob.type}</strong>
-                <span className="job-subtext">{displayJob.id}</span>
-              </div>
-              {displayJob.type === "translation" ? (
-                <div className="overview-card">
-                  <span className="overview-card-label">{t("jobDetail.summary.translationMode")}</span>
-                  <strong className="overview-card-value">{translationModeView.label}</strong>
-                  <span className="job-subtext">{translationModeView.description}</span>
-                </div>
-              ) : null}
-              <div className="overview-card">
-                <span className="overview-card-label">{t("jobDetail.summary.created")}</span>
-                <strong className="overview-card-value">{formatSystemDateTime(displayJob.createdAt)}</strong>
-                <span className="job-subtext">{t("jobDetail.summary.updated", { value: formatSystemDateTime(displayJob.updatedAt) })}</span>
-              </div>
-              <div className="overview-card">
-                <span className="overview-card-label">{t("jobDetail.summary.liveSync")}</span>
-                <span className={`live-connection-badge live-connection-badge-${liveConnectionTone(effectiveConnectionState)}`}>
-                  {liveConnectionLabel(effectiveConnectionState, t)}
-                </span>
-                <span className="job-subtext">
-                  {displayJob && isTerminalJobStatus(displayJob.status)
-                    ? t("jobDetail.summary.completedLive")
-                    : lastEventAt
-                      ? t("jobDetail.summary.lastEvent", { value: formatSystemDateTime(lastEventAt) })
-                      : t("jobDetail.summary.waitingEvents")}
-                </span>
-              </div>
-            </div>
-            <div className="summary-grid">
-              <div><strong>{t("jobDetail.summary.jobId")}</strong><span>{displayJob.id}</span></div>
-              <div><strong>{t("jobDetail.summary.manga")}</strong><span>{formatValue(displayJob.payload.mangaLabel ?? displayJob.payload.mangaId)}</span></div>
-              <div><strong>{t("jobDetail.summary.translator")}</strong><span>{formatValue(displayJob.payload.translatorLabel ?? displayJob.payload.translatorId ?? displayJob.payload.translator)}</span></div>
-              <div><strong>{t("jobDetail.summary.chapter")}</strong><span>{formatValue(displayJob.payload.chapterTitle ?? displayJob.payload.chapterLabel ?? displayJob.payload.chapterId)}</span></div>
-              {displayJob.type === "translation" ? (
-                <div><strong>{t("jobDetail.summary.translationTarget")}</strong><span>{formatValue(translationTarget)}</span></div>
-              ) : null}
-              {displayJob.type === "translation_knowledge_commit" ? (
-                <div><strong>{t("jobDetail.summary.sourceTranslationJob")}</strong><span>{formatValue(displayJob.payload.sourceTranslationJobId)}</span></div>
-              ) : displayJob.type === "translation" || displayJob.type === "post_edit_export" ? (
-                <div><strong>{t("jobDetail.summary.outputFolder")}</strong><span>{formatValue(displayJob.payload.outputFolder)}</span></div>
-              ) : (
-                <div><strong>{t("jobDetail.summary.referenceSet")}</strong><span>{formatValue(displayJob.payload.referenceSetId)}</span></div>
-              )}
-              {displayJob.outcome ? (
-                <div><strong>{t("jobDetail.outcome.label")}</strong><span>{t(`jobList.outcome.${displayJob.outcome}`)}</span></div>
-              ) : null}
-              {displayJob.diagnostics ? (
-                <>
-                  <div><strong>{t("jobDetail.outcome.accepted")}</strong><span>{displayJob.diagnostics.acceptedRecordCount ?? 0}</span></div>
-                  <div><strong>{t("jobDetail.outcome.quarantined")}</strong><span>{displayJob.diagnostics.quarantinedRecordCount ?? 0}</span></div>
-                  <div><strong>{t("jobDetail.outcome.warnings")}</strong><span>{displayJob.diagnostics.warningCount ?? 0}</span></div>
-                  {displayJob.diagnostics.failedWindowId ? (
-                    <div><strong>{t("jobDetail.outcome.failedWindow")}</strong><span>{displayJob.diagnostics.failedWindowId}</span></div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-            {displayJob.status === "failed" && displayJob.resumeMetadata?.resumeAvailable ? (
-              <div className="button-row">
-                <button
-                  className="primary-button"
-                  disabled={resumeMutation.isPending}
-                  onClick={() => resumeMutation.mutate(displayJob.id)}
-                  type="button"
-                >
-                  {resumeMutation.isPending ? t("jobDetail.outcome.resuming") : t("jobDetail.outcome.resume")}
-                </button>
-              </div>
-            ) : null}
-            {displayJob.type === "translation" && displayJob.status === "succeeded" ? (
-              <div className="button-row">
-                <button className="secondary-button" type="button" onClick={() => setSelectedPage("post-edit")}>
-                  {t("jobDetail.summary.openPostEdit")}
-                </button>
-              </div>
-            ) : null}
-          </article>
-
-          {["translation", "translation_quality_repair", "translation_deep_audit_apply"].includes(displayJob.type) ? (
-            <article className="card">
-              <h2>{t("jobDetail.translationMemory.title")}</h2>
-              <div className="summary-grid">
-                <div>
-                  <strong>{t("jobDetail.translationMemory.fingerprint")}</strong>
-                  <span>{formatValue(translationMemorySummary?.fingerprint)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.translationMemory.terminology")}</strong>
-                  <span>{formatValue(asRecord(translationMemorySummary?.usage)?.glossaryEntries)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.translationMemory.story")}</strong>
-                  <span>{formatValue(asRecord(translationMemorySummary?.usage)?.storyCharacters)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.translationMemory.style")}</strong>
-                  <span>{formatValue(asRecord(translationMemorySummary?.usage)?.styleChapters)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.translationMemory.qualityChanges")}</strong>
-                  <span>{formatValue(qualityRevisionCount)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.coverage")}</strong>
-                  <span>{formatValue(displayedQualitySummary?.candidateCount)} / {formatValue(displayedQualitySummary?.totalTranslations)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.windows")}</strong>
-                  <span>{formatValue(displayedQualitySummary?.windowCount)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.reasons")}</strong>
-                  <span>{formatValue(displayedQualitySummary?.candidateReasonCounts)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.inputBytes")}</strong>
-                  <span>{formatValue(displayedQualitySummary?.inputBytes)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.elapsed")}</strong>
-                  <span>{formatValue(displayedQualitySummary?.elapsedMs)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.quality.semanticCoverage")}</strong>
-                  <span>{t("jobDetail.quality.semanticCoverageValue", {
-                    annotated: Number(qualitySemanticCoverage?.annotated || 0),
-                    total: Number(qualitySemanticCoverage?.total || 0),
-                    ratio: Math.round(Number(qualitySemanticCoverage?.ratio || 0) * 100),
-                  })}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.translationMemory.knowledge")}</strong>
-                  <span>{knowledgeChild ? translateJobStatus(knowledgeChild.status) : t("jobDetail.translationMemory.notScheduled")}</span>
-                </div>
-                {knowledgeChild?.outcome ? (
-                  <div>
-                    <strong>{t("jobDetail.outcome.label")}</strong>
-                    <span>{t(`jobList.outcome.${knowledgeChild.outcome}`)}</span>
-                  </div>
-                ) : null}
-                <div>
-                  <strong>{t("jobDetail.knowledge.evidence")}</strong>
-                  <span>{formatValue(learningEvidenceSummary?.total)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.knowledge.confidenceUpdates")}</strong>
-                  <span>{formatValue(knowledgeSummary?.confidenceUpdates ?? asRecord(knowledgeChild?.result)?.confidenceUpdates)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.knowledge.changes")}</strong>
-                  <span>{formatValue(knowledgeSummary?.knowledgeChanges ?? asRecord(knowledgeChild?.result)?.knowledgeChanges)}</span>
-                </div>
-                <div>
-                  <strong>{t("jobDetail.knowledge.semanticRoles")}</strong>
-                  <span>{formatValue(learningEvidenceSummary?.semanticRoles)}</span>
-                </div>
-              </div>
-              {displayJob.status === "succeeded" ? (
-                <div className="button-row">
-                  {displayJob.type === "translation" ? (
-                    <>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={deepAuditMutation.isPending}
-                        onClick={() => deepAuditMutation.mutate(displayJob.id)}
-                      >
-                        {deepAuditMutation.isPending ? t("jobDetail.deepAudit.starting") : t("jobDetail.deepAudit.start")}
-                      </button>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        disabled={qualityRepairMutation.isPending}
-                        onClick={() => qualityRepairMutation.mutate(displayJob.id)}
-                      >
-                        {qualityRepairMutation.isPending
-                          ? t("jobDetail.qualityRepair.starting")
-                          : t(qualityNeedsRepair
-                            ? "jobDetail.qualityRepair.resumePartial"
-                            : "jobDetail.qualityRepair.start")}
-                      </button>
-                    </>
-                  ) : null}
-                  {!knowledgeChild && asRecord(displayJob.result)?.knowledgePayload ? (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      disabled={knowledgeRetryMutation.isPending}
-                      onClick={() => knowledgeRetryMutation.mutate(displayJob.id)}
-                    >
-                      {knowledgeRetryMutation.isPending
-                        ? t("jobDetail.knowledgeRetry.starting")
-                        : t("jobDetail.knowledgeRetry.start")}
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-              {knowledgeRetryMutation.error ? (
-                <p className="error-text">
-                  {t("jobDetail.knowledgeRetry.failed", {
-                    message: knowledgeRetryMutation.error instanceof Error
-                      ? knowledgeRetryMutation.error.message
-                      : String(knowledgeRetryMutation.error),
-                  })}
-                </p>
-              ) : null}
-            </article>
-          ) : null}
-
-          {["translation", "translation_quality_repair", "translation_deep_audit"].includes(displayJob.type) ? (
-            <DeepAuditReviewPane job={displayJob} onApplyCreated={(job) => setSelectedJobId(job.id)} />
-          ) : null}
-
-          {displayJob.type === "translation_deep_audit" ? (
-            <article className="card">
-              <h2>{t("jobDetail.deepAudit.title")}</h2>
-              <div className="summary-grid">
-                <div><strong>{t("jobDetail.deepAudit.windows")}</strong><span>{formatValue(asRecord(displayJob.result)?.windowCount)}</span></div>
-                <div><strong>{t("jobDetail.deepAudit.reused")}</strong><span>{formatValue(asRecord(displayJob.result)?.reusedWindows)}</span></div>
-                <div><strong>{t("jobDetail.deepAudit.findings")}</strong><span>{formatValue(Array.isArray(asRecord(displayJob.result)?.findings) ? (asRecord(displayJob.result)?.findings as unknown[]).length : 0)}</span></div>
-                <div><strong>{t("jobDetail.deepAudit.proposals")}</strong><span>{formatValue(Array.isArray(asRecord(displayJob.result)?.proposedTranslations) ? (asRecord(displayJob.result)?.proposedTranslations as unknown[]).length : 0)}</span></div>
-              </div>
-              {displayJob.status === "succeeded" && typeof displayJob.payload.sourceTranslationJobId === "string" ? (
-                <div className="button-row">
-                  <button className="secondary-button" type="button" onClick={() => {
-                    setSelectedJobId(displayJob.payload.sourceTranslationJobId as string);
-                    setSelectedPage("post-edit");
-                  }}>
-                    {t("jobDetail.deepAudit.openPostEdit")}
-                  </button>
-                </div>
-              ) : null}
-            </article>
-          ) : null}
-
-          <article className="card">
-            <h2>{t("jobDetail.workflow.title")}</h2>
-            <div className="workflow-card-grid">
-              {workflowSummary.map((entry) => (
-                <div key={entry.stage} className={`workflow-card workflow-card-${statusTone(entry.status)}`}>
-                  <span className="workflow-card-label">{translateWorkflowStage(entry.stage)}</span>
-                  <strong className="workflow-card-status">{translateJobStatus(entry.status)}</strong>
-                  {entry.updatedAt ? <span className="job-subtext">{formatSystemDateTime(entry.updatedAt)}</span> : null}
-                </div>
-              ))}
-            </div>
-          </article>
-
-          {displayJob.type === "translation" ? <article className="card">
-            <h2>{t("jobDetail.pipeline.title")}</h2>
-            <div className="engine-card-grid">
-              {pipelineEngines.map((entry) => (
-                <div key={entry.engine} className={`engine-card engine-card-${statusTone(entry.status)}`}>
-                  <span className="engine-card-label">{formatEngineLabel(entry.engine) ?? entry.engine}</span>
-                  <strong className="engine-card-status">{translateJobStatus(entry.status)}</strong>
-                </div>
-              ))}
-            </div>
-            {!latestPipelineProgress ? (
-              <p className="muted-text">{t("jobDetail.pipeline.pending")}</p>
-            ) : null}
-          </article> : null}
-
-          {displayJob.type === "translation" ? <article className="card">
-            <h2>{t("jobDetail.pageProgress.title")}</h2>
-            <div className="page-progress-hero">
-              <div className="page-progress-main">
-                <span className="overview-card-label">{t("jobDetail.pageProgress.completed")}</span>
-                <strong className="page-progress-value">
-                  {typeof pageProgress.completedPages === "number" && typeof pageProgress.totalPages === "number"
-                    ? `${pageProgress.completedPages} / ${pageProgress.totalPages}`
-                    : typeof pageProgress.totalPages === "number"
-                      ? `0 / ${pageProgress.totalPages}`
-                      : t("jobDetail.status.notReported")}
-                </strong>
-              </div>
-              <div className="page-progress-side">
-                <div className="page-progress-item">
-                  <span className="overview-card-label">{t("jobDetail.pageProgress.currentEngine")}</span>
-                  <strong>{formatEngineLabel(pageProgress.currentEngine) ?? t("jobDetail.status.notReported")}</strong>
-                </div>
-                <div className="page-progress-item">
-                  <span className="overview-card-label">{t("jobDetail.pageProgress.currentPage")}</span>
-                  <strong>{pageProgress.currentPageName ?? t("jobDetail.status.notReported")}</strong>
-                </div>
-                <div className="page-progress-item">
-                  <span className="overview-card-label">{t("jobDetail.pageProgress.pageIndex")}</span>
-                  <strong>{pageProgress.currentPageIndex ?? t("jobDetail.status.notReported")}</strong>
-                </div>
-              </div>
-            </div>
-          </article> : null}
-
-          <article className="card">
-            <h2>{t("jobDetail.warnings.title")}</h2>
-            {notices.length === 0 ? (
-              <p className="muted-text">{t("jobDetail.warnings.none")}</p>
-            ) : (
-              <div className="notice-card-stack">
-                {notices.map((notice, index) => (
-                  <div key={`${notice.title}-${index}`} className={`notice-card notice-card-${notice.level}`}>
-                    <strong>{notice.title}</strong>
-                    <p>{notice.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="card">
-            <h2>{t("jobDetail.timeline.title")}</h2>
-            {timeline.length === 0 ? (
-              <p>{t("jobDetail.timeline.empty")}</p>
-            ) : (
-              <ul className="timeline-list">
-                {timeline.map((entry, index) => (
-                  <li
-                    key={`${entry.sourceEventType}-${entry.when}-${entry.label}-${index}`}
-                    className={`timeline-item ${entry.kind === "progress" ? "timeline-item-progress" : ""}`}
-                  >
-                    <strong>{entry.label}</strong>
-                    <span>{entry.when === "live" ? t("interaction.live") : formatSystemDateTime(entry.when)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-
-          <article className="card">
-            <h2>{t("jobDetail.result.title")}</h2>
-            {displayJob.error ? (
-              <JobFailurePanel job={displayJob} t={t} />
-            ) : (
-              <pre>{JSON.stringify(displayJob.result, null, 2)}</pre>
-            )}
-          </article>
-
-          <article className="card">
-            <div className="detail-tab-bar">
-              <button
-                className={activeTab === "preflight" ? "nav-button active" : "nav-button"}
-                onClick={() => setActiveTab("preflight")}
-                type="button"
-              >
-                {t("jobDetail.tabs.preflight")}
-              </button>
-              <button
-                className={activeTab === "artifacts" ? "nav-button active" : "nav-button"}
-                onClick={() => setActiveTab("artifacts")}
-                type="button"
-              >
-                {t("jobDetail.tabs.artifacts")}
-              </button>
-                <button
-                  className={activeTab === "reference" ? "nav-button active" : "nav-button"}
-                  onClick={() => setActiveTab("reference")}
-                  type="button"
-                >
-                  {t("jobDetail.tabs.reference")}
-                </button>
-              <button
-                className={activeTab === "events" ? "nav-button active" : "nav-button"}
-                onClick={() => setActiveTab("events")}
-                type="button"
-              >
-                {t("jobDetail.tabs.events")}
-              </button>
-            </div>
-
-            {activeTab === "preflight" ? (
-              <div className="detail-tab-panel">
-                <div className="summary-grid">
-                  <div>
-                    <strong>{t("jobDetail.preflight.sourceFolder")}</strong>
-                    <span>{formatValue(displayJob.payload.sourceFolder)}</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.preflight.sourcePreflight")}</strong>
-                    <span>{formatValue(displayJob.payload.sourcePreflightId)}</span>
-                  </div>
-                </div>
-                {artifactsQuery.isLoading && <p>{t("jobDetail.preflight.loadingArtifacts")}</p>}
-                {preflightArtifacts.length === 0 && !artifactsQuery.isLoading ? (
-                  <p>{t("jobDetail.preflight.emptyArtifacts")}</p>
-                ) : (
-                  <ul className="artifact-list">
-                    {preflightArtifacts.map((artifact) => (
-                      <li key={artifact.id} className="artifact-item">
-                        <div>
-                          <strong>{artifact.kind}</strong>
-                          <div className="job-subtext">{artifact.path}</div>
-                          <div className="job-subtext">{formatValue(artifact.metadata)}</div>
-                        </div>
-                        <button
-                          className="secondary-button"
-                          onClick={() => openDesktopPath(artifact.path)}
-                          type="button"
-                        >
-                          {t("jobDetail.preflight.open")}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : null}
-
-            {activeTab === "artifacts" ? (
-              <div className="detail-tab-panel">
-                <ArtifactsContent embedded />
-              </div>
-            ) : null}
-
-            {activeTab === "reference" ? (
-              <div className="detail-tab-panel">
-              <div className="summary-grid">
-                  <div>
-                    <strong>{t("jobDetail.summary.translationMode")}</strong>
-                    <span>{translationModeView.label}</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.summary.translationTarget")}</strong>
-                    <span>{formatValue(translationTarget)}</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.translationMemory.fingerprint")}</strong>
-                    <span>{formatValue(translationMemorySummary?.fingerprint)}</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.reference.referenceGlossaryStrategy")}</strong>
-                    <span>{formatValue(displayJob.payload.glossaryMode ?? displayJob.payload.terminologyLibraryId)}</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.reference.qualityValidation")}</strong>
-                    <span>{
-                      displayJob.payload.translationMode === "learning_style" ||
-                      (["reference_style", "local_style"].includes(String(displayJob.payload.translationMode)) && displayJob.payload.qualityCheck === true)
-                        ? t("jobDetail.reference.enabled")
-                        : t("jobDetail.reference.disabled")
-                    }</span>
-                  </div>
-                  <div>
-                    <strong>{t("jobDetail.reference.localStyleUpdate")}</strong>
-                    <span>{["learning_style", "local_style"].includes(String(displayJob.payload.translationMode)) ? t("jobDetail.reference.enabled") : t("jobDetail.reference.disabled")}</span>
-                  </div>
-                </div>
-                <p className="muted-text">
-                  {translationModeView.description} {t("jobDetail.reference.description")}
-                </p>
-              </div>
-            ) : null}
-
-            {activeTab === "events" ? (
-              <div className="detail-tab-panel">
-                <SafeInteractionPanel
-                  jobId={selectedJobId}
-                  events={runtimeEvents}
-                />
-                {eventsQuery.isLoading && runtimeEvents.length === 0 && <p>{t("jobDetail.events.loading")}</p>}
-                {eventsQuery.isError && <p>{t("jobDetail.events.loadFailed")}</p>}
-                {!eventsQuery.isLoading && collapsedEvents.length === 0 && <p>{t("jobDetail.timeline.empty")}</p>}
-                {collapsedEvents.length > 0 && (
-                  <div className="event-stack">
-                    {collapsedEvents.map((entry, index) => (
-                      <div className="event-row" key={`${entry.signature}-${entry.lastSeen}-${index}`}>
-                        <div className="event-meta">
-                          <strong>
-                            {entry.event.type}
-                            {entry.count > 1 ? ` x${entry.count}` : ""}
-                          </strong>
-                          <span>{entry.lastSeen === "live" ? t("interaction.live") : formatSystemDateTime(entry.lastSeen)}</span>
-                        </div>
-                        {entry.count > 1 ? (
-                          <p className="muted-text">
-                            {t("jobDetail.events.collapsed", {
-                              from: entry.firstSeen === "live" ? t("interaction.live") : formatSystemDateTime(entry.firstSeen),
-                              to: entry.lastSeen === "live" ? t("interaction.live") : formatSystemDateTime(entry.lastSeen),
-                            })}
-                          </p>
-                        ) : null}
-                        <pre>{JSON.stringify(entry.event.payload, null, 2)}</pre>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </article>
-        </div>
-      )}
-    </>
-  );
+export function JobDetailContent({ embedded }: { embedded: boolean }) {
+  const model = useJobDetailModel();
+  return <JobDetailView model={model} embedded={embedded} />;
 }

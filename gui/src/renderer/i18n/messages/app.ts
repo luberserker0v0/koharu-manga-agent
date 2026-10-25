@@ -2,7 +2,8 @@ export const appMessagesZhTW = {
   "app.brand": "漫畫翻譯 GUI",
   "status.loadingRuntime": "載入 runtime 中...",
   "status.runtimeUnavailable": "Runtime 無法使用",
-  "status.backendAgent": (params?: Record<string, string | number>) => `\u5f8c\u7aef ${params?.backend} / Koharu ${params?.koharu} / Agent ${params?.agent}`,
+  "status.backendAgent": (params?: Record<string, string | number>) =>
+    `\u5f8c\u7aef ${params?.backend} / Koharu ${params?.koharu} / Agent ${params?.agent}`,
   "route.settings": "設定",
   "route.job": "建立工作",
   "route.manga": "漫畫管理",
@@ -12,18 +13,22 @@ export const appMessagesZhTW = {
   "app.error.title": "GUI 錯誤",
   "app.error.description": "請重新整理或重新啟動 GUI；若問題持續，請檢查開發者工具與後端紀錄。",
   "app.koharuWarning.title": "Koharu 尚未執行",
-  "app.koharuWarning.unavailable": "無法連線到主機的 127.0.0.1:4000。請啟動外部 Koharu，或設定 koharu.exe 路徑與自動啟動。",
+  "app.koharuWarning.unavailable":
+    "無法連線到主機的 127.0.0.1:4000。請啟動外部 Koharu，或設定 koharu.exe 路徑與自動啟動。",
   "app.koharuWarning.failed": (params?: Record<string, string | number>) => `Koharu 自動啟動失敗：${params?.detail}`,
   "app.koharuWarning.openSettings": "開啟 Koharu 設定",
   "app.koharuRecovery.eyebrow": "需要外部服務",
   "app.koharuRecovery.title": "Koharu 無法使用",
   "app.koharuRecovery.blocked": "翻譯工作已阻擋",
-  "app.koharuRecovery.description": "選擇由 GUI 啟動 Koharu，或自行啟動 Koharu。Backend 偵測到服務就緒後會自動解除阻擋。",
+  "app.koharuRecovery.description":
+    "選擇由 GUI 啟動 Koharu，或自行啟動 Koharu。Backend 偵測到服務就緒後會自動解除阻擋。",
   "app.koharuRecovery.configuredPath": "目前設定的執行檔",
   "app.koharuRecovery.starting": "正在啟動 Koharu 並等待服務就緒...",
-  "app.koharuRecovery.downloading": "正在從 Koharu 官方 GitHub Release 下載 Windows x64 執行檔。檔案約 150 MB，請稍候...",
+  "app.koharuRecovery.downloading":
+    "正在從 Koharu 官方 GitHub Release 下載 Windows x64 執行檔。檔案約 150 MB，請稍候...",
   "app.koharuRecovery.managed.title": "由 GUI 啟動",
-  "app.koharuRecovery.managed.description": "由 GUI 下載官方 Koharu 0.61.2 到使用者資料目錄，或選擇主機上既有的執行檔。路徑會被儲存並啟用自動啟動。",
+  "app.koharuRecovery.managed.description":
+    "由 GUI 下載官方 Koharu 0.61.2 到使用者資料目錄，或選擇主機上既有的執行檔。路徑會被儲存並啟用自動啟動。",
   "app.koharuRecovery.downloadAndStart": "下載並啟動 Koharu",
   "app.koharuRecovery.chooseAndStart": "選擇既有執行檔",
   "app.koharuRecovery.downloadMissingPath": "Koharu 已完成下載，但沒有回傳已安裝的執行檔路徑。",
@@ -39,7 +44,8 @@ export const appMessagesZhTW = {
   "referenceGlossaryStrategy.referenceOnly.label": "只用參考術語",
   "referenceGlossaryStrategy.referenceOnly.description": "只把參考資料中整理出的術語與上下文帶入 prompt。",
   "referenceGlossaryStrategy.disabled.label": "不注入術語表",
-  "referenceGlossaryStrategy.disabled.description": "不額外注入 glossary terms，只保留 reference workflow 產生的 translation context。",
+  "referenceGlossaryStrategy.disabled.description":
+    "不額外注入 glossary terms，只保留 reference workflow 產生的 translation context。",
   "selector.chapter.chooseFirst": "請先選擇漫畫與譯者",
   "selector.chapter.select": "選擇章節",
   "selector.chapter.create": "建立新章節",
@@ -74,7 +80,8 @@ export const appMessagesEnUS = {
   "app.brand": "Manga Translation GUI",
   "status.loadingRuntime": "Loading runtime...",
   "status.runtimeUnavailable": "Runtime unavailable",
-  "status.backendAgent": (params?: Record<string, string | number>) => `Backend ${params?.backend} / Koharu ${params?.koharu} / Agent ${params?.agent}`,
+  "status.backendAgent": (params?: Record<string, string | number>) =>
+    `Backend ${params?.backend} / Koharu ${params?.koharu} / Agent ${params?.agent}`,
   "route.settings": "Settings",
   "route.job": "Create Job",
   "route.manga": "Manga",
@@ -82,36 +89,47 @@ export const appMessagesEnUS = {
   "route.postEdit": "Post Edit",
   "route.jobList": "Job List",
   "app.error.title": "GUI error",
-  "app.error.description": "Reload or restart the GUI. If the problem continues, inspect the developer tools and backend logs.",
+  "app.error.description":
+    "Reload or restart the GUI. If the problem continues, inspect the developer tools and backend logs.",
   "app.koharuWarning.title": "Koharu is not running",
-  "app.koharuWarning.unavailable": "The host service at 127.0.0.1:4000 is unreachable. Start external Koharu, or configure the koharu.exe path and auto-start.",
-  "app.koharuWarning.failed": (params?: Record<string, string | number>) => `Koharu auto-start failed: ${params?.detail}`,
+  "app.koharuWarning.unavailable":
+    "The host service at 127.0.0.1:4000 is unreachable. Start external Koharu, or configure the koharu.exe path and auto-start.",
+  "app.koharuWarning.failed": (params?: Record<string, string | number>) =>
+    `Koharu auto-start failed: ${params?.detail}`,
   "app.koharuWarning.openSettings": "Open Koharu settings",
   "app.koharuRecovery.eyebrow": "External service required",
   "app.koharuRecovery.title": "Koharu is unavailable",
   "app.koharuRecovery.blocked": "Translation jobs blocked",
-  "app.koharuRecovery.description": "Let the GUI start Koharu, or start it yourself. The backend automatically unblocks jobs after the service becomes ready.",
+  "app.koharuRecovery.description":
+    "Let the GUI start Koharu, or start it yourself. The backend automatically unblocks jobs after the service becomes ready.",
   "app.koharuRecovery.configuredPath": "Configured executable",
   "app.koharuRecovery.starting": "Starting Koharu and waiting for the service to become ready...",
-  "app.koharuRecovery.downloading": "Downloading the Windows x64 executable from the official Koharu GitHub Release. The file is about 150 MB; please wait...",
+  "app.koharuRecovery.downloading":
+    "Downloading the Windows x64 executable from the official Koharu GitHub Release. The file is about 150 MB; please wait...",
   "app.koharuRecovery.managed.title": "Start with the GUI",
-  "app.koharuRecovery.managed.description": "Let the GUI download official Koharu 0.61.2 into the user-data folder, or select an existing executable. The path is saved and auto-start is enabled.",
+  "app.koharuRecovery.managed.description":
+    "Let the GUI download official Koharu 0.61.2 into the user-data folder, or select an existing executable. The path is saved and auto-start is enabled.",
   "app.koharuRecovery.downloadAndStart": "Download and start Koharu",
   "app.koharuRecovery.chooseAndStart": "Choose existing executable",
-  "app.koharuRecovery.downloadMissingPath": "Koharu finished downloading but did not return an installed executable path.",
+  "app.koharuRecovery.downloadMissingPath":
+    "Koharu finished downloading but did not return an installed executable path.",
   "app.koharuRecovery.retry": "Retry configured executable",
   "app.koharuRecovery.manual.title": "Start it yourself",
-  "app.koharuRecovery.manual.description": "Run the command below on the host. You may close this dialog; the GUI will continue checking the service.",
+  "app.koharuRecovery.manual.description":
+    "Run the command below on the host. You may close this dialog; the GUI will continue checking the service.",
   "app.koharuRecovery.manual.action": "I will start it myself",
   "app.koharuRecovery.openSettings": "Open full settings",
   "app.koharuRecovery.fileDialogTitle": "Select the Koharu executable",
   "referenceGlossaryStrategy.title": "Reference glossary strategy",
   "referenceGlossaryStrategy.canonical.label": "Canonical glossary",
-  "referenceGlossaryStrategy.canonical.description": "Use the full canonical glossary and keep reference-derived terminology aligned with the main project wording.",
+  "referenceGlossaryStrategy.canonical.description":
+    "Use the full canonical glossary and keep reference-derived terminology aligned with the main project wording.",
   "referenceGlossaryStrategy.referenceOnly.label": "Reference-only glossary",
-  "referenceGlossaryStrategy.referenceOnly.description": "Prefer only the terms that come from the selected reference material when building prompts and context.",
+  "referenceGlossaryStrategy.referenceOnly.description":
+    "Prefer only the terms that come from the selected reference material when building prompts and context.",
   "referenceGlossaryStrategy.disabled.label": "Disable glossary injection",
-  "referenceGlossaryStrategy.disabled.description": "Do not inject glossary terms into the generated translation context for this reference workflow.",
+  "referenceGlossaryStrategy.disabled.description":
+    "Do not inject glossary terms into the generated translation context for this reference workflow.",
   "selector.chapter.chooseFirst": "Choose manga + translator first",
   "selector.chapter.select": "Select chapter",
   "selector.chapter.create": "Create new chapter",

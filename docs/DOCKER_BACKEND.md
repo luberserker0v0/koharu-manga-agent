@@ -11,9 +11,11 @@ service so the GUI can display the active backend type.
 ## Start
 
 ```bash
-docker compose -p manga-backend up -d --build
-docker compose -p manga-backend ps
+docker compose build --pull backend
+docker compose up -d --force-recreate backend
+docker compose ps
 curl http://127.0.0.1:4001/health
+curl http://127.0.0.1:4001/ready
 ```
 
 The default Compose mapping is loopback-only:
@@ -24,6 +26,12 @@ The default Compose mapping is loopback-only:
 
 The backend runs as the non-root `node` user. Its writable state is stored in the `backend-data` named volume at `/data`.
 
+With the repository's top-level Compose name, the deployed resources are:
+
+- container: `koharu-manga-agent-backend-1`
+- image: `koharu-manga-agent-backend:latest`
+- volume: `koharu-manga-agent_backend-data`
+
 ## External Services
 
 The image config at `docker/koharu.json` uses these Docker Desktop host addresses:
@@ -32,6 +40,18 @@ The image config at `docker/koharu.json` uses these Docker Desktop host addresse
 - AO: `http://host.docker.internal:32768`
 
 `host.docker.internal:host-gateway` is also configured for Linux Docker Engine. Change the URLs when AO or Koharu are Docker services or remote hosts. Managed Koharu is disabled in the container.
+
+Runtime ownership differs by deployment:
+
+| Deployment | Backend owner | Koharu owner | Koharu address seen by backend |
+| --- | --- | --- | --- |
+| Native `node backend/server.js` | Native process or desktop GUI | Native backend runtime manager | `http://127.0.0.1:4000` |
+| Docker backend + desktop GUI | Docker Compose | Desktop GUI host-process service | `http://host.docker.internal:4000` |
+| Docker backend without GUI | Docker Compose | Operator-managed host process | `http://host.docker.internal:4000` |
+
+The Linux container cannot install or execute the Windows Koharu binary. Its
+`koharuRuntime.managed` setting is therefore `false`; `/runtime/koharu/start` cannot replace the
+required host process in Docker mode.
 
 The Docker profile sets `api.pageUploadMode` to `multipart`. This is required because host Koharu cannot open `/data/...` paths from the backend container. Do not change it to `from-paths` unless Backend and Koharu intentionally share the same filesystem and path namespace.
 
@@ -59,6 +79,21 @@ Keep the host firewall restricted to the Docker/local-machine path. `GET /health
 while Koharu is offline because it reports backend liveness. `GET /ready` returns HTTP `503` with a
 `koharu_unavailable` blocker, and `/api/v1/runtime/status` provides the detailed external dependency
 state. Koharu-backed create/retry/resume requests are rejected before a job is created.
+
+Operational checks:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:4001/health
+Invoke-RestMethod http://127.0.0.1:4001/runtime/status
+Invoke-RestMethod http://127.0.0.1:4001/ready
+```
+
+Expected states:
+
+- `/health`: `200` whenever the backend process is alive;
+- `/runtime/status`: `backend.status = ready`; in Docker, Koharu uses `mode = external`;
+- `/ready`: `200` only after host Koharu is reachable, otherwise `503` with
+  `koharu_unavailable` and `retrySafe: true` on rejected Koharu-backed requests.
 
 Koharu translation credentials remain on the host. Configure DeepL, Google Cloud Translation, or
 Caiyun in Koharu, then inspect the sanitized backend view at
@@ -94,10 +129,11 @@ the repository:
 - Linux config: `${XDG_CONFIG_HOME:-~/.config}/koharu-manga-agent/backend`
 - Linux data: `${XDG_DATA_HOME:-~/.local/share}/koharu-manga-agent/backend`
 
-Native startup does not read or copy repository configuration. It creates runtime state beneath the
-OS data root and uses backend defaults until the user saves configuration. This release intentionally
-does not migrate the former flat `cache`, `knowledge_base`, `post_edit`, `references`, `translated`,
-or `uploads` layout.
+When no native OS user config exists, the backend uses its built-in defaults until settings are
+persisted through the backend API. Docker instead initializes its persistent config from
+`docker/koharu.json`. Runtime state is created beneath the OS data root. The backend does not migrate
+the former flat `cache`, `knowledge_base`, `post_edit`, `references`, `translated`, or `uploads`
+layout.
 
 ## Browser API Security
 
@@ -123,8 +159,8 @@ strong token before exposing the port beyond the local machine.
 Container recreation must retain `/data`:
 
 ```bash
-docker compose -p manga-backend restart backend
-docker compose -p manga-backend exec backend find /data -maxdepth 3 -type f
+docker compose restart backend
+docker compose exec backend find /data -maxdepth 3 -type f
 ```
 
 Do not scale this service above one replica while it uses a single SQLite database and Koharu's single-current-project execution model.
@@ -132,7 +168,39 @@ Do not scale this service above one replica while it uses a single SQLite databa
 ## Stop
 
 ```bash
-docker compose -p manga-backend down
+docker compose down
 ```
 
 This keeps the named volume. Removing the volume deletes container-owned persistent state and must be an explicit operator action.
+
+## Rebuild And Fresh Deployment
+
+Update the base image and rebuild the backend from the current workspace:
+
+```powershell
+docker compose build --pull backend
+docker compose up -d --force-recreate backend
+docker compose ps
+```
+
+To deliberately discard all Docker-backend state and deploy with a new empty volume:
+
+```powershell
+docker compose down
+docker volume rm koharu-manga-agent_backend-data
+docker compose build --pull backend
+docker compose up -d --force-recreate backend
+```
+
+The volume deletion is irreversible. It removes the container-owned configuration, SQLite jobs and
+events, Reference and Knowledge data, uploads, workspaces, logs, and backend-owned exports. It does
+not remove the Docker image, host Koharu projects/models, GUI preferences, or files exported outside
+the backend data root.
+
+After deployment, require both container health and dependency readiness:
+
+```powershell
+docker inspect --format "{{.State.Status}} {{.State.Health.Status}}" koharu-manga-agent-backend-1
+Invoke-RestMethod http://127.0.0.1:4001/health
+Invoke-RestMethod http://127.0.0.1:4001/runtime/status
+```

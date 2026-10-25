@@ -7,13 +7,8 @@ export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
 }
 
-export async function createMainWindow(backendBaseUrl = "http://127.0.0.1:4001"): Promise<BrowserWindow> {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.focus();
-    return mainWindow;
-  }
-
-  mainWindow = new BrowserWindow({
+function createWindow(backendBaseUrl: string) {
+  return new BrowserWindow({
     width: 1400,
     height: 960,
     minWidth: 1100,
@@ -28,6 +23,23 @@ export async function createMainWindow(backendBaseUrl = "http://127.0.0.1:4001")
       additionalArguments: [`--backend-base-url=${encodeURIComponent(backendBaseUrl)}`],
     },
   });
+}
+
+async function loadRenderer(window: BrowserWindow) {
+  if (process.env.ELECTRON_RENDERER_URL) {
+    await window.loadURL(process.env.ELECTRON_RENDERER_URL);
+    return;
+  }
+  await window.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
+}
+
+export async function createMainWindow(backendBaseUrl = "http://127.0.0.1:4001"): Promise<BrowserWindow> {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.focus();
+    return mainWindow;
+  }
+
+  mainWindow = createWindow(backendBaseUrl);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow?.show();
@@ -37,11 +49,6 @@ export async function createMainWindow(backendBaseUrl = "http://127.0.0.1:4001")
     mainWindow = null;
   });
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    await mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
-  } else {
-    await mainWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
-  }
-
+  await loadRenderer(mainWindow);
   return mainWindow;
 }

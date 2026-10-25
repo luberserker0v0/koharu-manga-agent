@@ -96,12 +96,7 @@ function pathApiFor(targetPath) {
 }
 
 class KoharuRuntimeManager {
-  constructor({
-    config,
-    installRoot,
-    fetchImpl = globalThis.fetch,
-    spawnImpl = spawn,
-  }) {
+  constructor({ config, installRoot, fetchImpl = globalThis.fetch, spawnImpl = spawn }) {
     this.config = config || {};
     this.installRoot = installRoot;
     this.fetchImpl = fetchImpl;
@@ -182,14 +177,17 @@ class KoharuRuntimeManager {
       }
     }
 
-    throw new Error(
-      `No available Koharu port found from ${preferredPort} to ${preferredPort + portSearchRange}.`
-    );
+    throw new Error(`No available Koharu port found from ${preferredPort} to ${preferredPort + portSearchRange}.`);
   }
 
   async inspect() {
     const installed = fs.existsSync(this.executablePath);
     const reachable = await this.isReachable();
+    const { status, mode } = this.resolveInspectState(installed, reachable);
+    return this.buildInspectResult(installed, status, mode);
+  }
+
+  resolveInspectState(installed, reachable) {
     let status = "not_installed";
     let mode = "managed";
     if (!this.enabled) {
@@ -203,6 +201,10 @@ class KoharuRuntimeManager {
     } else if (installed) {
       status = "installed";
     }
+    return { status, mode };
+  }
+
+  buildInspectResult(installed, status, mode) {
     return {
       status,
       mode,
@@ -224,11 +226,25 @@ class KoharuRuntimeManager {
   async inspectPaths({ client = null, baseUrl = this.baseUrl } = {}) {
     const fallbackDataRoot = defaultDataRoot();
     const fallbackConfigPath = fallbackDataRoot ? path.join(fallbackDataRoot, "config.toml") : null;
-    let configPath = fallbackConfigPath;
-    let dataRoot = configPath ? readConfiguredDataRoot(configPath) : null;
+    const { projects, projectApiError } = await this.loadInspectProjects(client, baseUrl);
+    const { dataRoot, configPath, discoveredProjectPath } = this.resolveInspectDataRoot(
+      fallbackDataRoot,
+      fallbackConfigPath,
+      projects,
+    );
+    return this.buildInspectPathsResult({
+      dataRoot,
+      configPath,
+      discoveredProjectPath,
+      projects,
+      projectApiError,
+      baseUrl,
+    });
+  }
+
+  async loadInspectProjects(client, baseUrl) {
     let projects = [];
     let projectApiError = null;
-
     if (client?.listProjects && (await this.isReachable(baseUrl))) {
       try {
         projects = await client.listProjects(baseUrl);
@@ -236,7 +252,12 @@ class KoharuRuntimeManager {
         projectApiError = error.message;
       }
     }
+    return { projects, projectApiError };
+  }
 
+  resolveInspectDataRoot(fallbackDataRoot, fallbackConfigPath, projects) {
+    let configPath = fallbackConfigPath;
+    let dataRoot = configPath ? readConfiguredDataRoot(configPath) : null;
     const discoveredProjectPath = projects[0]?.path || null;
     if (discoveredProjectPath) {
       const projectPathApi = pathApiFor(discoveredProjectPath);
@@ -249,13 +270,15 @@ class KoharuRuntimeManager {
     if (!configPath && dataRoot) {
       configPath = path.join(dataRoot, "config.toml");
     }
+    return { dataRoot, configPath, discoveredProjectPath };
+  }
 
+  buildInspectPathsResult({ dataRoot, configPath, discoveredProjectPath, projects, projectApiError, baseUrl }) {
     const dataPathApi = pathApiFor(dataRoot);
     const projectsRoot = dataRoot ? dataPathApi.join(dataRoot, "projects") : null;
     const modelsRoot = dataRoot ? dataPathApi.join(dataRoot, "models") : null;
     const runtimeRoot = dataRoot ? dataPathApi.join(dataRoot, "runtime") : null;
     const fontsRoot = dataRoot ? dataPathApi.join(dataRoot, "fonts") : null;
-
     return {
       dataRoot,
       projectsRoot,
@@ -268,31 +291,41 @@ class KoharuRuntimeManager {
       versionDir: this.versionDir,
       baseUrl,
       hostAccessible: !fs.existsSync("/.dockerenv") || isWindowsPath(discoveredProjectPath),
-      exists: {
-        dataRoot: pathExists(dataRoot),
-        projectsRoot: pathExists(projectsRoot),
-        modelsRoot: pathExists(modelsRoot),
-        runtimeRoot: pathExists(runtimeRoot),
-        fontsRoot: pathExists(fontsRoot),
-        configPath: pathExists(configPath),
-      },
-      projectSamples: projects.slice(0, 10).map((project) => ({
-        id: project.id || null,
-        name: project.name || null,
-        path: project.path || null,
-        updatedAtMs: project.updatedAtMs || null,
-      })),
+      exists: this.buildInspectPathsExists({
+        dataRoot,
+        projectsRoot,
+        modelsRoot,
+        runtimeRoot,
+        fontsRoot,
+        configPath,
+      }),
+      projectSamples: this.buildProjectSamples(projects),
       projectApiError,
     };
   }
 
+  buildInspectPathsExists({ dataRoot, projectsRoot, modelsRoot, runtimeRoot, fontsRoot, configPath }) {
+    return {
+      dataRoot: pathExists(dataRoot),
+      projectsRoot: pathExists(projectsRoot),
+      modelsRoot: pathExists(modelsRoot),
+      runtimeRoot: pathExists(runtimeRoot),
+      fontsRoot: pathExists(fontsRoot),
+      configPath: pathExists(configPath),
+    };
+  }
+
+  buildProjectSamples(projects) {
+    return projects.slice(0, 10).map((project) => ({
+      id: project.id || null,
+      name: project.name || null,
+      path: project.path || null,
+      updatedAtMs: project.updatedAtMs || null,
+    }));
+  }
+
   async ensureInstalled() {
-    if (!this.enabled) {
-      throw new Error("Managed Koharu runtime is disabled.");
-    }
-    if (!this.isSupportedPlatform()) {
-      throw new Error("Managed Koharu install currently supports Windows x64 only.");
-    }
+    this.assertManagedInstallSupported();
     if (fs.existsSync(this.executablePath)) {
       this.lastError = null;
       return this.inspect();
@@ -301,33 +334,51 @@ class KoharuRuntimeManager {
       throw new Error("Koharu download requires fetch support.");
     }
     fs.mkdirSync(this.versionDir, { recursive: true });
-    const release = await fetchJson(
-      this.fetchImpl,
-      defaultReleaseUrl(this.config.repository || "koharu-rs/koharu", this.version),
-      "Fetch Koharu release"
-    );
-    const asset = selectReleaseAsset({ assets: release.assets || [] });
-    if (!asset?.browser_download_url) {
-      throw new Error(`Koharu release ${this.version} does not include ${WINDOWS_X64_ASSET}.`);
-    }
+    const asset = await this.fetchKoharuReleaseAsset();
     const temporaryPath = path.join(this.versionDir, `${WINDOWS_X64_ASSET}.${process.pid}.${Date.now()}.tmp`);
     try {
-      const buffer = await fetchBuffer(this.fetchImpl, asset.browser_download_url, "Download Koharu");
-      fs.writeFileSync(temporaryPath, buffer);
-      fs.renameSync(temporaryPath, this.executablePath);
-      this.lastInstall = {
-        version: this.version,
-        assetName: asset.name,
-        downloadedAt: new Date().toISOString(),
-        size: buffer.length,
-      };
-      this.lastError = null;
-      return this.inspect();
+      return await this.installDownloadedAsset(asset, temporaryPath);
     } catch (error) {
       fs.rmSync(temporaryPath, { force: true });
       this.lastError = error.message;
       throw error;
     }
+  }
+
+  assertManagedInstallSupported() {
+    if (!this.enabled) {
+      throw new Error("Managed Koharu runtime is disabled.");
+    }
+    if (!this.isSupportedPlatform()) {
+      throw new Error("Managed Koharu install currently supports Windows x64 only.");
+    }
+  }
+
+  async fetchKoharuReleaseAsset() {
+    const release = await fetchJson(
+      this.fetchImpl,
+      defaultReleaseUrl(this.config.repository || "koharu-rs/koharu", this.version),
+      "Fetch Koharu release",
+    );
+    const asset = selectReleaseAsset({ assets: release.assets || [] });
+    if (!asset?.browser_download_url) {
+      throw new Error(`Koharu release ${this.version} does not include ${WINDOWS_X64_ASSET}.`);
+    }
+    return asset;
+  }
+
+  async installDownloadedAsset(asset, temporaryPath) {
+    const buffer = await fetchBuffer(this.fetchImpl, asset.browser_download_url, "Download Koharu");
+    fs.writeFileSync(temporaryPath, buffer);
+    fs.renameSync(temporaryPath, this.executablePath);
+    this.lastInstall = {
+      version: this.version,
+      assetName: asset.name,
+      downloadedAt: new Date().toISOString(),
+      size: buffer.length,
+    };
+    this.lastError = null;
+    return this.inspect();
   }
 
   buildStartArgs(extraArgs = []) {
@@ -360,17 +411,25 @@ class KoharuRuntimeManager {
     }
     await this.ensureInstalled();
     if (this.isManagedChildRunning()) {
-      const ready = await this.waitUntilReachable();
-      if (!ready) {
-        throw new Error(`Managed Koharu did not become reachable at ${this.baseUrl}.`);
-      }
-      return this.inspect();
+      return this.waitForManagedRunning();
     }
     const selected = await this.selectPort();
     if (selected.mode === "external") {
       this.lastError = null;
       return this.inspect();
     }
+    return this.startManagedProcess();
+  }
+
+  async waitForManagedRunning() {
+    const ready = await this.waitUntilReachable();
+    if (!ready) {
+      throw new Error(`Managed Koharu did not become reachable at ${this.baseUrl}.`);
+    }
+    return this.inspect();
+  }
+
+  async startManagedProcess() {
     const child = this.spawnImpl(this.executablePath, this.buildStartArgs(), {
       cwd: this.versionDir,
       stdio: "ignore",
@@ -378,6 +437,17 @@ class KoharuRuntimeManager {
       env: process.env,
     });
     this.child = child;
+    this.registerManagedChildExit(child);
+    const ready = await this.waitUntilReachable();
+    if (!ready) {
+      this.lastError = `Managed Koharu did not become reachable at ${this.baseUrl}.`;
+      throw new Error(this.lastError);
+    }
+    this.lastError = null;
+    return this.inspect();
+  }
+
+  registerManagedChildExit(child) {
     child.once("exit", (code, signal) => {
       if (this.child === child) {
         this.child = null;
@@ -386,13 +456,6 @@ class KoharuRuntimeManager {
         this.lastError = `Managed Koharu exited with code ${code}.`;
       }
     });
-    const ready = await this.waitUntilReachable();
-    if (!ready) {
-      this.lastError = `Managed Koharu did not become reachable at ${this.baseUrl}.`;
-      throw new Error(this.lastError);
-    }
-    this.lastError = null;
-    return this.inspect();
   }
 
   async prepareRuntime() {
@@ -410,7 +473,10 @@ class KoharuRuntimeManager {
       });
       child.once("exit", (code) => {
         if (code === 0) {
-          this.lastPrepare = { preparedAt: new Date().toISOString(), version: this.version };
+          this.lastPrepare = {
+            preparedAt: new Date().toISOString(),
+            version: this.version,
+          };
           this.lastError = null;
           resolve(this.inspect());
         } else {

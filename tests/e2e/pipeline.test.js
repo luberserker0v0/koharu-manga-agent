@@ -1,6 +1,6 @@
-const fs = require("fs");
 const path = require("path");
 const koharu = require(path.join(__dirname, "../helpers/koharu"));
+const { config, PROJECT_CONFIG_PATH } = require("../../backend/src/config");
 
 describe("pipeline.test.js", () => {
   let projectId;
@@ -58,22 +58,10 @@ describe("pipeline.test.js", () => {
   });
 
   describe("config wiring", () => {
-    test("koharu.json exists with expected defaults", () => {
-      const configPath = path.join(__dirname, "../../.opencode/koharu.json");
-      expect(fs.existsSync(configPath)).toBe(true);
-
-      const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    test("backend loads the isolated user configuration", () => {
+      expect(PROJECT_CONFIG_PATH).toBe(path.resolve(global.TEST_CONFIG_PATH));
       expect(config.api.baseUrl).toBeDefined();
       expect(config.defaults.targetLanguage).toBe("zh-TW");
-    });
-
-    test("manga local config reads koharu.json", () => {
-      const config = require(path.join(
-        __dirname,
-        "../../.opencode/skills/manga-translate-zhtw/lib/config"
-      ));
-      expect(config.DEFAULT_BASE_URL).toBeDefined();
-      expect(config.DEFAULTS.targetLanguage).toBe("zh-TW");
     });
   });
 });

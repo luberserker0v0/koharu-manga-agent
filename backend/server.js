@@ -28,7 +28,7 @@ async function main() {
       host: runtime.api.server.address().address,
       port: runtime.api.server.address().port,
       koharu,
-    })
+    }),
   );
 }
 

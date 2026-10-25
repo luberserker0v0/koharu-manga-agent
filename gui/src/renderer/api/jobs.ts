@@ -17,9 +17,7 @@ export type GuiAtomicJobType =
   | "translation_deep_audit_apply"
   | "translation_quality_repair";
 
-export type GuiWorkflowJobType =
-  | "reference_ingestion"
-  | "reference_bilingual_enrichment";
+export type GuiWorkflowJobType = "reference_ingestion" | "reference_bilingual_enrichment";
 
 export type GuiJobType = GuiAtomicJobType | GuiWorkflowJobType;
 
@@ -41,14 +39,31 @@ export type GuiJobDiagnostics = {
   quarantinedRecordCount?: number;
   degradedStages?: string[];
   warnings?: string[];
-  resourceFailureType?: "quota" | "timeout" | "transient_network" | "invalid_output" | "integrity" | "persistence" | "canceled" | "unknown";
+  resourceFailureType?:
+    | "quota"
+    | "timeout"
+    | "transient_network"
+    | "invalid_output"
+    | "integrity"
+    | "persistence"
+    | "canceled"
+    | "unknown";
   resumeAvailable?: boolean;
   failedWindowId?: string | null;
   recommendation?: string | null;
   failureSource?: "ao" | "koharu" | "backend" | "storage" | "data" | "unknown";
   failureStage?: string | null;
   failureCode?: string | null;
-  recommendedAction?: "restore_quota" | "start_ao_and_retry" | "restart_koharu_and_retry" | "resume_checkpoint" | "retry_after_timeout" | "retry_semantic_stage" | "check_storage" | "inspect_input_artifacts" | "inspect_raw_error";
+  recommendedAction?:
+    | "restore_quota"
+    | "start_ao_and_retry"
+    | "restart_koharu_and_retry"
+    | "resume_checkpoint"
+    | "retry_after_timeout"
+    | "retry_semantic_stage"
+    | "check_storage"
+    | "inspect_input_artifacts"
+    | "inspect_raw_error";
 };
 
 const GUI_JOB_STATUSES: ReadonlySet<string> = new Set<GuiJobStatus>([
@@ -93,8 +108,19 @@ export type GuiJob = {
     failedWindowId?: string | null;
     resourceFailureType?: string | null;
   } | null;
-  events: Array<{ id: number; type: string; payload: unknown; createdAt: string }>;
-  artifacts: Array<{ id: number; kind: string; path: string; metadata: unknown; createdAt: string }>;
+  events: Array<{
+    id: number;
+    type: string;
+    payload: unknown;
+    createdAt: string;
+  }>;
+  artifacts: Array<{
+    id: number;
+    kind: string;
+    path: string;
+    metadata: unknown;
+    createdAt: string;
+  }>;
   children?: GuiJob[];
 };
 
@@ -159,7 +185,12 @@ export type DeepAuditReviewPackage = {
     pageId: string | null;
     pageName: string;
     items: DeepAuditReviewItem[];
-    sequenceRisks: Array<{ startNodeId: string; endNodeId: string; nodeIds: string[]; reason: string }>;
+    sequenceRisks: Array<{
+      startNodeId: string;
+      endNodeId: string;
+      nodeIds: string[];
+      reason: string;
+    }>;
   }>;
   summary: { blocking: number; warnings: number; pages: number };
 };
@@ -253,7 +284,11 @@ export type ExtractionReviewStatus =
   | "reviewed"
   | "project_missing";
 
-export type ExtractionReviewDiff = { added: number; deleted: number; changed: number };
+export type ExtractionReviewDiff = {
+  added: number;
+  deleted: number;
+  changed: number;
+};
 
 export type ExtractionReviewTextNode = {
   nodeId: string;
@@ -480,7 +515,9 @@ export function getJobs(): Promise<{ jobs: GuiJob[] }> {
   return apiFetch("/jobs?includeDeleted=1");
 }
 
-export function getReferenceSets(): Promise<{ referenceSets: ReferenceSetSummary[] }> {
+export function getReferenceSets(): Promise<{
+  referenceSets: ReferenceSetSummary[];
+}> {
   return apiFetch("/references");
 }
 
@@ -490,7 +527,7 @@ export function getExtractionReview(referenceSetId: string): Promise<{ review: E
 
 export function runReferenceDeepReview(
   referenceSetId: string,
-  payload: { nodeKeys?: string[]; reviewReason?: string } = {}
+  payload: { nodeKeys?: string[]; reviewReason?: string } = {},
 ): Promise<GuiJob> {
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/deep-review`, {
     method: "POST",
@@ -502,21 +539,30 @@ export function startExtractionReview(referenceSetId: string): Promise<{ review:
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/extraction-review/session`, { method: "POST" });
 }
 
-export function syncExtractionReview(referenceSetId: string, sessionId: string): Promise<{ review: ExtractionReviewDocument }> {
+export function syncExtractionReview(
+  referenceSetId: string,
+  sessionId: string,
+): Promise<{ review: ExtractionReviewDocument }> {
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/extraction-review/session/sync`, {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });
 }
 
-export function finishExtractionReviewEditor(referenceSetId: string, sessionId: string): Promise<{ review: ExtractionReviewDocument }> {
+export function finishExtractionReviewEditor(
+  referenceSetId: string,
+  sessionId: string,
+): Promise<{ review: ExtractionReviewDocument }> {
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/extraction-review/session/finish`, {
     method: "POST",
     body: JSON.stringify({ sessionId }),
   });
 }
 
-export function cancelExtractionReview(referenceSetId: string, sessionId: string): Promise<{ review: ExtractionReviewDocument }> {
+export function cancelExtractionReview(
+  referenceSetId: string,
+  sessionId: string,
+): Promise<{ review: ExtractionReviewDocument }> {
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/extraction-review/session`, {
     method: "DELETE",
     body: JSON.stringify({ sessionId }),
@@ -525,7 +571,7 @@ export function cancelExtractionReview(referenceSetId: string, sessionId: string
 
 export function saveExtractionReviewOrder(
   referenceSetId: string,
-  pages: Array<{ pageId: string; nodeIds: string[] }>
+  pages: Array<{ pageId: string; nodeIds: string[] }>,
 ): Promise<{ review: ExtractionReviewDocument }> {
   return apiFetch(`/references/${encodeURIComponent(referenceSetId)}/extraction-review/order`, {
     method: "PUT",
@@ -565,7 +611,12 @@ export function deleteReferenceSet(referenceSetId: string): Promise<{
 }
 
 export function deleteReferenceExtraction(referenceSetId: string): Promise<{
-  deletedExtraction: { id: string; label: string; deleted: boolean; deletedExtraction: boolean };
+  deletedExtraction: {
+    id: string;
+    label: string;
+    deleted: boolean;
+    deletedExtraction: boolean;
+  };
   deletedJobs: Array<{ id: string; status: string; type: string }>;
 }> {
   return apiFetch(`/references/${referenceSetId}/extraction`, {
@@ -577,10 +628,7 @@ export function getMangaSeries(): Promise<{ series: MangaSeriesSummary[] }> {
   return apiFetch("/manga");
 }
 
-export function createManga(payload: {
-  label: string;
-  language?: string;
-}): Promise<{ manga: MangaSeriesSummary }> {
+export function createManga(payload: { label: string; language?: string }): Promise<{ manga: MangaSeriesSummary }> {
   return apiFetch("/manga", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -589,7 +637,11 @@ export function createManga(payload: {
 
 export function createTranslatorProfile(
   mangaId: string,
-  payload: { label: string; language?: string; styleSourceTranslatorId?: string }
+  payload: {
+    label: string;
+    language?: string;
+    styleSourceTranslatorId?: string;
+  },
 ): Promise<{ translator: TranslatorProfileSummary }> {
   return apiFetch(`/manga/${mangaId}/translators`, {
     method: "POST",
@@ -610,9 +662,14 @@ export function deleteManga(mangaId: string): Promise<{
 
 export function deleteTranslatorProfileRecord(
   mangaId: string,
-  translatorId: string
+  translatorId: string,
 ): Promise<{
-  deleted: { mangaId: string; translatorId: string; label: string; deleted: boolean };
+  deleted: {
+    mangaId: string;
+    translatorId: string;
+    label: string;
+    deleted: boolean;
+  };
   deletedReferences: Array<{ id: string; label: string; deleted: boolean }>;
   deletedJobs: Array<{ id: string; status: string; type: string }>;
   deletedRevisionCount: number;
@@ -622,17 +679,14 @@ export function deleteTranslatorProfileRecord(
   });
 }
 
-export function getChapters(
-  mangaId: string,
-  translatorId: string
-): Promise<{ chapters: ChapterSummary[] }> {
+export function getChapters(mangaId: string, translatorId: string): Promise<{ chapters: ChapterSummary[] }> {
   return apiFetch(`/manga/${mangaId}/translators/${translatorId}/chapters`);
 }
 
 export function createChapter(
   mangaId: string,
   translatorId: string,
-  payload: { chapterTitle?: string | null }
+  payload: { chapterTitle?: string | null },
 ): Promise<{ chapter: ChapterSummary }> {
   return apiFetch(`/manga/${mangaId}/translators/${translatorId}/chapters`, {
     method: "POST",
@@ -644,7 +698,7 @@ export function updateChapter(
   mangaId: string,
   translatorId: string,
   chapterId: string,
-  payload: { chapterTitle?: string | null }
+  payload: { chapterTitle?: string | null },
 ): Promise<{ chapter: ChapterSummary }> {
   return apiFetch(`/manga/${mangaId}/translators/${translatorId}/chapters/${chapterId}`, {
     method: "POST",
@@ -655,9 +709,14 @@ export function updateChapter(
 export function deleteChapter(
   mangaId: string,
   translatorId: string,
-  chapterId: string
+  chapterId: string,
 ): Promise<{
-  deleted: { mangaId: string; translatorId: string; chapterId: string; deleted: boolean };
+  deleted: {
+    mangaId: string;
+    translatorId: string;
+    chapterId: string;
+    deleted: boolean;
+  };
 }> {
   return apiFetch(`/manga/${mangaId}/translators/${translatorId}/chapters/${chapterId}`, {
     method: "DELETE",
@@ -667,7 +726,7 @@ export function deleteChapter(
 export function reorderChapters(
   mangaId: string,
   translatorId: string,
-  orderedChapterIds: string[]
+  orderedChapterIds: string[],
 ): Promise<{ chapters: ChapterSummary[] }> {
   return apiFetch(`/manga/${mangaId}/translators/${translatorId}/chapters/reorder`, {
     method: "POST",
@@ -688,43 +747,33 @@ export function getJobArtifacts(jobId: string): Promise<{ artifacts: GuiArtifact
 }
 
 export function getTranslatedImages(jobId: string): Promise<TranslatedImageManifest> {
-  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images`, { timeoutMs: 30000 });
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images`, {
+    timeoutMs: 30000,
+  });
 }
 
 export function getEncodedTranslatedImage(jobId: string, imageId: string): Promise<EncodedTranslatedImage> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images/${encodeURIComponent(imageId)}`, {
+    timeoutMs: 30000,
+  });
+}
+
+export function getIngestionKnowledgeReport(mangaId: string, translatorId: string): Promise<IngestionKnowledgeReport> {
+  return apiFetch(`/knowledge/${mangaId}/ingestion-report?translatorId=${encodeURIComponent(translatorId)}`);
+}
+
+export function getBilingualEvidence(mangaId: string, translatorId: string): Promise<BilingualEvidenceDocument> {
   return apiFetch(
-    `/jobs/${encodeURIComponent(jobId)}/translated-images/${encodeURIComponent(imageId)}`,
-    { timeoutMs: 30000 }
+    `/knowledge/${encodeURIComponent(mangaId)}/bilingual-evidence?translatorId=${encodeURIComponent(translatorId)}`,
   );
 }
 
-export function getIngestionKnowledgeReport(
-  mangaId: string,
-  translatorId: string
-): Promise<IngestionKnowledgeReport> {
-  return apiFetch(
-    `/knowledge/${mangaId}/ingestion-report?translatorId=${encodeURIComponent(translatorId)}`
-  );
-}
-
-export function getBilingualEvidence(
-  mangaId: string,
-  translatorId: string
-): Promise<BilingualEvidenceDocument> {
-  return apiFetch(
-    `/knowledge/${encodeURIComponent(mangaId)}/bilingual-evidence?translatorId=${encodeURIComponent(translatorId)}`
-  );
-}
-
-export function runBilingualEnrichment(payload: {
-  mangaId: string;
-  translatorId: string;
-}): Promise<GuiJob> {
+export function runBilingualEnrichment(payload: { mangaId: string; translatorId: string }): Promise<GuiJob> {
   return apiFetch(
     `/knowledge/${encodeURIComponent(payload.mangaId)}/bilingual-enrichment?translatorId=${encodeURIComponent(payload.translatorId)}`,
     {
-    method: "POST",
-    }
+      method: "POST",
+    },
   );
 }
 
@@ -738,17 +787,17 @@ export function updateBilingualEvidenceLink(payload: {
     `/knowledge/${encodeURIComponent(payload.mangaId)}/bilingual-evidence/links/${encodeURIComponent(payload.linkId)}` +
       `?translatorId=${encodeURIComponent(payload.translatorId)}`,
     {
-    method: "PUT",
-    body: JSON.stringify({
-      action: payload.action,
-    }),
-    }
+      method: "PUT",
+      body: JSON.stringify({
+        action: payload.action,
+      }),
+    },
   );
 }
 
 export function deleteIngestionKnowledgeReport(
   mangaId: string,
-  translatorId: string
+  translatorId: string,
 ): Promise<{
   deletedIngestion: {
     mangaId: string;
@@ -832,11 +881,14 @@ export type TranslationPublicationRegistry = {
   schemaVersion: number;
   mangaId: string;
   translatorId: string;
-  chapters: Record<string, {
-    chapterId: string;
-    activeRevisionId: string;
-    revisions: TranslationPublicationRevision[];
-  }>;
+  chapters: Record<
+    string,
+    {
+      chapterId: string;
+      activeRevisionId: string;
+      revisions: TranslationPublicationRevision[];
+    }
+  >;
 };
 
 export type ReferenceExtractionPayload = {
@@ -887,7 +939,9 @@ export function createTranslationJob(payload: TranslationJobPayload): Promise<Gu
 }
 
 export function createTranslationDeepAuditJob(jobId: string): Promise<GuiJob> {
-  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/deep-audit`, { method: "POST" });
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/deep-audit`, {
+    method: "POST",
+  });
 }
 
 export function inspectTranslationMemory(
@@ -904,7 +958,7 @@ export function inspectTranslationMemory(
     | "chapterTitle"
     | "glossaryMode"
     | "translationTarget"
-  >
+  >,
 ): Promise<TranslationMemoryInspection> {
   return apiFetch("/translation/memory/inspect", {
     method: "POST",
@@ -914,16 +968,14 @@ export function inspectTranslationMemory(
 
 export function getTranslationPublications(
   mangaId: string,
-  translatorId: string
+  translatorId: string,
 ): Promise<TranslationPublicationRegistry> {
   return apiFetch(
-    `/translation-publications/${encodeURIComponent(mangaId)}?translatorId=${encodeURIComponent(translatorId)}`
+    `/translation-publications/${encodeURIComponent(mangaId)}?translatorId=${encodeURIComponent(translatorId)}`,
   );
 }
 
-export function createSourcePreflight(payload: {
-  sourceFolder: string;
-}): Promise<SourcePreflightResult> {
+export function createSourcePreflight(payload: { sourceFolder: string }): Promise<SourcePreflightResult> {
   return apiFetch("/source-preflight", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -934,10 +986,7 @@ export function getSourcePreflight(preflightId: string): Promise<SourcePreflight
   return apiFetch(`/source-preflight/${preflightId}`);
 }
 
-export function reorderSourcePreflight(
-  preflightId: string,
-  orderedImageIds: string[]
-): Promise<SourcePreflightResult> {
+export function reorderSourcePreflight(preflightId: string, orderedImageIds: string[]): Promise<SourcePreflightResult> {
   return apiFetch(`/source-preflight/${preflightId}/reorder`, {
     method: "POST",
     body: JSON.stringify({ orderedImageIds }),
@@ -958,9 +1007,7 @@ export function createReferenceIngestionJob(payload: ReferenceIngestionPayload):
   });
 }
 
-export function createReferenceIngestionJobs(
-  items: ReferenceIngestionPayload[]
-): Promise<{ jobs: GuiJob[] }> {
+export function createReferenceIngestionJobs(items: ReferenceIngestionPayload[]): Promise<{ jobs: GuiJob[] }> {
   return apiFetch("/jobs/reference-ingestion/batch", {
     method: "POST",
     body: JSON.stringify({ items }),
@@ -976,7 +1023,7 @@ export function getEditedScene(jobId: string): Promise<{
 
 export function saveEditedScene(
   jobId: string,
-  payload: EditedSceneDocument
+  payload: EditedSceneDocument,
 ): Promise<{ editedScene: EditedSceneDocument }> {
   return apiFetch(`/post-edit/${jobId}`, {
     method: "POST",
@@ -996,7 +1043,7 @@ export function createPostEditReferenceSet(
     translatorLabel?: string;
     chapterId?: string;
     chapterTitle?: string;
-  }
+  },
 ): Promise<{ referenceSet: ImportedReferenceSet }> {
   return apiFetch(`/post-edit/${jobId}/reference-set`, {
     method: "POST",
@@ -1023,7 +1070,9 @@ export function applyDeepAuditReview(jobId: string, decisions: DeepAuditReviewDe
 }
 
 export function createQualityRepairJob(jobId: string): Promise<GuiJob> {
-  return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/quality-repair`, { method: "POST" });
+  return apiFetch<GuiJob>(`/jobs/${encodeURIComponent(jobId)}/quality-repair`, {
+    method: "POST",
+  });
 }
 
 export function createTranslationKnowledgeRetryJob(jobId: string): Promise<GuiJob> {

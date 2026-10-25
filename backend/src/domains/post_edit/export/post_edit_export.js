@@ -95,71 +95,7 @@ function textMismatchPenalty(expectedText, candidateText) {
 }
 
 function matchPostEditDocumentToScene(postEditDocument, scene) {
-  const byPageName = collectSceneTextNodes(scene);
-  const matches = [];
-  const unresolved = [];
-
-  for (const pageId of postEditDocument.pageOrder || []) {
-    const page = postEditDocument.pages?.[pageId];
-    if (!page) {
-      continue;
-    }
-
-    const candidates = [...(byPageName.get(page.pageName) || [])];
-    if (candidates.length === 0) {
-      for (const nodeId of page.nodeOrder || []) {
-        unresolved.push({
-          pageName: page.pageName,
-          nodeId,
-          reason: "No rebuilt scene page matched the stored pageName.",
-        });
-      }
-      continue;
-    }
-
-    const used = new Set();
-    for (const nodeId of page.nodeOrder || []) {
-      const node = page.nodes?.[nodeId];
-      if (!node) {
-        continue;
-      }
-
-      const ranked = candidates
-        .filter((candidate) => !used.has(candidate.nodeId))
-        .map((candidate) => ({
-          candidate,
-          score:
-            geometryDistance(node.anchor, candidate.anchor) +
-            textMismatchPenalty(node.originalText, candidate.originalText),
-        }))
-        .sort((left, right) => left.score - right.score);
-
-      const best = ranked[0];
-      if (!best || best.score >= 10000) {
-        unresolved.push({
-          pageName: page.pageName,
-          nodeId,
-          reason: "No safe rebuilt scene node matched the stored anchor/text.",
-        });
-        continue;
-      }
-
-      used.add(best.candidate.nodeId);
-      matches.push({
-        documentPageId: pageId,
-        documentNodeId: nodeId,
-        pageName: page.pageName,
-        rebuiltPageId: best.candidate.pageId,
-        rebuiltNodeId: best.candidate.nodeId,
-        editedTranslation: node.editedTranslation || "",
-      });
-    }
-  }
-
-  return {
-    matches,
-    unresolved,
-  };
+  const byPageName = collectSceneTextNodes(scene); const matches = []; const unresolved = []; for (const pageId of postEditDocument.pageOrder || []) { const page = postEditDocument.pages?.[pageId]; if (!page) { continue; } const candidates = [...(byPageName.get(page.pageName) || [])]; if (candidates.length === 0) { for (const nodeId of page.nodeOrder || []) { unresolved.push({ pageName: page.pageName, nodeId, reason: "No rebuilt scene page matched the stored pageName.", }); } continue; } const used = new Set(); for (const nodeId of page.nodeOrder || []) { const node = page.nodes?.[nodeId]; if (!node) { continue; } const ranked = candidates .filter((candidate) => !used.has(candidate.nodeId)) .map((candidate) => ({ candidate, score: geometryDistance(node.anchor, candidate.anchor) + textMismatchPenalty(node.originalText, candidate.originalText), })) .sort((left, right) => left.score - right.score); const best = ranked[0]; if (!best || best.score >= 10000) { unresolved.push({ pageName: page.pageName, nodeId, reason: "No safe rebuilt scene node matched the stored anchor/text.", }); continue; } used.add(best.candidate.nodeId); matches.push({ documentPageId: pageId, documentNodeId: nodeId, pageName: page.pageName, rebuiltPageId: best.candidate.pageId, rebuiltNodeId: best.candidate.nodeId, editedTranslation: node.editedTranslation || "", }); } } return { matches, unresolved, };
 }
 
 function buildTranslationPatchOps(matches) {
@@ -226,53 +162,51 @@ function createZip(sourcePath, destinationPath) {
   }
 }
 
-function reorderRenderedZip({ zipPath, sourcePageOrder, targetPageOrder, workspaceRoot }) {
-  if (!zipPath.toLowerCase().endsWith(".zip")) {
-    return zipPath;
-  }
-  if (!Array.isArray(sourcePageOrder) || !Array.isArray(targetPageOrder)) {
-    return zipPath;
-  }
-  if (sourcePageOrder.join("|") === targetPageOrder.join("|")) {
-    return zipPath;
-  }
-
+function prepareReorderDirs(workspaceRoot, zipPath) {
   const expandDir = path.join(workspaceRoot, "expanded");
   const stagedDir = path.join(workspaceRoot, "staged");
   const reorderedPath = path.join(path.dirname(zipPath), `post_edit_${path.basename(zipPath)}`);
-
   fs.rmSync(expandDir, { recursive: true, force: true });
   fs.rmSync(stagedDir, { recursive: true, force: true });
   fs.rmSync(reorderedPath, { force: true });
   ensureDir(expandDir);
   ensureDir(stagedDir);
+  return { expandDir, stagedDir, reorderedPath };
+}
 
-  expandZip(zipPath, expandDir);
+function listExportedFiles(expandDir) {
+  return fs.readdirSync(expandDir, { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => entry.name).sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+}
 
-  const exportedFiles = fs
-    .readdirSync(expandDir, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name)
-    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
-
+function mapSourceFiles(sourcePageOrder, exportedFiles) {
   const fileByPageId = new Map();
   sourcePageOrder.forEach((pageId, index) => {
-    if (exportedFiles[index]) {
-      fileByPageId.set(pageId, exportedFiles[index]);
-    }
+    if (exportedFiles[index]) fileByPageId.set(pageId, exportedFiles[index]);
   });
+  return fileByPageId;
+}
 
+function stageTargetFiles(targetPageOrder, fileByPageId, expandDir, stagedDir) {
   targetPageOrder.forEach((pageId, index) => {
     const sourceFile = fileByPageId.get(pageId);
-    if (!sourceFile) {
-      return;
-    }
+    if (!sourceFile) return;
     const renamed = renamePageEntry(sourceFile, index);
     fs.copyFileSync(path.join(expandDir, sourceFile), path.join(stagedDir, renamed));
   });
+}
 
-  createZip(stagedDir, reorderedPath);
-  return reorderedPath;
+function reorderRenderedZip({ zipPath, sourcePageOrder, targetPageOrder, workspaceRoot }) {
+  if (!zipPath.toLowerCase().endsWith(".zip")) return zipPath;
+  if (!Array.isArray(sourcePageOrder) || !Array.isArray(targetPageOrder)) return zipPath;
+  if (sourcePageOrder.join("|") === targetPageOrder.join("|")) return zipPath;
+
+  const dirs = prepareReorderDirs(workspaceRoot, zipPath);
+  expandZip(zipPath, dirs.expandDir);
+  const exportedFiles = listExportedFiles(dirs.expandDir);
+  const fileByPageId = mapSourceFiles(sourcePageOrder, exportedFiles);
+  stageTargetFiles(targetPageOrder, fileByPageId, dirs.expandDir, dirs.stagedDir);
+  createZip(dirs.stagedDir, dirs.reorderedPath);
+  return dirs.reorderedPath;
 }
 
 function createRebuiltProjectName(date = new Date()) {

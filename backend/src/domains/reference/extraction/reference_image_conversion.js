@@ -2,49 +2,36 @@ const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { paths } = require("../../../config");
-const {
-  ensureDir,
-  loadReferenceManifest,
-  referenceSetPaths,
-} = require("../sets/reference_sets");
+const { ensureDir, loadReferenceManifest, referenceSetPaths } = require("../sets/reference_sets");
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif"]);
 const KOHARU_SUPPORTED_FORMATS = new Set(["jpeg", "png", "webp"]);
 
 function detectImageFormatFromBuffer(buffer) {
-  if (!buffer || buffer.length < 12) {
-    return "unknown";
-  }
+  if (!buffer || buffer.length < 12) return "unknown";
+  if (isJpegBuffer(buffer)) return "jpeg";
+  if (isPngBuffer(buffer)) return "png";
+  if (isWebpBuffer(buffer)) return "webp";
+  return detectIsobmffFormat(buffer);
+}
 
-  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
-    return "jpeg";
-  }
+function isJpegBuffer(buffer) {
+  return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+}
 
-  if (
-    buffer[0] === 0x89 &&
-    buffer[1] === 0x50 &&
-    buffer[2] === 0x4e &&
-    buffer[3] === 0x47
-  ) {
-    return "png";
-  }
+function isPngBuffer(buffer) {
+  return buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+}
 
-  if (
-    buffer.toString("ascii", 0, 4) === "RIFF" &&
-    buffer.toString("ascii", 8, 12) === "WEBP"
-  ) {
-    return "webp";
-  }
+function isWebpBuffer(buffer) {
+  return buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
+}
 
-  if (buffer.toString("ascii", 4, 8) === "ftyp") {
-    const brand = buffer.toString("ascii", 8, 12);
-    if (/avif|avis/i.test(brand)) {
-      return "avif";
-    }
-    return `isobmff:${brand}`;
-  }
-
-  return "unknown";
+function detectIsobmffFormat(buffer) {
+  if (buffer.toString("ascii", 4, 8) !== "ftyp") return "unknown";
+  const brand = buffer.toString("ascii", 8, 12);
+  if (/avif|avis/i.test(brand)) return "avif";
+  return `isobmff:${brand}`;
 }
 
 function detectImageFormat(filePath) {
@@ -94,14 +81,7 @@ function buildConvertedManifest(sourceManifest, outputReferenceSetId, format) {
 }
 
 function convertImageWithFfmpeg(inputPath, outputPath, format, ffmpegPath = "ffmpeg") {
-  const args = [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-i",
-    inputPath,
-  ];
+  const args = ["-hide_banner", "-loglevel", "error", "-y", "-i", inputPath];
 
   if (format === "jpg" || format === "jpeg") {
     args.push("-q:v", "2");
@@ -132,10 +112,7 @@ function ensureUploadCacheDir(subdir = "koharu-upload-preflight") {
   return dirPath;
 }
 
-function preflightImagesForKoharuUpload(
-  imagePaths,
-  { ffmpegPath = "ffmpeg", preferredFormat = "jpg" } = {}
-) {
+function preflightImagesForKoharuUpload(imagePaths, { ffmpegPath = "ffmpeg", preferredFormat = "jpg" } = {}) {
   const uploadPaths = [];
   const converted = [];
   let tempDir = null;
@@ -146,32 +123,30 @@ function preflightImagesForKoharuUpload(
       uploadPaths.push(inputPath);
       continue;
     }
-
-    if (!tempDir) {
-      tempDir = fs.mkdtempSync(
-        path.join(ensureUploadCacheDir(), `${Date.now()}-`)
-      );
-    }
-
-    const outputExt = pickSupportedOutputExtension(inputPath, preferredFormat);
-    const outputPath = path.join(
-      tempDir,
-      `${path.parse(inputPath).name}.${outputExt}`
-    );
-    convertImageWithFfmpeg(inputPath, outputPath, outputExt, ffmpegPath);
-    uploadPaths.push(outputPath);
-    converted.push({
-      inputPath,
-      outputPath,
-      actualFormat,
-      convertedFormat: outputExt === "jpg" ? "jpeg" : outputExt,
-    });
+    tempDir = ensureTempDir(tempDir);
+    const convertedEntry = convertUnsupportedPreflightImage(inputPath, tempDir, preferredFormat, ffmpegPath);
+    uploadPaths.push(convertedEntry.outputPath);
+    converted.push(convertedEntry);
   }
 
+  return { uploadPaths, converted, tempDir };
+}
+
+function ensureTempDir(tempDir) {
+  if (tempDir) return tempDir;
+  return fs.mkdtempSync(path.join(ensureUploadCacheDir(), `${Date.now()}-`));
+}
+
+function convertUnsupportedPreflightImage(inputPath, tempDir, preferredFormat, ffmpegPath) {
+  const outputExt = pickSupportedOutputExtension(inputPath, preferredFormat);
+  const outputPath = path.join(tempDir, `${path.parse(inputPath).name}.${outputExt}`);
+  const actualFormat = detectImageFormat(inputPath);
+  convertImageWithFfmpeg(inputPath, outputPath, outputExt, ffmpegPath);
   return {
-    uploadPaths,
-    converted,
-    tempDir,
+    inputPath,
+    outputPath,
+    actualFormat,
+    convertedFormat: outputExt === "jpg" ? "jpeg" : outputExt,
   };
 }
 
@@ -182,58 +157,66 @@ function convertReferenceSet({
   ffmpegPath = "ffmpeg",
   overwrite = false,
 }) {
-  const normalizedFormat = String(format).toLowerCase();
-  if (!["png", "jpg", "jpeg"].includes(normalizedFormat)) {
-    throw new Error(`Unsupported output format: ${format}`);
-  }
-
+  const normalizedFormat = validateConversionFormat(format);
   const sourceManifest = loadReferenceManifest(referenceSetId);
   const sourceImages = listReferenceSourceImages(referenceSetId);
   if (sourceImages.length === 0) {
     throw new Error(`No images found for reference set ${referenceSetId}`);
   }
-
-  const outputImagesDir = path.join(paths.referenceImages, outputReferenceSetId);
-  const outputManifestPath = path.join(
-    paths.referenceManifests,
-    `${outputReferenceSetId}.json`
+  const outputPaths = resolveConversionOutputPaths(outputReferenceSetId);
+  ensureConversionOutputAvailable(outputPaths, overwrite);
+  ensureDir(outputPaths.outputImagesDir);
+  const conversions = convertReferenceImages(sourceImages, outputPaths.outputImagesDir, normalizedFormat, ffmpegPath);
+  const manifest = buildConvertedManifest(
+    sourceManifest,
+    outputReferenceSetId,
+    normalizedFormat === "jpeg" ? "jpg" : normalizedFormat,
   );
+  fs.writeFileSync(outputPaths.outputManifestPath, JSON.stringify(manifest, null, 2));
+  return buildConversionResult(referenceSetId, outputReferenceSetId, normalizedFormat, conversions, outputPaths);
+}
 
-  if (!overwrite && (fs.existsSync(outputImagesDir) || fs.existsSync(outputManifestPath))) {
-    throw new Error(
-      `Output reference set ${outputReferenceSetId} already exists. Use overwrite to replace it.`
-    );
+function validateConversionFormat(format) {
+  const normalizedFormat = String(format).toLowerCase();
+  if (!["png", "jpg", "jpeg"].includes(normalizedFormat)) {
+    throw new Error(`Unsupported output format: ${format}`);
   }
+  return normalizedFormat;
+}
 
-  ensureDir(outputImagesDir);
+function resolveConversionOutputPaths(outputReferenceSetId) {
+  return {
+    outputImagesDir: path.join(paths.referenceImages, outputReferenceSetId),
+    outputManifestPath: path.join(paths.referenceManifests, `${outputReferenceSetId}.json`),
+  };
+}
 
+function ensureConversionOutputAvailable(outputPaths, overwrite) {
+  if (!overwrite && (fs.existsSync(outputPaths.outputImagesDir) || fs.existsSync(outputPaths.outputManifestPath))) {
+    throw new Error(`Output reference set ${outputPaths.outputImagesDir} already exists. Use overwrite to replace it.`);
+  }
+}
+
+function convertReferenceImages(sourceImages, outputImagesDir, normalizedFormat, ffmpegPath) {
   const conversions = [];
   for (const inputPath of sourceImages) {
     const outputName = `${path.parse(inputPath).name}.${normalizedFormat === "jpeg" ? "jpg" : normalizedFormat}`;
     const outputPath = path.join(outputImagesDir, outputName);
     const actualFormat = detectImageFormat(inputPath);
     convertImageWithFfmpeg(inputPath, outputPath, normalizedFormat, ffmpegPath);
-    conversions.push({
-      inputPath,
-      outputPath,
-      actualFormat,
-    });
+    conversions.push({ inputPath, outputPath, actualFormat });
   }
+  return conversions;
+}
 
-  const manifest = buildConvertedManifest(
-    sourceManifest,
-    outputReferenceSetId,
-    normalizedFormat === "jpeg" ? "jpg" : normalizedFormat
-  );
-  fs.writeFileSync(outputManifestPath, JSON.stringify(manifest, null, 2));
-
+function buildConversionResult(referenceSetId, outputReferenceSetId, normalizedFormat, conversions, outputPaths) {
   return {
     sourceReferenceSetId: referenceSetId,
     outputReferenceSetId,
     format: normalizedFormat === "jpeg" ? "jpg" : normalizedFormat,
     imageCount: conversions.length,
-    outputImagesDir,
-    outputManifestPath,
+    outputImagesDir: outputPaths.outputImagesDir,
+    outputManifestPath: outputPaths.outputManifestPath,
     conversions,
   };
 }

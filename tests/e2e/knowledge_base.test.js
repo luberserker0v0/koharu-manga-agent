@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
+const { paths } = require("../../backend/src/config");
 
-const PROJECT_ROOT = path.join(__dirname, "../..");
 const KB_PATH = path.join(TEST_DATA_ROOT, "domains/knowledge/self/default.json");
 const REPORTS_PATH = path.join(TEST_DATA_ROOT, "domains/knowledge/reports/extract_report.json");
 
@@ -18,14 +18,10 @@ describe("knowledge_base.test.js", () => {
     expect(fs.existsSync(path.join(TEST_DATA_ROOT, "domains/knowledge/reports"))).toBe(true);
   });
 
-  test("manga local config resolves knowledge-base paths", () => {
-    const config = require(path.join(
-      PROJECT_ROOT,
-      ".opencode/skills/manga-translate-zhtw/lib/config"
-    ));
-    expect(config.PATHS.KNOWLEDGE_BASE).toBe(KB_PATH);
-    expect(config.PATHS.REPORTS).toBe(REPORTS_PATH);
-    expect(config.PATHS.TODO_LIST).toBe(path.join(TEST_DATA_ROOT, "state/knowledge-tasks.md"));
+  test("backend config resolves knowledge-base paths", () => {
+    expect(paths.knowledgeBase).toBe(KB_PATH);
+    expect(paths.reports).toBe(REPORTS_PATH);
+    expect(paths.todoList).toBe(path.join(TEST_DATA_ROOT, "state/knowledge-tasks.md"));
   });
 
   test("knowledge-base file shape is valid when present", () => {
@@ -55,9 +51,5 @@ describe("knowledge_base.test.js", () => {
         expect(kb.translation_pairs[0]).toHaveProperty("sourceReference");
       }
     }
-  });
-
-  test("repository task notes remain source-controlled documentation", () => {
-    expect(fs.existsSync(path.join(PROJECT_ROOT, "TODO_LIST.md"))).toBe(true);
   });
 });

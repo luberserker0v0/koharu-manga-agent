@@ -132,7 +132,7 @@ Gate: `Important`
 - Confirm selected output/reference folders, external Koharu data, and the Docker named volume are
   not removed by the normal application-data checkbox
 - Reinstall test data, select the full-cleanup checkbox, and confirm `%LOCALAPPDATA%\Koharu`, the
-  `manga-backend-backend-1` container, and `manga-backend_backend-data` volume are removed when present
+  `koharu-manga-agent-backend-1` container, and `koharu-manga-agent_backend-data` volume are removed when present
 - Confirm arbitrary selected output/reference roots are never recursively deleted by either checkbox
 
 ### C. Job Creation

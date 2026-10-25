@@ -58,29 +58,7 @@ function buildPostEditDocumentFromScene({
   scene,
 }) {
   const pageEntries = Object.entries(scene?.scene?.pages || {});
-  const pageOrder = pageEntries.map(([pageId]) => pageId);
-  const pages = {};
-  let totalNodes = 0;
-
-  for (const [pageId, page] of pageEntries) {
-    const pageName = page?.name || pageId;
-    const nodeEntries = Object.entries(page?.nodes || {}).filter(([, node]) => Boolean(node?.kind?.text));
-    const nodeOrder = nodeEntries.map(([nodeId]) => nodeId);
-    totalNodes += nodeOrder.length;
-    const nodes = {};
-
-    for (const [nodeId, node] of nodeEntries) {
-      nodes[nodeId] = normalizeTextNode(pageName, nodeId, node);
-    }
-
-    pages[pageId] = {
-      pageId,
-      pageName,
-      nodeOrder,
-      nodes,
-    };
-  }
-
+  const { pageOrder, pages, totalNodes } = buildPostEditPages(pageEntries);
   const now = new Date().toISOString();
   return {
     jobId,
@@ -100,6 +78,29 @@ function buildPostEditDocumentFromScene({
   };
 }
 
+function buildPostEditPages(pageEntries) {
+  const pageOrder = pageEntries.map(([pageId]) => pageId);
+  const pages = {};
+  let totalNodes = 0;
+  for (const [pageId, page] of pageEntries) {
+    const built = buildPostEditPage(pageId, page);
+    totalNodes += built.nodeOrder.length;
+    pages[pageId] = built;
+  }
+  return { pageOrder, pages, totalNodes };
+}
+
+function buildPostEditPage(pageId, page) {
+  const pageName = page?.name || pageId;
+  const nodeEntries = Object.entries(page?.nodes || {}).filter(([, node]) => Boolean(node?.kind?.text));
+  const nodeOrder = nodeEntries.map(([nodeId]) => nodeId);
+  const nodes = {};
+  for (const [nodeId, node] of nodeEntries) {
+    nodes[nodeId] = normalizeTextNode(pageName, nodeId, node);
+  }
+  return { pageId, pageName, nodeOrder, nodes };
+}
+
 function validateAnchor(anchor, pageId, nodeId) {
   if (!anchor || typeof anchor !== "object") {
     throw new Error(`post edit node anchor must be an object for ${pageId}/${nodeId}.`);
@@ -110,75 +111,49 @@ function validateAnchor(anchor, pageId, nodeId) {
 }
 
 function validatePostEditDocument(jobId, payload) {
-  if (!payload || typeof payload !== "object") {
-    throw new Error("post edit document payload must be an object.");
+  if (!payload || typeof payload !== "object") { throw new Error("post edit document payload must be an object."); } if (payload.jobId !== jobId) { throw new Error("post edit document jobId does not match the requested job."); } if (payload.sourcePreflightId != null && typeof payload.sourcePreflightId !== "string") { throw new Error("post edit document sourcePreflightId must be a string or null."); } if (!Array.isArray(payload.pageOrder)) { throw new Error("post edit document pageOrder must be an array."); } if (!Array.isArray(payload.sourcePageOrder)) { throw new Error("post edit document sourcePageOrder must be an array."); } if (!payload.pages || typeof payload.pages !== "object") { throw new Error("post edit document pages must be an object."); } const pageIds = Object.keys(payload.pages); const sortedExpected = [...pageIds].sort(); const sortedActual = [...payload.pageOrder].sort(); const sortedSource = [...payload.sourcePageOrder].sort(); if (sortedExpected.join("|") !== sortedActual.join("|")) { throw new Error("post edit document pageOrder must contain every page exactly once."); } if (sortedExpected.join("|") !== sortedSource.join("|")) { throw new Error("post edit document sourcePageOrder must contain every page exactly once."); } for (const pageId of payload.pageOrder) { validatePostEditPage(pageId, payload.pages[pageId]); }
+}
+
+function validatePostEditPage(pageId, page) {
+  if (!page || typeof page !== "object") {
+    throw new Error(`post edit document page is missing: ${pageId}`);
   }
-  if (payload.jobId !== jobId) {
-    throw new Error("post edit document jobId does not match the requested job.");
+  if (typeof page.pageName !== "string" || !page.pageName.trim()) {
+    throw new Error(`post edit document pageName is required for page ${pageId}.`);
   }
-  if (payload.sourcePreflightId != null && typeof payload.sourcePreflightId !== "string") {
-    throw new Error("post edit document sourcePreflightId must be a string or null.");
+  if (!Array.isArray(page.nodeOrder)) {
+    throw new Error(`post edit document nodeOrder must be an array for page ${pageId}.`);
   }
-  if (!Array.isArray(payload.pageOrder)) {
-    throw new Error("post edit document pageOrder must be an array.");
-  }
-  if (!Array.isArray(payload.sourcePageOrder)) {
-    throw new Error("post edit document sourcePageOrder must be an array.");
-  }
-  if (!payload.pages || typeof payload.pages !== "object") {
-    throw new Error("post edit document pages must be an object.");
+  if (!page.nodes || typeof page.nodes !== "object") {
+    throw new Error(`post edit document nodes must be an object for page ${pageId}.`);
   }
 
-  const pageIds = Object.keys(payload.pages);
-  const sortedExpected = [...pageIds].sort();
-  const sortedActual = [...payload.pageOrder].sort();
-  const sortedSource = [...payload.sourcePageOrder].sort();
-  if (sortedExpected.join("|") !== sortedActual.join("|")) {
-    throw new Error("post edit document pageOrder must contain every page exactly once.");
-  }
-  if (sortedExpected.join("|") !== sortedSource.join("|")) {
-    throw new Error("post edit document sourcePageOrder must contain every page exactly once.");
+  const nodeIds = Object.keys(page.nodes);
+  const sortedNodeExpected = [...nodeIds].sort();
+  const sortedNodeActual = [...page.nodeOrder].sort();
+  if (sortedNodeExpected.join("|") !== sortedNodeActual.join("|")) {
+    throw new Error(`post edit document nodeOrder must contain every node exactly once for page ${pageId}.`);
   }
 
-  for (const pageId of payload.pageOrder) {
-    const page = payload.pages[pageId];
-    if (!page || typeof page !== "object") {
-      throw new Error(`post edit document page is missing: ${pageId}`);
-    }
-    if (typeof page.pageName !== "string" || !page.pageName.trim()) {
-      throw new Error(`post edit document pageName is required for page ${pageId}.`);
-    }
-    if (!Array.isArray(page.nodeOrder)) {
-      throw new Error(`post edit document nodeOrder must be an array for page ${pageId}.`);
-    }
-    if (!page.nodes || typeof page.nodes !== "object") {
-      throw new Error(`post edit document nodes must be an object for page ${pageId}.`);
-    }
-
-    const nodeIds = Object.keys(page.nodes);
-    const sortedNodeExpected = [...nodeIds].sort();
-    const sortedNodeActual = [...page.nodeOrder].sort();
-    if (sortedNodeExpected.join("|") !== sortedNodeActual.join("|")) {
-      throw new Error(`post edit document nodeOrder must contain every node exactly once for page ${pageId}.`);
-    }
-
-    for (const nodeId of page.nodeOrder) {
-      const node = page.nodes[nodeId];
-      if (!node || typeof node !== "object") {
-        throw new Error(`post edit document node is missing: ${pageId}/${nodeId}`);
-      }
-      if (typeof node.originalText !== "string") {
-        throw new Error(`post edit node originalText must be a string for ${pageId}/${nodeId}.`);
-      }
-      if (typeof node.originalTranslation !== "string") {
-        throw new Error(`post edit node originalTranslation must be a string for ${pageId}/${nodeId}.`);
-      }
-      if (typeof node.editedTranslation !== "string") {
-        throw new Error(`post edit node editedTranslation must be a string for ${pageId}/${nodeId}.`);
-      }
-      validateAnchor(node.anchor, pageId, nodeId);
-    }
+  for (const nodeId of page.nodeOrder) {
+    validatePostEditNode(pageId, nodeId, page.nodes[nodeId]);
   }
+}
+
+function validatePostEditNode(pageId, nodeId, node) {
+  if (!node || typeof node !== "object") {
+    throw new Error(`post edit document node is missing: ${pageId}/${nodeId}`);
+  }
+  if (typeof node.originalText !== "string") {
+    throw new Error(`post edit node originalText must be a string for ${pageId}/${nodeId}.`);
+  }
+  if (typeof node.originalTranslation !== "string") {
+    throw new Error(`post edit node originalTranslation must be a string for ${pageId}/${nodeId}.`);
+  }
+  if (typeof node.editedTranslation !== "string") {
+    throw new Error(`post edit node editedTranslation must be a string for ${pageId}/${nodeId}.`);
+  }
+  validateAnchor(node.anchor, pageId, nodeId);
 }
 
 class PostEditWorkspaceModule {

@@ -10,6 +10,8 @@ export type TranslatorProfileSelection = {
   translatorLabel: string;
 };
 
+type TranslatorProfileOption = ReturnType<typeof flattenTranslatorProfiles>[number];
+
 export function flattenTranslatorProfiles(series: MangaSeriesSummary[]) {
   return series.flatMap((manga) =>
     (manga.translators || []).map((translator) => ({
@@ -19,16 +21,16 @@ export function flattenTranslatorProfiles(series: MangaSeriesSummary[]) {
       translatorLabel: translator.label,
       displayLabel: `${manga.label} + ${translator.label} (${manga.mangaId})`,
       chapters: translator.chapters || [],
-    }))
+    })),
   );
 }
 
 export function resolveSelectedTranslatorProfile(
   selectedValue: string,
-  series: MangaSeriesSummary[]
+  series: MangaSeriesSummary[],
 ): TranslatorProfileSelection | null {
   const matched = flattenTranslatorProfiles(series).find(
-    (entry) => `${entry.mangaId}::${entry.translatorId}` === selectedValue
+    (entry) => `${entry.mangaId}::${entry.translatorId}` === selectedValue,
   );
   if (!matched) {
     return null;
@@ -40,6 +42,36 @@ export function resolveSelectedTranslatorProfile(
     translatorId: matched.translatorId,
     translatorLabel: matched.translatorLabel,
   };
+}
+
+function ProfileOptions({ options }: { options: TranslatorProfileOption[] }) {
+  return options.map((entry) => (
+    <option key={`${entry.mangaId}::${entry.translatorId}`} value={`${entry.mangaId}::${entry.translatorId}`}>
+      {entry.displayLabel}
+    </option>
+  ));
+}
+
+function NewProfileFields(
+  props: TranslatorProfileSelectorProps & {
+    mangaPlaceholder: string;
+    translatorPlaceholder: string;
+  },
+) {
+  return (
+    <div className="inline-field-row">
+      <input
+        placeholder={props.mangaPlaceholder}
+        value={props.newMangaLabel}
+        onChange={(event) => props.onNewMangaLabelChange(event.currentTarget.value)}
+      />
+      <input
+        placeholder={props.translatorPlaceholder}
+        value={props.newTranslatorLabel}
+        onChange={(event) => props.onNewTranslatorLabelChange(event.currentTarget.value)}
+      />
+    </div>
+  );
 }
 
 type TranslatorProfileSelectorProps = {
@@ -57,58 +89,31 @@ type TranslatorProfileSelectorProps = {
   onNewTranslatorLabelChange: (value: string) => void;
 };
 
-export function TranslatorProfileSelector({
-  label,
-  helpText,
-  selectedValue,
-  series,
-  loading = false,
-  failed = false,
-  allowCreate = true,
-  newMangaLabel,
-  newTranslatorLabel,
-  onSelectionChange,
-  onNewMangaLabelChange,
-  onNewTranslatorLabelChange,
-}: TranslatorProfileSelectorProps) {
+export function TranslatorProfileSelector(props: TranslatorProfileSelectorProps) {
   const t = useLanguageStore((state) => state.t);
-  const options = flattenTranslatorProfiles(series);
-
+  const { label, helpText, selectedValue, loading = false, failed = false, allowCreate = true } = props;
+  const options = flattenTranslatorProfiles(props.series);
+  const emptyText = loading
+    ? t("selector.profile.loading")
+    : failed
+      ? t("selector.profile.failed")
+      : t("selector.profile.select");
   return (
     <label>
       <span>{label}</span>
       {helpText ? <small className="muted-text">{helpText}</small> : null}
       <div className="stacked-field-row">
-        <select value={selectedValue} onChange={(event) => onSelectionChange(event.currentTarget.value)}>
-          <option value="">
-            {loading
-              ? t("selector.profile.loading")
-              : failed
-                ? t("selector.profile.failed")
-                : t("selector.profile.select")}
-          </option>
-          {options.map((entry) => (
-            <option key={`${entry.mangaId}::${entry.translatorId}`} value={`${entry.mangaId}::${entry.translatorId}`}>
-              {entry.displayLabel}
-            </option>
-          ))}
-          {allowCreate ? (
-            <option value={CREATE_NEW_PROFILE_VALUE}>{t("selector.profile.create")}</option>
-          ) : null}
+        <select value={selectedValue} onChange={(event) => props.onSelectionChange(event.currentTarget.value)}>
+          <option value="">{emptyText}</option>
+          <ProfileOptions options={options} />
+          {allowCreate ? <option value={CREATE_NEW_PROFILE_VALUE}>{t("selector.profile.create")}</option> : null}
         </select>
         {allowCreate && selectedValue === CREATE_NEW_PROFILE_VALUE ? (
-          <div className="inline-field-row">
-            <input
-              placeholder={t("selector.profile.mangaPlaceholder")}
-              value={newMangaLabel}
-              onChange={(event) => onNewMangaLabelChange(event.currentTarget.value)}
-            />
-            <input
-              placeholder={t("selector.profile.translatorPlaceholder")}
-              value={newTranslatorLabel}
-              onChange={(event) => onNewTranslatorLabelChange(event.currentTarget.value)}
-            />
-          </div>
+          <NewProfileFields
+            {...props}
+            mangaPlaceholder={t("selector.profile.mangaPlaceholder")}
+            translatorPlaceholder={t("selector.profile.translatorPlaceholder")}
+          />
         ) : null}
       </div>
     </label>

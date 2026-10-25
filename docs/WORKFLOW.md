@@ -129,7 +129,7 @@ Backend job states:
 - quality failure: stop, no export, no close
 - knowledge child failure: keep the completed Export and final snapshot; retry only the child
 - export failure: stop, no close
-- invalid agent result schema: treat the current stage as failed and stop downstream stages
+- invalid AO result schema: treat the current stage as failed and stop downstream stages
 
 ## Close and Delete Rules
 - `close project` means `DELETE /projects/current`
@@ -138,7 +138,7 @@ Backend job states:
 - `defaults.autoDeleteProject` remains compatibility-only and is not the main workflow switch
 
 ## Agent Workspace Audit
-When `quality_review` or `knowledge_enrichment` runs through the agent provider layer,
+When a quality or knowledge stage runs through AO HTTP,
 the backend records:
 - `artifacts/import_manifest.json`
 - `artifacts/export_manifest.json`

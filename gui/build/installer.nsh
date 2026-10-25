@@ -21,7 +21,7 @@ LangString uninstallAllDataDeleting 1028 "正在永久刪除所有本機 Koharu 
     RMDir /r "$APPDATA\Koharu Manga Agent"
     RMDir /r "$LOCALAPPDATA\Koharu Manga Agent"
     RMDir /r "$LOCALAPPDATA\Koharu"
-    nsExec::ExecToLog '"docker.exe" rm -f manga-backend-backend-1'
-    nsExec::ExecToLog '"docker.exe" volume rm -f manga-backend_backend-data'
+    nsExec::ExecToLog '"docker.exe" rm -f koharu-manga-agent-backend-1'
+    nsExec::ExecToLog '"docker.exe" volume rm -f koharu-manga-agent_backend-data'
   SectionEnd
 !macroend

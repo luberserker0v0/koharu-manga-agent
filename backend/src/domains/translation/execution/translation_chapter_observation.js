@@ -11,15 +11,25 @@ const {
 
 const TRANSLATION_ROLE_CONTRACT_VERSION = 1;
 const TRANSLATION_ROLE_FIELDS = [
-  "nodeId", "textRole", "speakerType", "speakerRef", "styleChannel",
-  "roleConfidence", "speakerConfidence",
+  "nodeId",
+  "textRole",
+  "speakerType",
+  "speakerRef",
+  "styleChannel",
+  "roleConfidence",
+  "speakerConfidence",
 ];
 
 function translationRoleContractHash() {
-  return crypto.createHash("sha256").update(JSON.stringify({
-    version: TRANSLATION_ROLE_CONTRACT_VERSION,
-    fields: TRANSLATION_ROLE_FIELDS,
-  })).digest("hex");
+  return crypto
+    .createHash("sha256")
+    .update(
+      JSON.stringify({
+        version: TRANSLATION_ROLE_CONTRACT_VERSION,
+        fields: TRANSLATION_ROLE_FIELDS,
+      }),
+    )
+    .digest("hex");
 }
 
 function isTransientAoError(error) {
@@ -77,65 +87,66 @@ function compactStoryContext(translationMemory) {
   };
 }
 
-async function ensureTranslationChapterObservation({
-  aoTaskRunner,
-  translations,
-  mangaId = null,
-  chapterId = null,
-  chapterTitle = null,
-  contentLanguage = null,
-  translationMemory = null,
-  cacheRoot = path.join(paths.workspaceRoot, "translation-observations"),
-  force = false,
-  isCanceled = null,
-  onProgress = null,
-}) {
-  if (!aoTaskRunner || typeof aoTaskRunner.runChapterObservation !== "function") {
-    throw new Error("Translation chapter observation requires aoTaskRunner.runChapterObservation().");
-  }
-  const pages = observationPages(translations);
-  const nodeCount = pages.reduce((sum, page) => sum + page.nodes.length, 0);
-  if (nodeCount === 0) throw new Error("Translation chapter observation requires OCR text nodes.");
+function observationContextIdentity(params, translations) {
+  return {
+    extractionFingerprint: sourceFingerprint(translations),
+    observerContractHash: computeObserverContractHash(),
+    roleContractHash: translationRoleContractHash(),
+    model: params.aoTaskRunner.settings?.model || null,
+    language: params.contentLanguage || "und",
+  };
+}
 
-  const extractionFingerprint = sourceFingerprint(translations);
-  const observerContractHash = computeObserverContractHash();
-  const roleContractHash = translationRoleContractHash();
-  const model = aoTaskRunner.settings?.model || null;
-  const language = contentLanguage || "und";
-  const cacheKey = observationCacheKey({
-    extractionFingerprint,
-    observerContractHash: roleContractHash,
-    model,
-    contentLanguage: language,
-  });
-  const observationPath = path.join(cacheRoot, `${cacheKey}.json`);
-  if (!force && fs.existsSync(observationPath)) {
-    return {
-      observation: JSON.parse(fs.readFileSync(observationPath, "utf8")),
-      observationPath,
-      reused: true,
-    };
-  }
-
-  const input = {
-    jobId: `translation_observation:${mangaId || "unknown"}:${chapterId || cacheKey.slice(0, 12)}`,
-    mangaId,
-    chapterId,
-    chapterTitle,
+function buildObservationInput(params, pages, cacheKey, language) {
+  return {
+    jobId: `translation_observation:${params.mangaId || "unknown"}:${params.chapterId || cacheKey.slice(0, 12)}`,
+    mangaId: params.mangaId,
+    chapterId: params.chapterId,
+    chapterTitle: params.chapterTitle,
     contentLanguage: language,
     referenceKind: "source",
-    knownCharacters: knownCharacters(translationMemory),
-    compactStoryContext: compactStoryContext(translationMemory),
+    knownCharacters: knownCharacters(params.translationMemory),
+    compactStoryContext: compactStoryContext(params.translationMemory),
     pages,
   };
+}
+
+function prepareObservationContext(params, pages, translations) {
+  const identity = observationContextIdentity(params, translations);
+  const cacheKey = observationCacheKey({
+    extractionFingerprint: identity.extractionFingerprint,
+    observerContractHash: identity.roleContractHash,
+    model: identity.model,
+    contentLanguage: identity.language,
+  });
+  return {
+    ...identity,
+    cacheKey,
+    observationPath: path.join(params.cacheRoot, `${cacheKey}.json`),
+    input: buildObservationInput(params, pages, cacheKey, identity.language),
+  };
+}
+
+function reuseObservation(observationPath) {
+  return {
+    observation: JSON.parse(fs.readFileSync(observationPath, "utf8")),
+    observationPath,
+    reused: true,
+  };
+}
+
+async function runObservationAo({ aoTaskRunner, input, isCanceled, onProgress }) {
   let result;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
-      result = await aoTaskRunner.runChapterObservation({ ...input, attempt }, {
-        outputFilePath: "output/translation_chapter_observation.txt",
-        isCanceled,
-        onProgress,
-      });
+      result = await aoTaskRunner.runChapterObservation(
+        { ...input, attempt },
+        {
+          outputFilePath: "output/translation_chapter_observation.txt",
+          isCanceled,
+          onProgress,
+        },
+      );
       break;
     } catch (error) {
       if (attempt >= 2 || !isTransientAoError(error) || isCanceled?.()) throw error;
@@ -146,20 +157,24 @@ async function ensureTranslationChapterObservation({
       });
     }
   }
+  return result;
+}
+
+function buildObservationObject(params, context, result) {
   const observedAt = new Date().toISOString();
-  const observation = {
+  return {
     schemaVersion: 1,
     observationKind: "translation_source",
-    mangaId,
-    chapterId,
-    chapterTitle,
-    contentLanguage: language,
-    extractionFingerprint,
-    observerContractHash,
+    mangaId: params.mangaId,
+    chapterId: params.chapterId,
+    chapterTitle: params.chapterTitle,
+    contentLanguage: context.language,
+    extractionFingerprint: context.extractionFingerprint,
+    observerContractHash: context.observerContractHash,
     translationRoleContractVersion: TRANSLATION_ROLE_CONTRACT_VERSION,
-    translationRoleContractHash: roleContractHash,
-    model,
-    cacheKey,
+    translationRoleContractHash: context.roleContractHash,
+    model: context.model,
+    cacheKey: context.cacheKey,
     observedAt,
     fingerprint: crypto.createHash("sha256").update(JSON.stringify(result)).digest("hex"),
     nodes: result.nodes,
@@ -170,8 +185,48 @@ async function ensureTranslationChapterObservation({
     warnings: result.warnings || [],
     semanticResult: result.semanticResult || null,
   };
-  writeJsonAtomic(observationPath, observation);
-  return { observation, observationPath, reused: false };
+}
+
+function normalizeObservationParams(params) {
+  return {
+    mangaId: null,
+    chapterId: null,
+    chapterTitle: null,
+    contentLanguage: null,
+    translationMemory: null,
+    cacheRoot: path.join(paths.workspaceRoot, "translation-observations"),
+    force: false,
+    isCanceled: null,
+    onProgress: null,
+    ...(params || {}),
+  };
+}
+
+function validateObservationRequest(params, pages) {
+  if (!params.aoTaskRunner || typeof params.aoTaskRunner.runChapterObservation !== "function") {
+    throw new Error("Translation chapter observation requires aoTaskRunner.runChapterObservation().");
+  }
+  const nodeCount = pages.reduce((sum, page) => sum + page.nodes.length, 0);
+  if (nodeCount === 0) throw new Error("Translation chapter observation requires OCR text nodes.");
+}
+
+async function ensureTranslationChapterObservation(input = {}) {
+  const params = normalizeObservationParams(input);
+  const pages = observationPages(params.translations);
+  validateObservationRequest(params, pages);
+  const context = prepareObservationContext(params, pages, params.translations);
+  if (!params.force && fs.existsSync(context.observationPath)) {
+    return reuseObservation(context.observationPath);
+  }
+  const result = await runObservationAo({
+    aoTaskRunner: params.aoTaskRunner,
+    input: context.input,
+    isCanceled: params.isCanceled,
+    onProgress: params.onProgress,
+  });
+  const observation = buildObservationObject(params, context, result);
+  writeJsonAtomic(context.observationPath, observation);
+  return { observation, observationPath: context.observationPath, reused: false };
 }
 
 module.exports = {

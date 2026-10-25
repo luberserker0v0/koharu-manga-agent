@@ -9,7 +9,12 @@ function createSemanticCollector() {
 }
 
 function quarantineRecord(collector, { lineNumber = null, raw = null, kind = null, reason }) {
-  collector.quarantinedRecords.push({ lineNumber, raw, kind, reason: String(reason || "Invalid semantic record.") });
+  collector.quarantinedRecords.push({
+    lineNumber,
+    raw,
+    kind,
+    reason: String(reason || "Invalid semantic record."),
+  });
 }
 
 function acceptRecord(collector, count = 1) {
@@ -22,14 +27,14 @@ function addSemanticWarning(collector, warning) {
 
 function finalizeSemanticResult(collector, { expectedRecords = null, observedRecords = null } = {}) {
   const quarantinedRecordCount = collector.quarantinedRecords.length;
-  const hasCoverageGap = Number.isFinite(expectedRecords) && Number.isFinite(observedRecords)
-    ? observedRecords < expectedRecords
-    : false;
-  const outcome = collector.acceptedRecords === 0 && (quarantinedRecordCount > 0 || collector.warnings.length > 0 || hasCoverageGap)
-    ? "partial"
-    : quarantinedRecordCount > 0 || collector.warnings.length > 0 || hasCoverageGap
-      ? "warnings"
-      : "clean";
+  const hasCoverageGap =
+    Number.isFinite(expectedRecords) && Number.isFinite(observedRecords) ? observedRecords < expectedRecords : false;
+  const outcome =
+    collector.acceptedRecords === 0 && (quarantinedRecordCount > 0 || collector.warnings.length > 0 || hasCoverageGap)
+      ? "partial"
+      : quarantinedRecordCount > 0 || collector.warnings.length > 0 || hasCoverageGap
+        ? "warnings"
+        : "clean";
   return {
     outcome,
     acceptedRecordCount: collector.acceptedRecords,
@@ -59,7 +64,13 @@ function mergeSemanticResults(results = []) {
     : valid.some((result) => result.outcome === "warnings") || warnings.length > 0
       ? "warnings"
       : "clean";
-  return { outcome, acceptedRecordCount, quarantinedRecordCount, warnings, degradedStages };
+  return {
+    outcome,
+    acceptedRecordCount,
+    quarantinedRecordCount,
+    warnings,
+    degradedStages,
+  };
 }
 
 function assertSemanticOutcome(value) {
@@ -88,7 +99,13 @@ function summarizeJobOutcome(result) {
   const semanticResults = collectSemanticResults(result);
   return semanticResults.length > 0
     ? mergeSemanticResults(semanticResults)
-    : { outcome: "clean", acceptedRecordCount: 0, quarantinedRecordCount: 0, warnings: [], degradedStages: [] };
+    : {
+        outcome: "clean",
+        acceptedRecordCount: 0,
+        quarantinedRecordCount: 0,
+        warnings: [],
+        degradedStages: [],
+      };
 }
 
 module.exports = {

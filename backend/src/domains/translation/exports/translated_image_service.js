@@ -62,65 +62,84 @@ function findEocd(buffer) {
   return -1;
 }
 
-function readZipEntries(zipPath, { maxEntries = 2000 } = {}) {
-  const stat = fs.statSync(zipPath);
+function readZipTail(zipPath, stat) {
   const tailSize = Math.min(stat.size, 65557);
   const tail = Buffer.alloc(tailSize);
   const fd = fs.openSync(zipPath, "r");
   try {
     fs.readSync(fd, tail, 0, tailSize, stat.size - tailSize);
-    const eocdOffset = findEocd(tail);
-    if (eocdOffset < 0) throw apiError("Export ZIP is missing its central directory.", 422);
-    const diskNumber = tail.readUInt16LE(eocdOffset + 4);
-    const centralDisk = tail.readUInt16LE(eocdOffset + 6);
-    const entryCount = tail.readUInt16LE(eocdOffset + 10);
-    const centralSize = tail.readUInt32LE(eocdOffset + 12);
-    const centralOffset = tail.readUInt32LE(eocdOffset + 16);
-    if (diskNumber !== 0 || centralDisk !== 0) throw apiError("Multi-disk ZIP exports are not supported.", 422);
-    if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff) {
-      throw apiError("ZIP64 exports are not supported.", 422);
-    }
-    if (entryCount > maxEntries) throw apiError(`ZIP contains more than ${maxEntries} entries.`, 413);
-    if (centralSize > 16 * 1024 * 1024 || centralOffset + centralSize > stat.size) {
-      throw apiError("Export ZIP central directory is invalid or too large.", 422);
-    }
-    const central = Buffer.alloc(centralSize);
-    fs.readSync(fd, central, 0, centralSize, centralOffset);
-    const entries = [];
-    let offset = 0;
-    while (offset < central.length && entries.length < entryCount) {
-      if (offset + 46 > central.length || central.readUInt32LE(offset) !== ZIP_CENTRAL_SIGNATURE) {
-        throw apiError("Export ZIP central directory entry is invalid.", 422);
-      }
-      const flags = central.readUInt16LE(offset + 8);
-      const compression = central.readUInt16LE(offset + 10);
-      const crc32 = central.readUInt32LE(offset + 16);
-      const compressedSize = central.readUInt32LE(offset + 20);
-      const uncompressedSize = central.readUInt32LE(offset + 24);
-      const nameLength = central.readUInt16LE(offset + 28);
-      const extraLength = central.readUInt16LE(offset + 30);
-      const commentLength = central.readUInt16LE(offset + 32);
-      const localHeaderOffset = central.readUInt32LE(offset + 42);
-      const end = offset + 46 + nameLength + extraLength + commentLength;
-      if (end > central.length) throw apiError("Export ZIP entry exceeds the central directory.", 422);
-      const rawName = central.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
-      entries.push({
-        name: safeArchiveName(rawName),
-        isDirectory: rawName.endsWith("/") || rawName.endsWith("\\"),
-        flags,
-        compression,
-        crc32,
-        compressedSize,
-        uncompressedSize,
-        localHeaderOffset,
-      });
-      offset = end;
-    }
-    if (entries.length !== entryCount) throw apiError("Export ZIP entry count is invalid.", 422);
-    return { entries, stat };
   } finally {
     fs.closeSync(fd);
   }
+  return tail;
+}
+
+function readCentralBuffer(zipPath, centralOffset, centralSize) {
+  const central = Buffer.alloc(centralSize);
+  const fd = fs.openSync(zipPath, "r");
+  try {
+    fs.readSync(fd, central, 0, centralSize, centralOffset);
+  } finally {
+    fs.closeSync(fd);
+  }
+  return central;
+}
+
+function parseCentralEntry(central, offset) {
+  if (offset + 46 > central.length || central.readUInt32LE(offset) !== ZIP_CENTRAL_SIGNATURE)
+    throw apiError("Export ZIP central directory entry is invalid.", 422);
+  const nameLength = central.readUInt16LE(offset + 28);
+  const extraLength = central.readUInt16LE(offset + 30);
+  const commentLength = central.readUInt16LE(offset + 32);
+  const end = offset + 46 + nameLength + extraLength + commentLength;
+  if (end > central.length) throw apiError("Export ZIP entry exceeds the central directory.", 422);
+  const rawName = central.subarray(offset + 46, offset + 46 + nameLength).toString("utf8");
+  return {
+    end,
+    entry: {
+      name: safeArchiveName(rawName),
+      isDirectory: rawName.endsWith("/") || rawName.endsWith("\\"),
+      flags: central.readUInt16LE(offset + 8),
+      compression: central.readUInt16LE(offset + 10),
+      crc32: central.readUInt32LE(offset + 16),
+      compressedSize: central.readUInt32LE(offset + 20),
+      uncompressedSize: central.readUInt32LE(offset + 24),
+      localHeaderOffset: central.readUInt32LE(offset + 42),
+    },
+  };
+}
+
+function parseCentralEntries(central, entryCount) {
+  const entries = [];
+  let offset = 0;
+  while (offset < central.length && entries.length < entryCount) {
+    const parsed = parseCentralEntry(central, offset);
+    entries.push(parsed.entry);
+    offset = parsed.end;
+  }
+  return entries;
+}
+
+function readZipEntries(zipPath, { maxEntries = 2000 } = {}) {
+  const stat = fs.statSync(zipPath);
+  const tail = readZipTail(zipPath, stat);
+  const eocdOffset = findEocd(tail);
+  if (eocdOffset < 0) throw apiError("Export ZIP is missing its central directory.", 422);
+  const diskNumber = tail.readUInt16LE(eocdOffset + 4);
+  const centralDisk = tail.readUInt16LE(eocdOffset + 6);
+  const entryCount = tail.readUInt16LE(eocdOffset + 10);
+  const centralSize = tail.readUInt32LE(eocdOffset + 12);
+  const centralOffset = tail.readUInt32LE(eocdOffset + 16);
+  if (diskNumber !== 0 || centralDisk !== 0) throw apiError("Multi-disk ZIP exports are not supported.", 422);
+  if (entryCount === 0xffff || centralSize === 0xffffffff || centralOffset === 0xffffffff)
+    throw apiError("ZIP64 exports are not supported.", 422);
+  if (entryCount > maxEntries) throw apiError(`ZIP contains more than ${maxEntries} entries.`, 413);
+  if (centralSize > 16 * 1024 * 1024 || centralOffset + centralSize > stat.size)
+    throw apiError("Export ZIP central directory is invalid or too large.", 422);
+  const central = readCentralBuffer(zipPath, centralOffset, centralSize);
+  const entries = parseCentralEntries(central, entryCount);
+  if (entries.length !== entryCount) throw apiError("Export ZIP entry count is invalid.", 422);
+  return { entries, stat };
 }
 
 function readEntryDataRange(zipPath, entry, archiveSize) {
@@ -136,7 +155,8 @@ function readEntryDataRange(zipPath, entry, archiveSize) {
   const extraLength = header.readUInt16LE(28);
   const start = entry.localHeaderOffset + 30 + nameLength + extraLength;
   const end = start + entry.compressedSize - 1;
-  if (start < 0 || end >= archiveSize || end < start - 1) throw apiError("Export ZIP entry data range is invalid.", 422);
+  if (start < 0 || end >= archiveSize || end < start - 1)
+    throw apiError("Export ZIP entry data range is invalid.", 422);
   return { start, end };
 }
 
@@ -159,7 +179,8 @@ class ByteLimitTransform extends Transform {
 
 async function extractEntry(zipPath, entry, targetPath, archiveSize, maxBytes) {
   if ((entry.flags & 0x1) !== 0) throw apiError("Encrypted ZIP entries are not supported.", 422);
-  if (![0, 8].includes(entry.compression)) throw apiError(`Unsupported ZIP compression method: ${entry.compression}.`, 422);
+  if (![0, 8].includes(entry.compression))
+    throw apiError(`Unsupported ZIP compression method: ${entry.compression}.`, 422);
   const { start, end } = readEntryDataRange(zipPath, entry, archiveSize);
   const temporaryPath = `${targetPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   const limiter = new ByteLimitTransform(maxBytes);
@@ -168,7 +189,8 @@ async function extractEntry(zipPath, entry, targetPath, archiveSize, maxBytes) {
     if (entry.compression === 8) streams.push(zlib.createInflateRaw());
     streams.push(limiter, fs.createWriteStream(temporaryPath, { flags: "wx" }));
     await pipeline(...streams);
-    if (limiter.total !== entry.uncompressedSize) throw apiError("Extracted image size does not match the ZIP directory.", 422);
+    if (limiter.total !== entry.uncompressedSize)
+      throw apiError("Extracted image size does not match the ZIP directory.", 422);
     fs.renameSync(temporaryPath, targetPath);
   } catch (error) {
     fs.rmSync(temporaryPath, { force: true });
@@ -181,7 +203,10 @@ function imageId(index, sourceName) {
 }
 
 function naturalCompare(left, right) {
-  return left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" });
+  return left.name.localeCompare(right.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }
 
 class TranslatedImageService {
@@ -201,7 +226,10 @@ class TranslatedImageService {
   selectExportArtifact(artifacts) {
     const artifact = [...(artifacts || [])].reverse().find((entry) => entry.kind === "export");
     if (!artifact) throw apiError("Job does not have a translation export artifact.", 409);
-    return { ...artifact, path: assertRegularFileWithinDataRoot(artifact.path) };
+    return {
+      ...artifact,
+      path: assertRegularFileWithinDataRoot(artifact.path),
+    };
   }
 
   jobCacheRoot(jobId) {
@@ -222,58 +250,112 @@ class TranslatedImageService {
     };
   }
 
-  async prepare({ jobId, artifacts }) {
-    const artifact = this.selectExportArtifact(artifacts);
-    const extension = path.extname(artifact.path).toLowerCase();
-    const directMediaType = imageMediaType(artifact.path);
-    if (directMediaType) {
-      const stat = fs.statSync(artifact.path);
-      return {
-        artifactId: artifact.id,
-        sourceFormat: "image",
-        images: [{ id: imageId(0, path.basename(artifact.path)), index: 0, fileName: path.basename(artifact.path), mediaType: directMediaType, size: stat.size, path: artifact.path }],
-      };
-    }
-    if (extension !== ".zip") throw apiError("Translation export is not a supported image or ZIP file.", 415);
+  prepareDirectImage(artifact) {
+    const stat = fs.statSync(artifact.path);
+    return {
+      artifactId: artifact.id,
+      sourceFormat: "image",
+      images: [
+        {
+          id: imageId(0, path.basename(artifact.path)),
+          index: 0,
+          fileName: path.basename(artifact.path),
+          mediaType: imageMediaType(artifact.path),
+          size: stat.size,
+          path: artifact.path,
+        },
+      ],
+    };
+  }
 
-    const { entries, stat } = readZipEntries(artifact.path, { maxEntries: Math.max(this.maxFiles * 4, 2000) });
-    const imageEntries = entries
-      .filter((entry) => !entry.isDirectory && imageMediaType(entry.name))
-      .sort(naturalCompare);
+  validateImageEntries(imageEntries) {
     if (imageEntries.length === 0) throw apiError("Translation export ZIP contains no supported images.", 422);
-    if (imageEntries.length > this.maxFiles) throw apiError(`Translation export exceeds the ${this.maxFiles} image limit.`, 413);
+    if (imageEntries.length > this.maxFiles)
+      throw apiError(`Translation export exceeds the ${this.maxFiles} image limit.`, 413);
     let totalBytes = 0;
     for (const entry of imageEntries) {
-      if (entry.uncompressedSize > this.maxFileBytes) throw apiError(`Translated image exceeds the ${this.maxFileBytes} byte limit.`, 413);
+      if (entry.uncompressedSize > this.maxFileBytes)
+        throw apiError(`Translated image exceeds the ${this.maxFileBytes} byte limit.`, 413);
       totalBytes += entry.uncompressedSize;
-      if (totalBytes > this.maxTotalBytes) throw apiError(`Translated images exceed the ${this.maxTotalBytes} byte total limit.`, 413);
+      if (totalBytes > this.maxTotalBytes)
+        throw apiError(`Translated images exceed the ${this.maxTotalBytes} byte total limit.`, 413);
     }
+  }
 
-    const cacheRoot = this.jobCacheRoot(jobId);
-    const cacheKey = `${artifact.id}-${stat.size}-${Math.trunc(stat.mtimeMs)}`;
-    const manifestPath = path.join(cacheRoot, "manifest.json");
-    if (fs.existsSync(manifestPath)) {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-      if (manifest.cacheKey === cacheKey && manifest.images.every((image) => fs.existsSync(image.path))) return manifest;
-    }
+  readCachedManifest(manifestPath, cacheKey) {
+    if (!fs.existsSync(manifestPath)) return null;
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (manifest.cacheKey === cacheKey && manifest.images.every((image) => fs.existsSync(image.path))) return manifest;
+    return null;
+  }
+
+  resetCacheRoot(cacheRoot) {
     const resolvedServiceRoot = path.resolve(this.root);
     const resolvedCacheRoot = path.resolve(cacheRoot);
     const relative = path.relative(resolvedServiceRoot, resolvedCacheRoot);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) throw apiError("Translated-image cache path is invalid.", 500);
+    if (relative.startsWith("..") || path.isAbsolute(relative))
+      throw apiError("Translated-image cache path is invalid.", 500);
     fs.rmSync(resolvedCacheRoot, { recursive: true, force: true });
     fs.mkdirSync(resolvedCacheRoot, { recursive: true });
+    return resolvedCacheRoot;
+  }
 
+  async extractZipImages({ artifactPath, imageEntries, cacheRoot, stat }) {
     const images = [];
     for (let index = 0; index < imageEntries.length; index += 1) {
       const entry = imageEntries[index];
       const id = imageId(index, entry.name);
       const originalName = path.posix.basename(entry.name);
       const targetName = `${String(index + 1).padStart(4, "0")}-${id}${path.extname(originalName).toLowerCase()}`;
-      const targetPath = path.join(resolvedCacheRoot, targetName);
-      await extractEntry(artifact.path, entry, targetPath, stat.size, this.maxFileBytes);
-      images.push({ id, index, fileName: originalName, sourceName: entry.name, mediaType: imageMediaType(originalName), size: entry.uncompressedSize, path: targetPath });
+      const targetPath = path.join(cacheRoot, targetName);
+      await extractEntry(artifactPath, entry, targetPath, stat.size, this.maxFileBytes);
+      images.push({
+        id,
+        index,
+        fileName: originalName,
+        sourceName: entry.name,
+        mediaType: imageMediaType(originalName),
+        size: entry.uncompressedSize,
+        path: targetPath,
+      });
     }
-    const manifest = { jobId, artifactId: artifact.id, sourceFormat: "zip", cacheKey, images };
+    return images;
+  }
+
+  readZipImageEntries(artifact) {
+    const { entries, stat } = readZipEntries(artifact.path, {
+      maxEntries: Math.max(this.maxFiles * 4, 2000),
+    });
+    const imageEntries = entries
+      .filter((entry) => !entry.isDirectory && imageMediaType(entry.name))
+      .sort(naturalCompare);
+    this.validateImageEntries(imageEntries);
+    return { imageEntries, stat };
+  }
+
+  async createZipManifest(jobId, artifact, imageEntries, stat, cacheRoot, cacheKey) {
+    const resolvedCacheRoot = this.resetCacheRoot(cacheRoot);
+    const images = await this.extractZipImages({
+      artifactPath: artifact.path, imageEntries, cacheRoot: resolvedCacheRoot, stat,
+    });
+    return { jobId, artifactId: artifact.id, sourceFormat: "zip", cacheKey, images };
+  }
+
+  async prepare({ jobId, artifacts }) {
+    const artifact = this.selectExportArtifact(artifacts);
+    const directMediaType = imageMediaType(artifact.path);
+    if (directMediaType) return this.prepareDirectImage(artifact);
+    if (path.extname(artifact.path).toLowerCase() !== ".zip")
+      throw apiError("Translation export is not a supported image or ZIP file.", 415);
+
+    const { imageEntries, stat } = this.readZipImageEntries(artifact);
+    const cacheRoot = this.jobCacheRoot(jobId);
+    const cacheKey = `${artifact.id}-${stat.size}-${Math.trunc(stat.mtimeMs)}`;
+    const manifestPath = path.join(cacheRoot, "manifest.json");
+    const cached = this.readCachedManifest(manifestPath, cacheKey);
+    if (cached) return cached;
+
+    const manifest = await this.createZipManifest(jobId, artifact, imageEntries, stat, cacheRoot, cacheKey);
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     return manifest;
   }

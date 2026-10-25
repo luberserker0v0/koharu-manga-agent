@@ -4,8 +4,17 @@ const path = require("path");
 const { paths } = require("../../config");
 
 const ALLOWED_EXTENSIONS = new Set([
-  ".jpg", ".jpeg", ".png", ".webp", ".avif", ".bmp", ".gif",
-  ".tif", ".tiff", ".heic", ".heif",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".avif",
+  ".bmp",
+  ".gif",
+  ".tif",
+  ".tiff",
+  ".heic",
+  ".heif",
 ]);
 
 function apiError(message, statusCode) {
@@ -26,7 +35,11 @@ function normalizeFileName(value) {
     throw apiError("Invalid upload filename encoding.", 400);
   }
   const fileName = path.basename(decoded);
-  if (!fileName || fileName !== decoded || !/^[^<>:"/\\|?*\x00-\x1f]{1,180}$/.test(fileName)) {
+  if (
+    !fileName ||
+    fileName !== decoded ||
+    !/^[^<>:"/\\|?*\x00-\x1f]{1,180}$/.test(fileName)
+  ) {
     throw apiError("Invalid upload filename.", 400);
   }
   if (!ALLOWED_EXTENSIONS.has(path.extname(fileName).toLowerCase())) {
@@ -35,8 +48,43 @@ function normalizeFileName(value) {
   return fileName;
 }
 
+async function writeUploadToTemporary(temporaryPath, input, maxFileBytes) {
+  const output = fs.createWriteStream(temporaryPath, { flags: "wx" });
+  let size = 0;
+  let rejected = false;
+  await new Promise((resolve, reject) => {
+    input.on("data", (chunk) => {
+      if (rejected) return;
+      size += chunk.length;
+      if (size > maxFileBytes) {
+        rejected = true;
+        output.destroy();
+        input.resume();
+        reject(
+          apiError(`Upload file exceeds the ${maxFileBytes} byte limit.`, 413),
+        );
+        return;
+      }
+      if (!output.write(chunk)) input.pause();
+    });
+    output.on("drain", () => input.resume());
+    input.on("end", () => {
+      if (!rejected) output.end();
+    });
+    input.on("error", reject);
+    output.on("error", reject);
+    output.on("finish", resolve);
+  });
+  if (size === 0) throw apiError("Upload file is empty.", 400);
+  return size;
+}
+
 class UploadService {
-  constructor({ root = paths.uploads, maxFileBytes = 52428800, maxFiles = 500 } = {}) {
+  constructor({
+    root = paths.uploads,
+    maxFileBytes = 52428800,
+    maxFiles = 500,
+  } = {}) {
     this.root = root;
     this.maxFileBytes = Number(maxFileBytes);
     this.maxFiles = Number(maxFiles);
@@ -54,7 +102,8 @@ class UploadService {
   }
 
   create({ kind = "source" } = {}) {
-    if (!["source", "reference"].includes(kind)) throw apiError("Upload kind must be source or reference.", 400);
+    if (!["source", "reference"].includes(kind))
+      throw apiError("Upload kind must be source or reference.", 400);
     const uploadId = crypto.randomUUID();
     const root = this.sessionRoot(uploadId);
     fs.mkdirSync(path.join(root, "files"), { recursive: true });
@@ -72,14 +121,19 @@ class UploadService {
 
   read(uploadId) {
     const manifestPath = this.manifestPath(uploadId);
-    if (!fs.existsSync(manifestPath)) throw apiError("Upload session not found.", 404);
+    if (!fs.existsSync(manifestPath))
+      throw apiError("Upload session not found.", 404);
     return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   }
 
   write(manifest) {
     const manifestPath = this.manifestPath(manifest.uploadId);
     const temporaryPath = `${manifestPath}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    fs.writeFileSync(temporaryPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    fs.writeFileSync(
+      temporaryPath,
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      "utf8",
+    );
     fs.renameSync(temporaryPath, manifestPath);
   }
 
@@ -94,66 +148,65 @@ class UploadService {
     }
   }
 
-  async putFile(uploadId, rawFileName, input) {
-    const manifest = this.read(uploadId);
+  validateFileUpload(manifest, rawFileName) {
     if (manifest.status !== "uploading") throw apiError("Upload session is already complete.", 409);
     const fileName = normalizeFileName(rawFileName);
     const existing = manifest.files.find((entry) => entry.fileName === fileName);
-    if (!existing && manifest.files.length >= this.maxFiles) throw apiError("Upload file-count limit exceeded.", 413);
+    if (!existing && manifest.files.length >= this.maxFiles)
+      throw apiError("Upload file-count limit exceeded.", 413);
+    return fileName;
+  }
 
-    const targetPath = path.join(this.sessionRoot(uploadId), "files", fileName);
+  async writeUploadedFile(targetPath, input) {
     const temporaryPath = `${targetPath}.${crypto.randomUUID()}.tmp`;
-    let size = 0;
-    let rejected = false;
-    const output = fs.createWriteStream(temporaryPath, { flags: "wx" });
-
     try {
-      await new Promise((resolve, reject) => {
-        input.on("data", (chunk) => {
-          if (rejected) return;
-          size += chunk.length;
-          if (size > this.maxFileBytes) {
-            rejected = true;
-            output.destroy();
-            input.resume();
-            reject(apiError(`Upload file exceeds the ${this.maxFileBytes} byte limit.`, 413));
-            return;
-          }
-          if (!output.write(chunk)) input.pause();
-        });
-        output.on("drain", () => input.resume());
-        input.on("end", () => {
-          if (!rejected) output.end();
-        });
-        input.on("error", reject);
-        output.on("error", reject);
-        output.on("finish", resolve);
-      });
-      if (size === 0) throw apiError("Upload file is empty.", 400);
+      const size = await writeUploadToTemporary(temporaryPath, input, this.maxFileBytes);
       fs.renameSync(temporaryPath, targetPath);
+      return size;
     } catch (error) {
       fs.rmSync(temporaryPath, { force: true });
       throw error;
     }
+  }
 
+  async putFile(uploadId, rawFileName, input) {
+    const manifest = this.read(uploadId);
+    const fileName = this.validateFileUpload(manifest, rawFileName);
+    const targetPath = path.join(this.sessionRoot(uploadId), "files", fileName);
+    const size = await this.writeUploadedFile(targetPath, input);
     const record = { fileName, size, uploadedAt: new Date().toISOString() };
+    await this.updateUploadManifest(
+      uploadId,
+      fileName,
+      record,
+      targetPath,
+      this.maxFiles,
+    );
+    return record;
+  }
+
+  async updateUploadManifest(uploadId, fileName, record, targetPath, maxFiles) {
     await this.withLock(uploadId, async () => {
       const latest = this.read(uploadId);
-      const latestExisting = latest.files.find((entry) => entry.fileName === fileName);
-      if (!latestExisting && latest.files.length >= this.maxFiles) {
+      const latestExisting = latest.files.find(
+        (entry) => entry.fileName === fileName,
+      );
+      if (!latestExisting && latest.files.length >= maxFiles) {
         fs.rmSync(targetPath, { force: true });
         throw apiError("Upload file-count limit exceeded.", 413);
       }
-      latest.files = latest.files.filter((entry) => entry.fileName !== fileName).concat(record);
+      latest.files = latest.files
+        .filter((entry) => entry.fileName !== fileName)
+        .concat(record);
       latest.updatedAt = new Date().toISOString();
       this.write(latest);
     });
-    return record;
   }
 
   complete(uploadId) {
     const manifest = this.read(uploadId);
-    if (manifest.files.length === 0) throw apiError("Upload session has no files.", 400);
+    if (manifest.files.length === 0)
+      throw apiError("Upload session has no files.", 400);
     manifest.status = "ready";
     manifest.updatedAt = new Date().toISOString();
     this.write(manifest);
@@ -162,8 +215,10 @@ class UploadService {
 
   resolveDirectory(uploadId, expectedKind = null) {
     const manifest = this.read(uploadId);
-    if (manifest.status !== "ready") throw apiError("Upload session is not ready.", 409);
-    if (expectedKind && manifest.kind !== expectedKind) throw apiError(`Upload kind must be ${expectedKind}.`, 409);
+    if (manifest.status !== "ready")
+      throw apiError("Upload session is not ready.", 409);
+    if (expectedKind && manifest.kind !== expectedKind)
+      throw apiError(`Upload kind must be ${expectedKind}.`, 409);
     return path.join(this.sessionRoot(uploadId), "files");
   }
 

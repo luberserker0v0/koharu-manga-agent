@@ -37,12 +37,10 @@ const desktopApi = {
   }) => ipcRenderer.invoke(IPC_CHANNELS.VALIDATE_PATHS, payload),
   openKoharuEditor: (payload: { url: string; sessionId: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.OPEN_KOHARU_EDITOR, payload),
-  closeKoharuEditor: (sessionId?: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.CLOSE_KOHARU_EDITOR, sessionId),
+  closeKoharuEditor: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOSE_KOHARU_EDITOR, sessionId),
   getKoharuHostStatus: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STATUS),
   installAndStartKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_INSTALL_START),
-  startKoharuHost: (executablePath: string) =>
-    ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_START, executablePath),
+  startKoharuHost: (executablePath: string) => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_START, executablePath),
   stopKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STOP),
   onKoharuEditorClosed: (callback: (payload: { sessionId: string | null }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: { sessionId: string | null }) => callback(payload);

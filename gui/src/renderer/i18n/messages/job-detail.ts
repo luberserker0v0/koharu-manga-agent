@@ -18,9 +18,11 @@ export const jobDetailMessagesZhTW = {
   "jobDetail.deepAuditReview.title": "Deep Audit \u7d50\u679c\u5957\u7528",
   "jobDetail.deepAuditReview.loading": "\u6b63\u5728\u8f09\u5165 Deep Audit \u7d50\u679c",
   "jobDetail.deepAuditReview.loadFailed": "\u7121\u6cd5\u8f09\u5165 Deep Audit \u7d50\u679c\u3002",
-  "jobDetail.deepAuditReview.summary": (params?: Record<string, string | number>) => `\u767c\u73fe ${params?.warnings ?? 0} \u7b46\uff0c\u6d89\u53ca ${params?.pages ?? 0} \u9801`,
+  "jobDetail.deepAuditReview.summary": (params?: Record<string, string | number>) =>
+    `\u767c\u73fe ${params?.warnings ?? 0} \u7b46\uff0c\u6d89\u53ca ${params?.pages ?? 0} \u9801`,
   "jobDetail.deepAuditReview.page": (params?: Record<string, string | number>) => `\u9801\u9762 ${params?.page ?? ""}`,
-  "jobDetail.deepAuditReview.sequenceRisk": (params?: Record<string, string | number>) => `\u9023\u7e8c\u932f\u4f4d ${params?.start ?? ""} - ${params?.end ?? ""}`,
+  "jobDetail.deepAuditReview.sequenceRisk": (params?: Record<string, string | number>) =>
+    `\u9023\u7e8c\u932f\u4f4d ${params?.start ?? ""} - ${params?.end ?? ""}`,
   "jobDetail.deepAuditReview.source": "\u539f\u6587",
   "jobDetail.deepAuditReview.current": "\u76ee\u524d\u8b6f\u6587",
   "jobDetail.deepAuditReview.proposal": "\u5efa\u8b70\u8b6f\u6587",
@@ -31,7 +33,8 @@ export const jobDetailMessagesZhTW = {
   "jobDetail.deepAuditReview.acceptProposal": "\u63a5\u53d7\u5efa\u8b70",
   "jobDetail.deepAuditReview.manualEdit": "\u624b\u52d5\u7de8\u8f2f\u4e26\u63a5\u53d7",
   "jobDetail.deepAuditReview.confirmCurrent": "\u4fdd\u7559\u76ee\u524d\u8b6f\u6587",
-  "jobDetail.deepAuditReview.ignoreAndPublish": "\u5ffd\u7565\u6b64\u767c\u73fe\u4e26\u767c\u5e03\uff08\u4e0d\u5b78\u7fd2\uff09",
+  "jobDetail.deepAuditReview.ignoreAndPublish":
+    "\u5ffd\u7565\u6b64\u767c\u73fe\u4e26\u767c\u5e03\uff08\u4e0d\u5b78\u7fd2\uff09",
   "jobDetail.deepAuditReview.apply": "\u5957\u7528\u9078\u64c7\u4e26\u767c\u5e03",
   "jobDetail.deepAuditReview.applying": "\u6b63\u5728\u5efa\u7acb Deep Audit \u5957\u7528\u5de5\u4f5c",
   "jobDetail.qualityRepair.start": "\u91cd\u65b0\u9a57\u8b49\u7ffb\u8b6f\u54c1\u8cea",
@@ -112,13 +115,16 @@ export const jobDetailMessagesZhTW = {
   "jobDetail.reference.localStyleUpdate": "本地風格更新",
   "jobDetail.reference.enabled": "已啟用",
   "jobDetail.reference.disabled": "已停用",
-  "jobDetail.reference.description": "使用下方 artifact 卡片檢查品質驗證報告、本地詞彙表、故事上下文、風格設定、本地風格輸出，以及這個工作相關的任何 legacy diagnostics。",
+  "jobDetail.reference.description":
+    "使用下方 artifact 卡片檢查品質驗證報告、本地詞彙表、故事上下文、風格設定、本地風格輸出，以及這個工作相關的任何 legacy diagnostics。",
   "jobDetail.events.loading": "載入事件中...",
   "jobDetail.events.loadFailed": "載入事件失敗。",
-  "jobDetail.events.collapsed": (params?: Record<string, string | number>) => `重複事件已從 ${params?.from} 摺疊到 ${params?.to}。`,
+  "jobDetail.events.collapsed": (params?: Record<string, string | number>) =>
+    `重複事件已從 ${params?.from} 摺疊到 ${params?.to}。`,
   "jobDetail.liveInteraction.title": "即時互動",
   "jobDetail.liveInteraction.following": "跟隨最新事件",
-  "jobDetail.liveInteraction.paused": (params?: Record<string, string | number>) => `已暫停跟隨，還有 ${params?.count} 筆未讀`,
+  "jobDetail.liveInteraction.paused": (params?: Record<string, string | number>) =>
+    `已暫停跟隨，還有 ${params?.count} 筆未讀`,
   "jobDetail.liveInteraction.jumpLatest": "跳到最新",
   "jobDetail.connection.connecting": "連線中",
   "jobDetail.connection.live": "即時",
@@ -127,8 +133,10 @@ export const jobDetailMessagesZhTW = {
   "jobDetail.connection.closed": "已關閉",
   "jobDetail.connection.idle": "閒置",
   "jobDetail.notice.jobError": "工作錯誤",
-  "jobDetail.failure.summary": (params?: Record<string, string | number>) => `${params?.source ?? ""}：${params?.type ?? ""}`,
-  "jobDetail.failure.notice": (params?: Record<string, string | number>) => `${params?.source ?? ""}在「${params?.stage ?? ""}」階段發生${params?.type ?? ""}。`,
+  "jobDetail.failure.summary": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""}：${params?.type ?? ""}`,
+  "jobDetail.failure.notice": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""}在「${params?.stage ?? ""}」階段發生${params?.type ?? ""}。`,
   "jobDetail.failure.source": "失敗來源",
   "jobDetail.failure.stage": "失敗階段",
   "jobDetail.failure.type": "錯誤類型",
@@ -174,8 +182,10 @@ export const jobDetailMessagesZhTW = {
   "jobDetail.workflow.reference_ingestion.merge": "\u5408\u4F75\u77E5\u8B58",
   "jobDetail.workflow.reference_ingestion.write": "\u5BEB\u5165 Artifacts",
   "jobDetail.workflow.reference_ingestion.completed": "Ingestion \u5B8C\u6210",
-  "jobDetail.workflow.reference_ingestion.alignment": "\u6AA2\u67E5\u539F\u6587\u8207\u8B6F\u6587\u5C0D\u61C9\u8CC7\u6599",
-  "jobDetail.workflow.reference_ingestion.alignment.skipped": "\u672A\u4F7F\u7528\u5C0D\u9F4A\u8CC7\u6599\uFF0C\u6539\u7528\u55AE\u8A9E\u8CC7\u6599\u5206\u6790",
+  "jobDetail.workflow.reference_ingestion.alignment":
+    "\u6AA2\u67E5\u539F\u6587\u8207\u8B6F\u6587\u5C0D\u61C9\u8CC7\u6599",
+  "jobDetail.workflow.reference_ingestion.alignment.skipped":
+    "\u672A\u4F7F\u7528\u5C0D\u9F4A\u8CC7\u6599\uFF0C\u6539\u7528\u55AE\u8A9E\u8CC7\u6599\u5206\u6790",
   "jobDetail.workflow.reference_ingestion.alignment.completed": "\u5DF2\u8F09\u5165\u5C0D\u9F4A\u8CC7\u6599",
   "jobDetail.workflow.reference_ingestion.analysis.completed": "\u7AE0\u7BC0\u5206\u6790\u5B8C\u6210",
   "jobDetail.workflow.reference_ingestion.story.completed": "\u6545\u4E8B\u8A18\u61B6\u66F4\u65B0\u5B8C\u6210",
@@ -228,9 +238,11 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.deepAuditReview.title": "Apply Deep Audit results",
   "jobDetail.deepAuditReview.loading": "Loading Deep Audit results",
   "jobDetail.deepAuditReview.loadFailed": "Unable to load Deep Audit results.",
-  "jobDetail.deepAuditReview.summary": (params?: Record<string, string | number>) => `${params?.warnings ?? 0} findings across ${params?.pages ?? 0} pages`,
+  "jobDetail.deepAuditReview.summary": (params?: Record<string, string | number>) =>
+    `${params?.warnings ?? 0} findings across ${params?.pages ?? 0} pages`,
   "jobDetail.deepAuditReview.page": (params?: Record<string, string | number>) => `Page ${params?.page ?? ""}`,
-  "jobDetail.deepAuditReview.sequenceRisk": (params?: Record<string, string | number>) => `Sequence shift ${params?.start ?? ""} - ${params?.end ?? ""}`,
+  "jobDetail.deepAuditReview.sequenceRisk": (params?: Record<string, string | number>) =>
+    `Sequence shift ${params?.start ?? ""} - ${params?.end ?? ""}`,
   "jobDetail.deepAuditReview.source": "Source",
   "jobDetail.deepAuditReview.current": "Current translation",
   "jobDetail.deepAuditReview.proposal": "Proposed translation",
@@ -296,7 +308,8 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.summary.openPostEdit": "Open post-edit workspace",
   "jobDetail.workflow.title": "Workflow overview",
   "jobDetail.pipeline.title": "Pipeline engines",
-  "jobDetail.pipeline.pending": "Engine-specific progress has not been emitted yet. This section will become more precise once the backend provides structured engine events.",
+  "jobDetail.pipeline.pending":
+    "Engine-specific progress has not been emitted yet. This section will become more precise once the backend provides structured engine events.",
   "jobDetail.pageProgress.title": "Page progress",
   "jobDetail.pageProgress.completed": "Pages completed",
   "jobDetail.pageProgress.currentEngine": "Current engine",
@@ -322,13 +335,16 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.reference.localStyleUpdate": "Local style update",
   "jobDetail.reference.enabled": "Enabled",
   "jobDetail.reference.disabled": "Disabled",
-  "jobDetail.reference.description": "Use the artifact cards below to inspect the quality validation report, local glossary, story context, style profile, local style outputs, and any legacy diagnostics for this selected job.",
+  "jobDetail.reference.description":
+    "Use the artifact cards below to inspect the quality validation report, local glossary, story context, style profile, local style outputs, and any legacy diagnostics for this selected job.",
   "jobDetail.events.loading": "Loading events...",
   "jobDetail.events.loadFailed": "Failed to load events.",
-  "jobDetail.events.collapsed": (params?: Record<string, string | number>) => `Repeated event collapsed from ${params?.from} to ${params?.to}.`,
+  "jobDetail.events.collapsed": (params?: Record<string, string | number>) =>
+    `Repeated event collapsed from ${params?.from} to ${params?.to}.`,
   "jobDetail.liveInteraction.title": "Live interaction",
   "jobDetail.liveInteraction.following": "Following latest events",
-  "jobDetail.liveInteraction.paused": (params?: Record<string, string | number>) => `Paused follow, ${params?.count} unread`,
+  "jobDetail.liveInteraction.paused": (params?: Record<string, string | number>) =>
+    `Paused follow, ${params?.count} unread`,
   "jobDetail.liveInteraction.jumpLatest": "Jump to latest",
   "jobDetail.connection.connecting": "Connecting",
   "jobDetail.connection.live": "Live",
@@ -337,8 +353,10 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.connection.closed": "Closed",
   "jobDetail.connection.idle": "Idle",
   "jobDetail.notice.jobError": "Job error",
-  "jobDetail.failure.summary": (params?: Record<string, string | number>) => `${params?.source ?? ""}: ${params?.type ?? ""}`,
-  "jobDetail.failure.notice": (params?: Record<string, string | number>) => `${params?.source ?? ""} encountered ${params?.type ?? ""} during ${params?.stage ?? ""}.`,
+  "jobDetail.failure.summary": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""}: ${params?.type ?? ""}`,
+  "jobDetail.failure.notice": (params?: Record<string, string | number>) =>
+    `${params?.source ?? ""} encountered ${params?.type ?? ""} during ${params?.stage ?? ""}.`,
   "jobDetail.failure.source": "Failure source",
   "jobDetail.failure.stage": "Failure stage",
   "jobDetail.failure.type": "Failure type",
@@ -350,15 +368,22 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.failure.source.storage": "Storage",
   "jobDetail.failure.source.data": "Input data",
   "jobDetail.failure.source.unknown": "Unknown component",
-  "jobDetail.failure.action.restore_quota": "Restore the AO model quota, then resume or retry. Extraction does not need to be rerun.",
-  "jobDetail.failure.action.start_ao_and_retry": "Confirm that the AO service is running and reachable, then retry this job.",
-  "jobDetail.failure.action.restart_koharu_and_retry": "Confirm that the Koharu service is running and reachable, then retry this job.",
+  "jobDetail.failure.action.restore_quota":
+    "Restore the AO model quota, then resume or retry. Extraction does not need to be rerun.",
+  "jobDetail.failure.action.start_ao_and_retry":
+    "Confirm that the AO service is running and reachable, then retry this job.",
+  "jobDetail.failure.action.restart_koharu_and_retry":
+    "Confirm that the Koharu service is running and reachable, then retry this job.",
   "jobDetail.failure.action.resume_checkpoint": "Resume from the saved checkpoint without rerunning completed stages.",
-  "jobDetail.failure.action.retry_after_timeout": "The job timed out. Confirm the service is responsive, then resume or retry.",
-  "jobDetail.failure.action.retry_semantic_stage": "AO output was incomplete or invalid. Retry only the current semantic stage.",
+  "jobDetail.failure.action.retry_after_timeout":
+    "The job timed out. Confirm the service is responsive, then resume or retry.",
+  "jobDetail.failure.action.retry_semantic_stage":
+    "AO output was incomplete or invalid. Retry only the current semantic stage.",
   "jobDetail.failure.action.check_storage": "Check disk space, file permissions, and database health before retrying.",
-  "jobDetail.failure.action.inspect_input_artifacts": "Inspect the required input artifacts and fingerprints for this stage.",
-  "jobDetail.failure.action.inspect_raw_error": "Expand the technical details. The source could not be identified safely.",
+  "jobDetail.failure.action.inspect_input_artifacts":
+    "Inspect the required input artifacts and fingerprints for this stage.",
+  "jobDetail.failure.action.inspect_raw_error":
+    "Expand the technical details. The source could not be identified safely.",
   "jobDetail.notice.qualitySkipped": "Quality validation skipped",
   "jobDetail.notice.qualitySkippedMessage": "Quality validation is disabled for this job.",
   "jobDetail.notice.localStyleSkipped": "Local style update skipped",
@@ -366,13 +391,17 @@ export const jobDetailMessagesEnUS = {
   "jobDetail.notice.limitedPipeline": "Limited pipeline detail",
   "jobDetail.notice.limitedPipelineMessage": "Structured engine/page progress has not been emitted yet.",
   "jobDetail.translationMode.quick.label": "Quick translation",
-  "jobDetail.translationMode.quick.description": "Translate directly with the current setup, without applying reference material or local style learning.",
+  "jobDetail.translationMode.quick.description":
+    "Translate directly with the current setup, without applying reference material or local style learning.",
   "jobDetail.translationMode.referenceStyle.label": "Reference style translation",
-  "jobDetail.translationMode.referenceStyle.description": "Use the selected reference material to align style and produce the translation.",
+  "jobDetail.translationMode.referenceStyle.description":
+    "Use the selected reference material to align style and produce the translation.",
   "jobDetail.translationMode.localStyle.label": "Local style translation",
-  "jobDetail.translationMode.localStyle.description": "Use local knowledge and existing style assets to keep output consistent.",
+  "jobDetail.translationMode.localStyle.description":
+    "Use local knowledge and existing style assets to keep output consistent.",
   "jobDetail.translationMode.learningStyle.label": "Learning style translation",
-  "jobDetail.translationMode.learningStyle.description": "Use both reference material and local style updates so new output can absorb the reference style.",
+  "jobDetail.translationMode.learningStyle.description":
+    "Use both reference material and local style updates so new output can absorb the reference style.",
   "jobDetail.workflow.source_preflight": "Source preflight",
   "jobDetail.workflow.reference_ingestion": "Reference ingestion",
   "jobDetail.workflow.reference_extraction": "Reference extraction",
@@ -396,8 +425,7 @@ export const jobDetailMessagesEnUS = {
     `Nodes ${params?.completed ?? 0} / ${params?.total ?? 0}`,
   "jobDetail.progress.waitingAo": (params?: Record<string, string | number>) =>
     `Waiting for AO ${params?.seconds ?? 0}s`,
-  "jobDetail.progress.reason": (params?: Record<string, string | number>) =>
-    `Reason: ${params?.reason ?? "-"}`,
+  "jobDetail.progress.reason": (params?: Record<string, string | number>) => `Reason: ${params?.reason ?? "-"}`,
   "jobDetail.workflow.setup_project": "Setup project",
   "jobDetail.workflow.monitor_pipeline": "Monitor pipeline",
   "jobDetail.workflow.quality_review": "Quality review",

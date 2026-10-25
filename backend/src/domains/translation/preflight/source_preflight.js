@@ -73,24 +73,27 @@ function listSourceFiles(sourceFolder) {
 function copyOrConvertFile({ sourcePath, destinationDir, imageId, ffmpegPath = "ffmpeg" }) {
   const actualFormat = detectImageFormat(sourcePath);
   if (isKoharuSupportedFormat(actualFormat)) {
-    const outputPath = path.join(destinationDir, `${imageId}${normalizeExtension(actualFormat)}`);
-    fs.copyFileSync(sourcePath, outputPath);
-    return {
-      accepted: true,
-      normalizedPath: outputPath,
-      actualFormat,
-      converted: false,
-      convertedFrom: null,
-    };
+    return copySupportedImage(destinationDir, imageId, actualFormat, sourcePath);
   }
-
   if (!isRecognizedImageCandidate(sourcePath, actualFormat)) {
-    return {
-      accepted: false,
-      reason: "File is not a recognized image.",
-    };
+    return { accepted: false, reason: "File is not a recognized image." };
   }
+  return convertUnsupportedImage(sourcePath, destinationDir, imageId, actualFormat, ffmpegPath);
+}
 
+function copySupportedImage(destinationDir, imageId, actualFormat, sourcePath) {
+  const outputPath = path.join(destinationDir, `${imageId}${normalizeExtension(actualFormat)}`);
+  fs.copyFileSync(sourcePath, outputPath);
+  return {
+    accepted: true,
+    normalizedPath: outputPath,
+    actualFormat,
+    converted: false,
+    convertedFrom: null,
+  };
+}
+
+function convertUnsupportedImage(sourcePath, destinationDir, imageId, actualFormat, ffmpegPath) {
   try {
     const outputPath = path.join(destinationDir, `${imageId}.png`);
     convertImageWithFfmpeg(sourcePath, outputPath, "png", ffmpegPath);
@@ -155,6 +158,34 @@ function persistManifest(manifestPath, payload) {
   fs.writeFileSync(manifestPath, JSON.stringify(payload, null, 2), "utf-8");
 }
 
+function createPreflightPaths(root, preflightId) {
+  const preflightRoot = path.join(root, preflightId);
+  return {
+    preflightRoot,
+    normalizedDir: path.join(preflightRoot, "normalized"),
+    orderedDir: path.join(preflightRoot, "ordered"),
+    manifestPath: path.join(preflightRoot, "manifest.json"),
+  };
+}
+
+function recordRejectedFile(fileName, filePath, reason, discoveredFiles, rejectedFiles) {
+  rejectedFiles.push({ fileName, path: filePath, reason });
+  discoveredFiles.push({ fileName, path: filePath, accepted: false, converted: false, reason });
+}
+
+function recordAcceptedFile(fileName, filePath, imageId, copyResult, discoveredFiles, acceptedImages) {
+  acceptedImages.push({
+    id: imageId, fileName, sourcePath: filePath,
+    normalizedPath: copyResult.normalizedPath,
+    actualFormat: copyResult.actualFormat,
+    converted: copyResult.converted,
+    convertedFrom: copyResult.convertedFrom,
+  });
+  discoveredFiles.push({
+    fileName, path: filePath, accepted: true, converted: copyResult.converted, reason: "",
+  });
+}
+
 class SourcePreflightModule {
   constructor({ root = paths.sourcePreflight, ffmpegPath = "ffmpeg" } = {}) {
     this.root = root;
@@ -166,97 +197,75 @@ class SourcePreflightModule {
     validateFolderReadable(sourceFolder);
 
     const preflightId = crypto.randomUUID();
-    const preflightRoot = path.join(this.root, preflightId);
-    const normalizedDir = path.join(preflightRoot, "normalized");
-    const orderedDir = path.join(preflightRoot, "ordered");
-    const manifestPath = path.join(preflightRoot, "manifest.json");
-
+    const { preflightRoot, normalizedDir, orderedDir, manifestPath } = createPreflightPaths(this.root, preflightId);
     ensureDir(normalizedDir);
     ensureDir(orderedDir);
 
-    const discoveredFiles = [];
-    const rejectedFiles = [];
-    const acceptedImages = [];
-
-    for (const filePath of listSourceFiles(sourceFolder)) {
-      const fileName = path.basename(filePath);
-      const imageId = crypto.randomUUID();
-      const copyResult = copyOrConvertFile({
-        sourcePath: filePath,
-        destinationDir: normalizedDir,
-        imageId,
-        ffmpegPath: this.ffmpegPath,
-      });
-
-      if (!copyResult.accepted) {
-        rejectedFiles.push({
-          fileName,
-          path: filePath,
-          reason: copyResult.reason,
-        });
-        discoveredFiles.push({
-          fileName,
-          path: filePath,
-          accepted: false,
-          converted: false,
-          reason: copyResult.reason,
-        });
-        continue;
-      }
-
-      const acceptedImage = {
-        id: imageId,
-        fileName,
-        sourcePath: filePath,
-        normalizedPath: copyResult.normalizedPath,
-        actualFormat: copyResult.actualFormat,
-        converted: copyResult.converted,
-        convertedFrom: copyResult.convertedFrom,
-      };
-
-      acceptedImages.push(acceptedImage);
-      discoveredFiles.push({
-        fileName,
-        path: filePath,
-        accepted: true,
-        converted: copyResult.converted,
-        reason: "",
-      });
-    }
-
+    const { discoveredFiles, rejectedFiles, acceptedImages } = this.collectSourceImages(sourceFolder, normalizedDir);
     const orderedImageIds = acceptedImages.map((image) => image.id);
     const orderedImages = writeOrderedImages({
       orderedDir,
       images: acceptedImages,
       orderedImageIds,
     });
-
-    const manifest = {
-      preflightId,
-      sourceFolder,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      preflightRoot,
-      normalizedDir,
-      orderedDir,
-      manifestPath,
-      ready: orderedImages.length > 0,
-      orderChanged: false,
-      originalFingerprint: buildOrderFingerprint(orderedImageIds),
-      currentFingerprint: buildOrderFingerprint(orderedImageIds),
-      summary: {
-        discoveredCount: discoveredFiles.length,
-        acceptedCount: orderedImages.length,
-        convertedCount: orderedImages.filter((image) => image.converted).length,
-        rejectedCount: rejectedFiles.length,
-      },
-      discoveredFiles,
-      rejectedFiles,
-      images: orderedImages,
-    };
-
+    const manifest = this.buildPreflightManifest({
+      preflightId, sourceFolder, preflightRoot, normalizedDir, orderedDir, manifestPath,
+      discoveredFiles, rejectedFiles, orderedImages, orderedImageIds,
+    });
     persistManifest(manifestPath, manifest);
     return manifest;
+  }
+
+  collectSourceImages(sourceFolder, normalizedDir) {
+    const discoveredFiles = [];
+    const rejectedFiles = [];
+    const acceptedImages = [];
+    for (const filePath of listSourceFiles(sourceFolder)) {
+      this.processSourceFile(filePath, normalizedDir, discoveredFiles, rejectedFiles, acceptedImages);
+    }
+    return { discoveredFiles, rejectedFiles, acceptedImages };
+  }
+
+  processSourceFile(filePath, normalizedDir, discoveredFiles, rejectedFiles, acceptedImages) {
+    const fileName = path.basename(filePath);
+    const imageId = crypto.randomUUID();
+    const copyResult = copyOrConvertFile({
+      sourcePath: filePath,
+      destinationDir: normalizedDir,
+      imageId,
+      ffmpegPath: this.ffmpegPath,
+    });
+    if (!copyResult.accepted) {
+      recordRejectedFile(fileName, filePath, copyResult.reason, discoveredFiles, rejectedFiles);
+      return;
+    }
+    recordAcceptedFile(fileName, filePath, imageId, copyResult, discoveredFiles, acceptedImages);
+  }
+
+  buildPreflightManifest(input) {
+    return {
+      preflightId: input.preflightId,
+      sourceFolder: input.sourceFolder,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      preflightRoot: input.preflightRoot,
+      normalizedDir: input.normalizedDir,
+      orderedDir: input.orderedDir,
+      manifestPath: input.manifestPath,
+      ready: input.orderedImages.length > 0,
+      orderChanged: false,
+      originalFingerprint: buildOrderFingerprint(input.orderedImageIds),
+      currentFingerprint: buildOrderFingerprint(input.orderedImageIds),
+      summary: {
+        discoveredCount: input.discoveredFiles.length,
+        acceptedCount: input.orderedImages.length,
+        convertedCount: input.orderedImages.filter((image) => image.converted).length,
+        rejectedCount: input.rejectedFiles.length,
+      },
+      discoveredFiles: input.discoveredFiles,
+      rejectedFiles: input.rejectedFiles,
+      images: input.orderedImages,
+    };
   }
 
   get(preflightId) {
@@ -270,15 +279,12 @@ class SourcePreflightModule {
   reorder({ preflightId, orderedImageIds }) {
     const current = this.get(preflightId);
     const currentIds = current.images.map((image) => image.id);
-    if (!Array.isArray(orderedImageIds) || orderedImageIds.length !== currentIds.length) {
+    if (!Array.isArray(orderedImageIds) || orderedImageIds.length !== currentIds.length)
       throw new Error("orderedImageIds must include every image exactly once.");
-    }
-
     const expected = [...currentIds].sort();
     const actual = [...orderedImageIds].sort();
-    if (expected.join("|") !== actual.join("|")) {
+    if (expected.join("|") !== actual.join("|"))
       throw new Error("orderedImageIds does not match the current source-image set.");
-    }
 
     const reorderedImages = writeOrderedImages({
       orderedDir: current.orderedDir,
@@ -304,6 +310,14 @@ class SourcePreflightModule {
   }
 
   resolveSourceSelection(preflightId, sourceImageIds = null) {
+    const manifest = this.getValidatedPreflight(preflightId);
+    const ordered = manifest.images.slice().sort((left, right) => left.orderIndex - right.orderIndex);
+    const images = this.filterSelectedSourceImages(ordered, sourceImageIds);
+    this.validateSourceImageAvailability(images);
+    return { manifest, images };
+  }
+
+  getValidatedPreflight(preflightId) {
     let manifest;
     try {
       manifest = this.get(preflightId);
@@ -320,12 +334,17 @@ class SourcePreflightModule {
       throw error;
     }
     if (!manifest.sourceFolder || !fs.existsSync(manifest.sourceFolder)) {
-      const error = new Error("The retained source upload is unavailable; create a new source preflight before retranslating.");
+      const error = new Error(
+        "The retained source upload is unavailable; create a new source preflight before retranslating.",
+      );
       error.statusCode = 409;
       error.code = "source_upload_unavailable";
       throw error;
     }
-    const ordered = manifest.images.slice().sort((left, right) => left.orderIndex - right.orderIndex);
+    return manifest;
+  }
+
+  filterSelectedSourceImages(ordered, sourceImageIds) {
     const selectedIds = sourceImageIds == null ? null : new Set(sourceImageIds);
     const images = selectedIds ? ordered.filter((image) => selectedIds.has(image.id)) : ordered;
     if (selectedIds && images.length !== selectedIds.size) {
@@ -334,25 +353,26 @@ class SourcePreflightModule {
       error.code = "invalid_source_image_selection";
       throw error;
     }
+    return images;
+  }
+
+  validateSourceImageAvailability(images) {
     for (const image of images) {
-      let available = false;
-      try {
-        available = Boolean(
-          image.orderedPath &&
-          fs.existsSync(image.orderedPath) &&
-          fs.statSync(image.orderedPath).isFile()
-        );
-      } catch {
-        available = false;
-      }
-      if (!available) {
+      if (!this.isSourceImageAvailable(image)) {
         const error = new Error(`Retained source image ${image.id} is unavailable; recreate the source preflight.`);
         error.statusCode = 409;
         error.code = "source_image_unavailable";
         throw error;
       }
     }
-    return { manifest, images };
+  }
+
+  isSourceImageAvailable(image) {
+    try {
+      return Boolean(image.orderedPath && fs.existsSync(image.orderedPath) && fs.statSync(image.orderedPath).isFile());
+    } catch {
+      return false;
+    }
   }
 }
 

@@ -1,113 +1,41 @@
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
-const config = require(path.join(__dirname, "../../.opencode/skills/manga-translate-zhtw/lib/config"));
+const { execFileSync } = require("child_process");
 
-describe("config_override.test.js - config override coverage", () => {
-  describe("CLI arguments", () => {
-    test("one_click_translate.js supports --base-url", () => {
-      const scriptPath = path.join(
-        __dirname,
-        "../../.opencode/skills/manga-translate-zhtw/scripts/one_click_translate.js"
-      );
-      const content = require("fs").readFileSync(scriptPath, "utf-8");
-      expect(content).toContain("--base-url");
-    });
+const CONFIG_MODULE_PATH = path.join(__dirname, "../../backend/src/config.js");
 
-    test("extract_references.js supports --tolerance", () => {
-      const scriptPath = path.join(
-        __dirname,
-        "../../.opencode/skills/manga-translate-zhtw/scripts/extract_references.js"
-      );
-      const content = require("fs").readFileSync(scriptPath, "utf-8");
-      expect(content).toContain("--tolerance");
-    });
+function loadConfigInChild(configPath, dataRoot) {
+  const script = `const { config, paths } = require(${JSON.stringify(CONFIG_MODULE_PATH)});` +
+    "process.stdout.write(JSON.stringify({ config, paths }));";
+  const env = {
+    ...process.env,
+    MANGA_TRANSLATION_CONFIG_PATH: configPath,
+    MANGA_TRANSLATION_DATA_ROOT: dataRoot,
+  };
+  return JSON.parse(execFileSync(process.execPath, ["-e", script], { env, encoding: "utf8" }));
+}
 
-    test("listen_events.js supports --timeout", () => {
-      const scriptPath = path.join(
-        __dirname,
-        "../../.opencode/skills/koharu-pipeline-launcher/scripts/listen_events.js"
-      );
-      const content = require("fs").readFileSync(scriptPath, "utf-8");
-      expect(content).toContain("--timeout");
-    });
+describe("backend config override precedence", () => {
+  test("user config overrides defaults and resolves paths beneath the data root", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "manga-config-override-"));
+    const configPath = path.join(root, "config", "koharu.json");
+    const dataRoot = path.join(root, "data");
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({
+      api: { baseUrl: "http://127.0.0.1:4555" },
+      defaults: { tolerance: 7 },
+      paths: { translated: "custom-output" },
+    }));
 
-    test("export_project.js supports --format", () => {
-      const scriptPath = path.join(
-        __dirname,
-        "../../.opencode/skills/manga-translate-zhtw/scripts/export_project.js"
-      );
-      const content = require("fs").readFileSync(scriptPath, "utf-8");
-      expect(content).toContain("--format");
-    });
-  });
-
-  describe("shared config values", () => {
-    test("config.DEFAULT_BASE_URL comes from koharu.json", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-      expect(config.DEFAULT_BASE_URL).toBe(koharu.api.baseUrl);
-    });
-
-    test("config.DEFAULTS.tolerance comes from koharu.json", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-      expect(config.DEFAULTS.tolerance).toBe(koharu.defaults.tolerance);
-    });
-
-    test("config.TIMEOUTS.sseListen comes from koharu.json", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-      expect(config.TIMEOUTS.sseListen).toBe(koharu.timeouts.sseListen);
-    });
-
-    test("config.PATHS resolve beneath the isolated backend data root", () => {
-      expect(path.resolve(config.PATHS.TRANSLATED)).toBe(
-        path.join(TEST_DATA_ROOT, "outputs", "translated")
-      );
-      expect(path.resolve(config.PATHS.LOGS)).toBe(
-        path.join(TEST_DATA_ROOT, "logs", "backend")
-      );
-    });
-
-    test("config.WORKFLOW flags come from koharu.json", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-
-      expect(config.WORKFLOW.qualityCheck.enabled).toBe(
-        koharu.workflow.qualityCheck.enabled
-      );
-      expect(config.WORKFLOW.knowledgeBuilder.enabled).toBe(
-        koharu.workflow.knowledgeBuilder.enabled
-      );
-    });
-  });
-
-  describe("override precedence", () => {
-    test("koharu.json overrides shared defaults", () => {
-      const fs = require("fs");
-      const koharuPath = path.join(__dirname, "../../.opencode/koharu.json");
-      const koharu = JSON.parse(fs.readFileSync(koharuPath, "utf-8"));
-
-      if (koharu.api.baseUrl !== "http://127.0.0.1:9999") {
-        expect(config.DEFAULT_BASE_URL).toBe(koharu.api.baseUrl);
-      }
-    });
-
-    test("CLI-parsing scripts still expose --base-url", () => {
-      const scripts = [
-        "manga-translate-zhtw/scripts/one_click_translate.js",
-        "manga-translate-zhtw/scripts/extract_references.js",
-        "koharu-pipeline-launcher/scripts/listen_events.js",
-      ];
-
-      scripts.forEach((script) => {
-        const scriptPath = path.join(__dirname, "../../.opencode/skills", script);
-        const content = require("fs").readFileSync(scriptPath, "utf-8");
-        expect(content).toContain("--base-url");
-      });
-    });
+    try {
+      const loaded = loadConfigInChild(configPath, dataRoot);
+      expect(loaded.config.api.baseUrl).toBe("http://127.0.0.1:4555");
+      expect(loaded.config.defaults.tolerance).toBe(7);
+      expect(loaded.config.defaults.targetLanguage).toBe("zh-TW");
+      expect(loaded.paths.translated).toBe(path.join(dataRoot, "custom-output"));
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

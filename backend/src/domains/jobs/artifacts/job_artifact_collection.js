@@ -55,4 +55,7 @@ function collectQualityCheckpoints(store, jobs) {
   };
 }
 
-module.exports = { collectQualityCheckpoints, collectWorkspaceManifestArtifacts };
+module.exports = {
+  collectQualityCheckpoints,
+  collectWorkspaceManifestArtifacts,
+};

@@ -1,23 +1,23 @@
 const fs = require("fs");
 const path = require("path");
 const { config } = require("../../../config");
-const {
-  apiFetch,
-  buildUrl,
-  ENDPOINTS,
-} = require("../client/koharu_client");
-const {
-  preflightImagesForKoharuUpload,
-} = require("../../../domains/reference/extraction/reference_image_conversion");
-const {
-  resolveTranslationTarget,
-} = require("../translation/translation_targets");
+const { apiFetch, buildUrl, ENDPOINTS } = require("../client/koharu_client");
+const { preflightImagesForKoharuUpload } = require("../../../domains/reference/extraction/reference_image_conversion");
+const { resolveTranslationTarget } = require("../translation/translation_targets");
 
 const ENGINE_ORDER = [
   { key: "detect", catalogKeys: ["detectors"], required: true },
-  { key: "fontDetect", catalogKeys: ["fontDetectors", "detectors"], required: false },
+  {
+    key: "fontDetect",
+    catalogKeys: ["fontDetectors", "detectors"],
+    required: false,
+  },
   { key: "segment", catalogKeys: ["segmenters", "detectors"], required: false },
-  { key: "bubbleSegment", catalogKeys: ["bubbleSegmenters", "detectors"], required: false },
+  {
+    key: "bubbleSegment",
+    catalogKeys: ["bubbleSegmenters", "detectors"],
+    required: false,
+  },
   { key: "ocr", catalogKeys: ["ocr"], required: true },
   { key: "translate", catalogKeys: ["translators"], required: true },
   { key: "clean", catalogKeys: ["inpainters"], required: true },
@@ -45,7 +45,10 @@ async function ensureOkJson(response, label) {
 }
 
 function createProjectName(date = new Date()) {
-  const timestamp = date.toISOString().replace(/[-:T.]/g, "").slice(0, 14);
+  const timestamp = date
+    .toISOString()
+    .replace(/[-:T.]/g, "")
+    .slice(0, 14);
   return `translate_${timestamp}`;
 }
 
@@ -56,7 +59,11 @@ async function getScene(baseUrl) {
 
 function collectExistingPageNames(scene) {
   const pages = scene?.scene?.pages || {};
-  return new Set(Object.values(pages).map((page) => page?.name).filter(Boolean));
+  return new Set(
+    Object.values(pages)
+      .map((page) => page?.name)
+      .filter(Boolean),
+  );
 }
 
 async function uploadPagesWithFromPaths(pathsToUpload, baseUrl) {
@@ -85,36 +92,26 @@ async function uploadPagesWithMultipart(pathsToUpload, baseUrl) {
   return { method: "multipart", data: await response.json() };
 }
 
-async function uploadPages(imagePaths, baseUrl, { mode = config.api?.pageUploadMode || "auto" } = {}) {
-  const existingNames = collectExistingPageNames(await getScene(baseUrl));
-  const pendingPaths = imagePaths.filter(
-    (filePath) => !existingNames.has(path.basename(filePath))
-  );
-  const preflight = preflightImagesForKoharuUpload(pendingPaths);
-  const pathsToUpload = preflight.uploadPaths;
+function buildSkippedUploadResult(imagePaths, preflight) {
+  return {
+    method: "skipped",
+    uploaded: 0,
+    skipped: imagePaths.map((filePath) => path.basename(filePath)),
+    data: null,
+    converted: preflight.converted,
+  };
+}
 
-  if (pathsToUpload.length === 0) {
-    return {
-      method: "skipped",
-      uploaded: 0,
-      skipped: imagePaths.map((filePath) => path.basename(filePath)),
-      data: null,
-      converted: [],
-    };
-  }
-
-  if (!["auto", "multipart", "from-paths"].includes(mode)) {
-    throw new Error(`Unsupported Koharu page upload mode: ${mode}`);
-  }
-  const result = mode === "multipart"
+async function uploadByMode(mode, pathsToUpload, baseUrl) {
+  return mode === "multipart"
     ? await uploadPagesWithMultipart(pathsToUpload, baseUrl)
     : mode === "from-paths"
       ? await uploadPagesWithFromPaths(pathsToUpload, baseUrl)
       : (await uploadPagesWithFromPaths(pathsToUpload, baseUrl)) ||
         (await uploadPagesWithMultipart(pathsToUpload, baseUrl));
-  if (!result) {
-    throw new Error(`Koharu page upload failed in ${mode} mode.`);
-  }
+}
+
+function buildUploadedResult(result, pathsToUpload, imagePaths, existingNames, preflight) {
   return {
     ...result,
     uploaded: pathsToUpload.length,
@@ -123,6 +120,19 @@ async function uploadPages(imagePaths, baseUrl, { mode = config.api?.pageUploadM
       .map((filePath) => path.basename(filePath)),
     converted: preflight.converted,
   };
+}
+
+async function uploadPages(imagePaths, baseUrl, { mode = config.api?.pageUploadMode || "auto" } = {}) {
+  const existingNames = collectExistingPageNames(await getScene(baseUrl));
+  const pendingPaths = imagePaths.filter((filePath) => !existingNames.has(path.basename(filePath)));
+  const preflight = preflightImagesForKoharuUpload(pendingPaths);
+  const pathsToUpload = preflight.uploadPaths;
+  if (pathsToUpload.length === 0) return buildSkippedUploadResult(imagePaths, preflight);
+  if (!["auto", "multipart", "from-paths"].includes(mode))
+    throw new Error(`Unsupported Koharu page upload mode: ${mode}`);
+  const result = await uploadByMode(mode, pathsToUpload, baseUrl);
+  if (!result) throw new Error(`Koharu page upload failed in ${mode} mode.`);
+  return buildUploadedResult(result, pathsToUpload, imagePaths, existingNames, preflight);
 }
 
 async function getCurrentTranslationTarget(baseUrl) {
@@ -143,6 +153,19 @@ function matchesRequestedTarget(current, modelId, providerId, targetKind = "prov
     : target.kind === "provider" && target.providerId === providerId;
 }
 
+async function verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKind) {
+  const current = await getCurrentTranslationTarget(baseUrl);
+  if (!matchesRequestedTarget(current, modelId, providerId, targetKind)) {
+    throw new Error("Load translation target returned an empty response and current target does not match the requested target");
+  }
+  return {
+    modelId,
+    providerId: targetKind === "local" ? "local" : providerId,
+    data: current,
+    verifiedAfterEmptyBody: true,
+  };
+}
+
 async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provider") {
   const response = await apiFetch(ENDPOINTS.LLM_CURRENT, {
     method: "PUT",
@@ -159,23 +182,16 @@ async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provi
     throw new Error(`Load translation target failed (${response.status}): ${await readResponseText(response)}`);
   }
   const data = await readOptionalJson(response);
-  if (!data) {
-    const current = await getCurrentTranslationTarget(baseUrl);
-    if (!matchesRequestedTarget(current, modelId, providerId, targetKind)) {
-      throw new Error(
-        "Load translation target returned an empty response and current target does not match the requested target"
-      );
-    }
-    return { modelId, providerId: targetKind === "local" ? "local" : providerId, data: current, verifiedAfterEmptyBody: true };
-  }
-  return { modelId, providerId: targetKind === "local" ? "local" : providerId, data };
+  if (!data) return verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKind);
+  return {
+    modelId,
+    providerId: targetKind === "local" ? "local" : providerId,
+    data,
+  };
 }
 
 async function fetchTranslationCatalog(baseUrl) {
-  return ensureOkJson(
-    await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl }),
-    "Fetch translation catalog"
-  );
+  return ensureOkJson(await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl }), "Fetch translation catalog");
 }
 
 async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLanguage = null) {
@@ -186,12 +202,7 @@ async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLang
     defaultTarget: config.translation?.defaultTarget,
     targetLanguage,
   });
-  const loaded = await loadModelTarget(
-    selected.modelId,
-    baseUrl,
-    selected.providerId,
-    selected.targetKind
-  );
+  const loaded = await loadModelTarget(selected.modelId, baseUrl, selected.providerId, selected.targetKind);
   return {
     ...selected,
     data: loaded.data,
@@ -200,10 +211,7 @@ async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLang
 }
 
 async function fetchEnginesCatalog(baseUrl) {
-  return ensureOkJson(
-    await apiFetch(ENDPOINTS.ENGINES, { baseUrl }),
-    "Fetch engines"
-  );
+  return ensureOkJson(await apiFetch(ENDPOINTS.ENGINES, { baseUrl }), "Fetch engines");
 }
 
 function pickEngineFromCatalog(engineKey, catalog, excludedIds = new Set()) {
@@ -219,16 +227,18 @@ function pickEngineFromCatalog(engineKey, catalog, excludedIds = new Set()) {
 
 function catalogHasEngine(engineKey, engineId, catalog) {
   const definition = ENGINE_ORDER.find((entry) => entry.key === engineKey);
-  return Boolean(definition && engineId && definition.catalogKeys.some((catalogKey) => {
-    const options = Array.isArray(catalog[catalogKey]) ? catalog[catalogKey] : [];
-    return options.some((option) => option?.id === engineId);
-  }));
+  return Boolean(
+    definition &&
+      engineId &&
+      definition.catalogKeys.some((catalogKey) => {
+        const options = Array.isArray(catalog[catalogKey]) ? catalog[catalogKey] : [];
+        return options.some((option) => option?.id === engineId);
+      }),
+  );
 }
 
 async function resolveEngines(baseUrl, configuredEngines = null) {
-  const resolved = configuredEngines && typeof configuredEngines === "object"
-    ? { ...configuredEngines }
-    : {};
+  const resolved = configuredEngines && typeof configuredEngines === "object" ? { ...configuredEngines } : {};
   const catalog = await fetchEnginesCatalog(baseUrl);
   const usedEngineIds = new Set();
 
@@ -265,48 +275,42 @@ async function startPipeline(steps, targetLanguage, baseUrl, systemPrompt = null
     await apiFetch(ENDPOINTS.PIPELINES, {
       method: "POST",
       baseUrl,
-      body: { steps, targetLanguage, ...(systemPrompt ? { systemPrompt } : {}) },
+      body: {
+        steps,
+        targetLanguage,
+        ...(systemPrompt ? { systemPrompt } : {}),
+      },
     }),
-    "Start pipeline"
+    "Start pipeline",
   );
   const operationId = data.operationId || data.id;
   if (!operationId) throw new Error("Start pipeline response did not include operationId");
   return { operationId, raw: data };
 }
 
+async function createAndOpenProject(baseUrl) {
+  const projectName = createProjectName();
+  const created = await ensureOkJson(await apiFetch(ENDPOINTS.PROJECTS, {
+    method: "POST", baseUrl, body: { name: projectName },
+  }), "Create project");
+  const projectId = created.id || created.project?.id || projectName;
+  await ensureOkJson(await apiFetch(ENDPOINTS.PROJECTS_CURRENT, {
+    method: "PUT", baseUrl, body: { id: projectId },
+  }), "Open project");
+  return { projectName, projectId };
+}
+
 async function orchestrate(options) {
   const translationTarget = await loadTranslationTarget(
     options.baseUrl,
     options.translationTarget || null,
-    options.targetLanguage || null
+    options.targetLanguage || null,
   );
-  const projectName = createProjectName();
-  const created = await ensureOkJson(
-    await apiFetch(ENDPOINTS.PROJECTS, {
-      method: "POST",
-      baseUrl: options.baseUrl,
-      body: { name: projectName },
-    }),
-    "Create project"
-  );
-  const projectId = created.id || created.project?.id || projectName;
-  await ensureOkJson(
-    await apiFetch(ENDPOINTS.PROJECTS_CURRENT, {
-      method: "PUT",
-      baseUrl: options.baseUrl,
-      body: { id: projectId },
-    }),
-    "Open project"
-  );
+  const { projectName } = await createAndOpenProject(options.baseUrl);
   const upload = await uploadPages(options.sourceImagePaths, options.baseUrl);
   const engines = await resolveEngines(options.baseUrl, options.engines);
   const steps = buildPipelineSteps(engines);
-  const pipeline = await startPipeline(
-    steps,
-    options.targetLanguage,
-    options.baseUrl,
-    options.systemPrompt
-  );
+  const pipeline = await startPipeline(steps, options.targetLanguage, options.baseUrl, options.systemPrompt);
   return {
     projectName,
     operationId: pipeline.operationId,

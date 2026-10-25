@@ -11,6 +11,34 @@ const {
   syncDraftFromScene,
 } = require("./reference_extraction_review");
 
+function createActiveSession(sessionId, referenceSetId, project, metadata) {
+  return {
+    sessionId,
+    referenceSetId,
+    projectId: project.id,
+    previousStatus: metadata.status === "reviewed" ? "reviewed" : "awaiting_review",
+    startedAt: new Date().toISOString(),
+  };
+}
+
+function buildEditingMetadata(metadata, project, sessionId) {
+  return {
+    ...metadata,
+    status: "editing",
+    projectId: project.id,
+    projectName: project.name,
+    activeSessionId: sessionId,
+  };
+}
+
+function buildStartResult(referenceSetId, next, sessionId, baseUrl) {
+  return {
+    ...(getReviewDocument(referenceSetId) || next),
+    sessionId,
+    editorUrl: `${baseUrl}/`,
+  };
+}
+
 class ReferenceExtractionReviewService {
   constructor({ client, jobManager, baseUrl = config.api.baseUrl }) {
     this.client = client;
@@ -22,10 +50,7 @@ class ReferenceExtractionReviewService {
   get(referenceSetId) {
     const metadata = ensureLegacyReviewMetadata(referenceSetId);
     const review = getReviewDocument(referenceSetId);
-    if (
-      review?.status === "editing" &&
-      (!this.activeSession || this.activeSession.referenceSetId !== referenceSetId)
-    ) {
+    if (review?.status === "editing" && (!this.activeSession || this.activeSession.referenceSetId !== referenceSetId)) {
       saveReviewMetadata(referenceSetId, {
         ...metadata,
         status: "awaiting_review",
@@ -38,20 +63,23 @@ class ReferenceExtractionReviewService {
 
   async resolveProject(referenceSetId, metadata) {
     const projects = await this.client.listProjects(this.baseUrl);
-    let project = metadata.projectId
-      ? projects.find((entry) => entry.id === metadata.projectId)
-      : null;
+    let project = metadata.projectId ? projects.find((entry) => entry.id === metadata.projectId) : null;
     if (!project && metadata.projectName) {
       project = projects.find((entry) => entry.name === metadata.projectName) || null;
     }
     if (!project) {
       const prefix = `reference_${referenceSetId}_`;
-      project = projects
-        .filter((entry) => String(entry.name || "").startsWith(prefix))
-        .sort((left, right) => Number(right.updatedAtMs || 0) - Number(left.updatedAtMs || 0))[0] || null;
+      project =
+        projects
+          .filter((entry) => String(entry.name || "").startsWith(prefix))
+          .sort((left, right) => Number(right.updatedAtMs || 0) - Number(left.updatedAtMs || 0))[0] || null;
     }
     if (!project) {
-      saveReviewMetadata(referenceSetId, { ...metadata, status: "project_missing", projectId: null });
+      saveReviewMetadata(referenceSetId, {
+        ...metadata,
+        status: "project_missing",
+        projectId: null,
+      });
       const error = new Error(`Koharu project for ${referenceSetId} was not found. Run Extraction again.`);
       error.statusCode = 409;
       throw error;
@@ -84,25 +112,9 @@ class ReferenceExtractionReviewService {
     try {
       const project = await this.resolveProject(referenceSetId, metadata);
       await this.client.openProject(project.id, this.baseUrl);
-      this.activeSession = {
-        sessionId,
-        referenceSetId,
-        projectId: project.id,
-        previousStatus: metadata.status === "reviewed" ? "reviewed" : "awaiting_review",
-        startedAt: new Date().toISOString(),
-      };
-      const next = saveReviewMetadata(referenceSetId, {
-        ...metadata,
-        status: "editing",
-        projectId: project.id,
-        projectName: project.name,
-        activeSessionId: sessionId,
-      });
-      return {
-        ...(getReviewDocument(referenceSetId) || next),
-        sessionId,
-        editorUrl: `${this.baseUrl}/`,
-      };
+      this.activeSession = createActiveSession(sessionId, referenceSetId, project, metadata);
+      const next = saveReviewMetadata(referenceSetId, buildEditingMetadata(metadata, project, sessionId));
+      return buildStartResult(referenceSetId, next, sessionId, this.baseUrl);
     } catch (error) {
       this.jobManager.releaseKoharuReviewLease(sessionId);
       throw error;
