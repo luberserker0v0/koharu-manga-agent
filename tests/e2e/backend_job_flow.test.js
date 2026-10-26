@@ -7,6 +7,7 @@ const { WorkflowEngine } = require("../../backend/src/domains/jobs/workflows/wor
 const { JobManager } = require("../../backend/src/domains/jobs/job_manager");
 const { createApiServer } = require("../../backend/src/http/server/api_server");
 const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
+const { UploadService } = require("../../backend/src/domains/uploads/upload_service");
 const { resolveTranslationModePolicy } = require("../../backend/src/domains/translation/modes/translation_modes");
 
 const MINIMAL_PNG = Buffer.from(
@@ -38,10 +39,6 @@ function createTempSourceFolder() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-e2e-source-"));
   fs.writeFileSync(path.join(dir, "001.png"), MINIMAL_PNG);
   return dir;
-}
-
-function createTempOutputDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "manga-e2e-output-"));
 }
 
 function delay(ms) {
@@ -123,6 +120,7 @@ async function createBackend({ modules }) {
   const api = createApiServer({
     jobManager,
     sourcePreflightModule,
+    uploadService: new UploadService({ root: fs.mkdtempSync(path.join(os.tmpdir(), "manga-e2e-upload-")) }),
     host: "127.0.0.1",
     port: 0,
   });
@@ -143,10 +141,18 @@ async function createBackend({ modules }) {
 
 async function createSourcePreflight(baseUrl) {
   const sourceFolder = createTempSourceFolder();
+  const created = await (await fetch(`${baseUrl}/api/v1/uploads`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "source" }),
+  })).json();
+  const content = fs.readFileSync(path.join(sourceFolder, "001.png"));
+  await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/files/001.png`, { method: "PUT", body: content });
+  await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/complete`, { method: "POST" });
   const res = await fetch(`${baseUrl}/source-preflight`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceFolder }),
+    body: JSON.stringify({ uploadId: created.uploadId }),
   });
   const manifest = await res.json();
   return {
@@ -211,11 +217,10 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -227,7 +232,7 @@ describe("backend job flow e2e", () => {
     expect(job.artifacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "source_preflight_manifest" }),
-        expect.objectContaining({ kind: "export", path: expect.stringContaining("success.zip") }),
+        expect.objectContaining({ kind: "export", fileName: "success.zip", contentUrl: expect.any(String) }),
       ])
     );
     expect(qualityModule.run).toHaveBeenCalledTimes(1);
@@ -281,7 +286,6 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -294,7 +298,6 @@ describe("backend job flow e2e", () => {
         mangaLabel: "Phantom Fantasy",
         chapterId: "ch_001",
         sourcePreflightId: preflightId,
-        outputDir,
       }),
     });
     const created = await createRes.json();
@@ -387,7 +390,6 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -400,7 +402,6 @@ describe("backend job flow e2e", () => {
         mangaId: "phantom_fantasy",
         chapterId: "ch_001",
         sourcePreflightId: preflightId,
-        outputDir,
       }),
     });
     const created = await createRes.json();
@@ -459,7 +460,6 @@ describe("backend job flow e2e", () => {
         mangaId: "phantom_fantasy",
         chapterId: "ch_001",
         sourcePreflightId: preflightId,
-        outputDir: createTempOutputDir(),
       }),
     });
     const created = await createRes.json();
@@ -467,7 +467,7 @@ describe("backend job flow e2e", () => {
     const child = await waitForJob(baseUrl, parent.children[0].id);
 
     expect(parent.status).toBe("succeeded");
-    expect(parent.result.finalTranslationSnapshotPath).toContain("final_translation_snapshot.json");
+    expect(parent.result).not.toHaveProperty("finalTranslationSnapshotPath");
     expect(parent.artifacts).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "export" }),
       expect.objectContaining({ kind: "final_translation_snapshot" }),
@@ -524,11 +524,10 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -575,11 +574,10 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "reference_style", referenceTranslatorId: "translator_reference", qualityCheck: true, targetLanguage: "zh-TW", sourcePreflightId: preflightId }),
     });
     const created = await createRes.json();
     const job = await waitForJob(baseUrl, created.id);
@@ -635,7 +633,6 @@ describe("backend job flow e2e", () => {
         qualityCheck: true,
         targetLanguage: "zh-TW",
         sourcePreflightId: preflightId,
-        outputDir: createTempOutputDir(),
       }),
     });
     const created = await createRes.json();
@@ -673,11 +670,10 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId }),
     });
     const created = await createRes.json();
 
@@ -736,11 +732,10 @@ describe("backend job flow e2e", () => {
     }));
 
     const { preflightId } = await createSourcePreflight(baseUrl);
-    const outputDir = createTempOutputDir();
     const createRes = await fetch(`${baseUrl}/jobs/translation`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId, outputDir }),
+      body: JSON.stringify({ ...TEST_OUTPUT_BINDING, translationMode: "quick", targetLanguage: "zh-TW", sourcePreflightId: preflightId }),
     });
     const created = await createRes.json();
 

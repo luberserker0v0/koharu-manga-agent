@@ -1,4 +1,5 @@
 const {
+  PipelineMonitorModule,
   inferEngineProgress,
   buildProgressPayload,
   buildProgressPayloadFromSseEvent,
@@ -77,6 +78,19 @@ describe("pipeline monitor progress inference", () => {
     expect(payload.currentPageName).toBeNull();
   });
 
+  test("polling progress uses only fully crossed page boundaries", () => {
+    const payload = buildProgressPayload({
+      operation: { id: "op-polling", status: "running", progress: 0.25 },
+      sceneSummary: { totalPages: 44, translatedPages: 12, pageNames: [] },
+      totalPagesHint: 44,
+      pipelinePlan: ["detect", "ocr", "translate", "render"],
+    });
+
+    expect(payload.completedPages).toBe(11);
+    expect(payload.currentPageIndex).toBe(12);
+    expect(payload.telemetry).toEqual(expect.objectContaining({ source: "polling", rawProgress: 0.25 }));
+  });
+
   test("builds progress payload from SSE jobProgress data", () => {
     const payload = buildProgressPayloadFromSseEvent({
       operationId: "op-4",
@@ -104,10 +118,68 @@ describe("pipeline monitor progress inference", () => {
       engine: "ocr",
       engineIndex: 4,
       engineStatus: "running",
-      completedPages: 12,
+      completedPages: 11,
       totalPages: 44,
       currentPageIndex: 12,
       currentPageName: "012.png",
+      progressSemanticsVersion: 2,
+      telemetry: {
+        source: "sse",
+        event: "jobProgress",
+        rawStatus: null,
+        rawStep: "ocr",
+        rawCurrentPage: 11,
+        rawTotalPages: 44,
+        rawOverallPercent: 25,
+      },
+    });
+  });
+
+  test("stops the Koharu operation when backend cancellation is requested", async () => {
+    const originalFetch = global.fetch;
+    let notifyFetchStarted;
+    const fetchStarted = new Promise((resolve) => { notifyFetchStarted = resolve; });
+    global.fetch = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+      notifyFetchStarted();
+      options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+    }));
+    const stopOperation = jest.fn().mockResolvedValue({ success: true });
+    const monitor = new PipelineMonitorModule({
+      stopOperation,
+      listOperations: jest.fn().mockResolvedValue([{ id: "op-stop", status: "running" }]),
+      getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
+    });
+    let canceled = false;
+    const running = monitor.run({
+      operationId: "op-stop",
+      baseUrl: "http://127.0.0.1:4000",
+      isCanceled: () => canceled,
+    });
+    await fetchStarted;
+    canceled = true;
+    try {
+      await expect(running).rejects.toMatchObject({ code: "job_canceled" });
+      expect(stopOperation).toHaveBeenCalledTimes(1);
+      expect(stopOperation).toHaveBeenCalledWith("op-stop", "http://127.0.0.1:4000");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test("reports a failed job when Koharu does not acknowledge cancellation", async () => {
+    const monitor = new PipelineMonitorModule({
+      stopOperation: jest.fn().mockRejectedValue(new Error("connection refused")),
+      listOperations: jest.fn().mockResolvedValue([{ id: "op-fail", status: "running" }]),
+      getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
+    });
+
+    await expect(monitor.run({
+      operationId: "op-fail",
+      baseUrl: "http://127.0.0.1:4000",
+      isCanceled: () => true,
+    })).rejects.toMatchObject({
+      code: "koharu_cancel_failed",
+      message: expect.stringContaining("connection refused"),
     });
   });
 });

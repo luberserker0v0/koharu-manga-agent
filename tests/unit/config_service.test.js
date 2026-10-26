@@ -14,10 +14,15 @@ describe("runtime config service", () => {
     configPath = path.join(root, "koharu.json");
     defaults = {
       api: { baseUrl: "http://127.0.0.1:4000" },
-      translation: { defaultTarget: { modelId: "default-model", providerId: "default-provider" } },
+      translation: { defaultTarget: { modelId: "default-model", providerId: "default-provider" },
+        generationOptions: { temperature: 0.7, reasoning: "off" }, lmStudio: {
+          baseUrl: "http://127.0.0.1:25555",
+          koharuProxyBaseUrl: "http://127.0.0.1:4001/api/v1/lmstudio-openai/v1" } },
       workflow: { qualityCheck: { enabled: true }, knowledgeBuilder: { enabled: false } },
       agent: { baseUrl: "http://127.0.0.1:32768", model: "provider/default", messageTimeoutMs: 1000 },
-      engines: null,
+      pipeline: { defaultProfile: "quality", modeProfiles: { quick: "fast" }, profiles: {
+        fast: { engines: { clean: "lama-manga" } }, quality: { engines: { clean: "flux2-klein" } },
+      } },
       paths: { reports: "reports" },
     };
     effectiveConfig = JSON.parse(JSON.stringify(defaults));
@@ -29,9 +34,15 @@ describe("runtime config service", () => {
     fs.writeFileSync(configPath, JSON.stringify({ paths: { reports: "custom" } }), "utf8");
     const applied = jest.fn();
     const service = new ConfigService({ configPath, defaults, effectiveConfig, onApply: applied });
-    service.update({ agent: { model: "new/model", messageTimeoutMs: 2000 }, translation: { defaultTarget: { modelId: "gemma", providerId: "lmstudio" } }, engines: { ocr: "ocr-v2" } });
-    expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual(expect.objectContaining({ paths: { reports: "custom" }, engines: { ocr: "ocr-v2" } }));
+    service.update({ agent: { model: "new/model", messageTimeoutMs: 2000 }, translation: {
+      defaultTarget: { modelId: "gemma", providerId: "lmstudio" },
+      generationOptions: { temperature: 0.5, reasoning: "off" },
+    }, pipeline: { modeProfiles: { quick: "quality" } } });
+    expect(JSON.parse(fs.readFileSync(configPath, "utf8"))).toEqual(expect.objectContaining({
+      paths: { reports: "custom" }, pipeline: { modeProfiles: { quick: "quality" } },
+    }));
     expect(effectiveConfig.agent.model).toBe("new/model");
+    expect(effectiveConfig.translation.generationOptions.temperature).toBe(0.5);
     expect(applied).toHaveBeenCalledWith(effectiveConfig);
   });
 
@@ -42,7 +53,13 @@ describe("runtime config service", () => {
     expect(() => service.update({ agent: { messageTimeoutMs: 0 } })).toThrow("positive integer");
     expect(() => service.update({ agent: { model: "model-without-provider" } })).toThrow("provider_id/model_id");
     expect(() => service.update({ translation: { defaultTarget: { providerId: "deepl" } } })).toThrow("requires providerId and modelId");
-    expect(() => service.update({ engines: { invalid: "engine" } })).toThrow("Unsupported config field");
+    expect(() => service.update({ translation: { generationOptions: {
+      temperature: 3, reasoning: "off" } } })).toThrow("between 0 and 1");
+    expect(() => service.update({ translation: { lmStudio: { baseUrl: "invalid" } } })).toThrow("valid HTTP URL");
+    expect(() => service.update({ pipeline: { profiles: { fast: { engines: { invalid: "engine" } } } } }))
+      .toThrow("unsupported engine key");
+    expect(() => service.update({ pipeline: { modeProfiles: { quick: "missing" } } }))
+      .toThrow("Pipeline profile is unavailable");
     expect(fs.readFileSync(configPath, "utf8")).toBe("{}");
   });
 
@@ -51,7 +68,8 @@ describe("runtime config service", () => {
       agent: { model: "custom/model", storyContextAgentName: "story-agent" },
       translation: { defaultTarget: { modelId: "custom", providerId: "custom-provider" } },
       workflow: { qualityCheck: { enabled: false }, knowledgeBuilder: { enabled: true } },
-      engines: { ocr: "custom" },
+      pipeline: { modeProfiles: { quick: "quality" } },
+      engines: { ocr: "obsolete" },
       paths: { reports: "custom" },
     }), "utf8");
     const service = new ConfigService({ configPath, defaults, effectiveConfig });
@@ -60,7 +78,8 @@ describe("runtime config service", () => {
     expect(effectiveConfig.agent.storyContextAgentName).toBe("story-agent");
     expect(effectiveConfig.workflow.qualityCheck.enabled).toBe(true);
     expect(effectiveConfig.workflow.knowledgeBuilder.enabled).toBe(true);
-    expect(effectiveConfig.engines).toBeNull();
+    expect(effectiveConfig.pipeline.modeProfiles.quick).toBe("fast");
+    expect(effectiveConfig.engines).toBeUndefined();
     expect(effectiveConfig.paths.reports).toBe("custom");
   });
 });

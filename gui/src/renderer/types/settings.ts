@@ -57,11 +57,8 @@ export type PathValidationSummary = {
 export type SourcePreflightImage = {
   id: string;
   fileName: string;
-  sourcePath: string;
-  normalizedPath: string;
   orderedName: string;
-  orderedPath: string;
-  previewPath: string;
+  contentUrl: string;
   actualFormat: string;
   converted: boolean;
   convertedFrom: string | null;
@@ -70,19 +67,13 @@ export type SourcePreflightImage = {
 
 export type SourcePreflightRejectedFile = {
   fileName: string;
-  path: string;
   reason: string;
 };
 
 export type SourcePreflightResult = {
   preflightId: string;
-  sourceFolder: string;
   createdAt: string;
   updatedAt: string;
-  preflightRoot: string;
-  normalizedDir: string;
-  orderedDir: string;
-  manifestPath: string;
   ready: boolean;
   orderChanged: boolean;
   originalFingerprint: string;
@@ -95,7 +86,6 @@ export type SourcePreflightResult = {
   };
   discoveredFiles: Array<{
     fileName: string;
-    path: string;
     accepted: boolean;
     converted: boolean;
     reason: string;

@@ -38,7 +38,7 @@ Primary goal:
 - manage global defaults and runtime configuration
 
 Should contain:
-- output folder
+- local artifact download folder
 - optional reference folder
 - agent provider settings
 - quality LLM settings
@@ -216,7 +216,7 @@ Internal mapping note:
 ### Review and Start
 Contains:
 - preflight summary
-- output folder summary
+- local artifact download destination summary
 - generated IDs preview
 - checklist
 - blocking issues

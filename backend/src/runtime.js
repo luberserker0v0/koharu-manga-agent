@@ -4,6 +4,7 @@ const { KoharuClient } = require("./integrations/koharu/client/koharu_client");
 const { AOClient } = require("./integrations/ao/client/ao_client");
 const { AOTaskRunner } = require("./integrations/ao/tasks/ao_tasks");
 const { ProjectSetupModule } = require("./integrations/koharu/pipeline/project_setup");
+const { LMStudioClient } = require("./integrations/lmstudio/lmstudio_client");
 const { PipelineMonitorModule } = require("./integrations/koharu/pipeline/pipeline_monitor");
 const { ReferenceExtractionModule } = require("./domains/reference/extraction/reference_extraction");
 const { ReferenceIngestionModule } = require("./domains/reference/ingestion/reference_ingestion");
@@ -110,7 +111,9 @@ function workflowEngineOptions(ctx) {
   } = ctx;
   return {
     sourcePreflightModule,
-    projectSetup: overrides.projectSetup || new ProjectSetupModule(),
+    projectSetup: overrides.projectSetup || new ProjectSetupModule({
+      lmStudioClient: overrides.lmStudioClient || new LMStudioClient(),
+    }),
     pipelineMonitor,
     referenceExtractionModule: overrides.referenceExtractionModule || new ReferenceExtractionModule(client, pipelineMonitor),
     referenceIngestionModule: overrides.referenceIngestionModule || new ReferenceIngestionModule(aoTaskRunner),

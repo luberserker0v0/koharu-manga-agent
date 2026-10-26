@@ -603,7 +603,24 @@ function formatTranslationMemoryPrompt(snapshot) {
   appendMemoryStoryLines(lines, snapshot);
   appendMemoryStyleLines(lines, snapshot);
   appendMemoryLocalLines(lines, snapshot);
-  return lines.join("\\n");
+  return lines.join("\n");
+}
+
+function normalizeTranslationInstructions(instructions) {
+  return typeof instructions === "string" && instructions.trim() ? instructions.trim() : null;
+}
+
+function buildTranslationSystemPrompt(snapshot, instructions = null) {
+  const memoryPrompt = formatTranslationMemoryPrompt(snapshot);
+  const normalizedInstructions = normalizeTranslationInstructions(instructions);
+  const instructionPrompt = normalizedInstructions
+    ? `User retranslation instructions:\n${normalizedInstructions}`
+    : null;
+  const text = [memoryPrompt, instructionPrompt].filter(Boolean).join("\n\n") || null;
+  const source = memoryPrompt && instructionPrompt
+    ? "translation_memory_and_user_instructions"
+    : memoryPrompt ? "translation_memory" : instructionPrompt ? "user_instructions" : "none";
+  return { text, source };
 }
 
 function appendMemoryGlossaryLines(lines, snapshot) {
@@ -655,6 +672,7 @@ module.exports = {
   SNAPSHOT_SCHEMA_VERSION,
   chapterNumber,
   assertTranslationMemoryReady,
+  buildTranslationSystemPrompt,
   composeTranslationMemory,
   formatTranslationMemoryPrompt,
   resolveSourceChapterMapping,

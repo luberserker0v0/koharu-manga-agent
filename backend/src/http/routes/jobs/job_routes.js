@@ -9,6 +9,7 @@ const {
   sendJson,
   writeJobStreamEvent,
 } = require("../../server/http_helpers");
+const { publicArtifacts, publicEvent, publicJob, publicJobMessage } = require("./job_http");
 
 function artifactContentType(filePath) {
   const types = {
@@ -36,7 +37,7 @@ function jobsSnapshot(jobManager) {
   return {
     kind: "snapshot",
     type: "jobs.snapshot",
-    jobs: jobManager.listJobsWithDeleted(),
+    jobs: jobManager.listJobsWithDeleted().map(publicJob),
     createdAt: new Date().toISOString(),
   };
 }
@@ -53,7 +54,7 @@ function openAllJobsStream(ctx) {
   const useEnvelope = url.searchParams.get("eventMode") === "message";
   writeJobStreamEvent(res, "jobs.snapshot", jobsSnapshot(jobManager), useEnvelope);
   const unsubscribe = jobManager.subscribeAll((message) => {
-    writeJobStreamEvent(res, message.type, message, useEnvelope);
+    writeJobStreamEvent(res, message.type, publicJobMessage(message), useEnvelope);
   });
   req.on("close", () => closeJobStream(res, stopHeartbeat, unsubscribe));
 }
@@ -68,7 +69,7 @@ async function handleJobList(ctx) {
   if (ctx.req.method !== "GET" || ctx.url.pathname !== "/jobs") return false;
   const includeDeleted = ctx.url.searchParams.get("includeDeleted") === "1";
   const jobs = includeDeleted ? ctx.jobManager.listJobsWithDeleted() : ctx.jobManager.listJobs();
-  sendJson(ctx.res, 200, { jobs });
+  sendJson(ctx.res, 200, { jobs: jobs.map(publicJob) });
   return true;
 }
 
@@ -83,7 +84,7 @@ function replayJobEvents(res, events, useEnvelope) {
     writeJobStreamEvent(
       res,
       event.type,
-      { type: event.type, payload: event.payload, createdAt: event.createdAt },
+      publicEvent({ type: event.type, payload: event.payload, createdAt: event.createdAt }),
       useEnvelope,
     );
   }
@@ -101,7 +102,7 @@ function openJobStream(ctx, jobId, job) {
   const useEnvelope = url.searchParams.get("eventMode") === "message";
   replayJobEvents(res, job.events, useEnvelope);
   const unsubscribe = jobManager.subscribe(jobId, (event) => {
-    writeJobStreamEvent(res, event.type, event, useEnvelope);
+    writeJobStreamEvent(res, event.type, publicJobMessage(event), useEnvelope);
   });
   req.on("close", () => closeJobStream(res, stopHeartbeat, unsubscribe));
 }
@@ -122,9 +123,19 @@ async function handleJobEventsAndArtifacts(ctx) {
   if (ctx.req.method !== "GET") return false;
   const eventsMatch = ctx.url.pathname.match(/^\/jobs\/([^/]+)\/events$/);
   const artifactsMatch = ctx.url.pathname.match(/^\/jobs\/([^/]+)\/artifacts$/);
-  if (eventsMatch) return sendJobCollection(ctx, "events", ctx.jobManager.getJobEvents(eventsMatch[1]));
-  if (artifactsMatch) return sendJobCollection(ctx, "artifacts", ctx.jobManager.getJobArtifacts(artifactsMatch[1]));
+  if (eventsMatch) return sendJobEvents(ctx, eventsMatch[1]);
+  if (artifactsMatch) return sendJobArtifacts(ctx, artifactsMatch[1]);
   return false;
+}
+
+function sendJobArtifacts(ctx, jobId) {
+  const artifacts = ctx.jobManager.getJobArtifacts(jobId);
+  return sendJobCollection(ctx, "artifacts", artifacts && publicArtifacts(jobId, artifacts));
+}
+
+function sendJobEvents(ctx, jobId) {
+  const events = ctx.jobManager.getJobEvents(jobId);
+  return sendJobCollection(ctx, "events", events && events.map(publicEvent));
 }
 
 function sendJobCollection(ctx, key, entries) {
@@ -244,7 +255,7 @@ async function retryJob(ctx, jobId) {
   await ctx.jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
   const job = ctx.jobManager.retryJob(jobId);
   if (!job) return notFound(ctx.res);
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
 }
 
 async function handleJobRetry(ctx) {
@@ -260,7 +271,7 @@ async function resumeJob(ctx, jobId) {
   await ctx.jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
   const job = ctx.jobManager.resumeJob(jobId);
   if (!job) return notFound(ctx.res);
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
 }
 
 async function handleJobResume(ctx) {
@@ -278,7 +289,7 @@ async function handleJobCancel(ctx) {
     notFound(ctx.res);
     return true;
   }
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
   return true;
 }
 
@@ -352,7 +363,7 @@ async function handleJobRead(ctx) {
     notFound(ctx.res);
     return true;
   }
-  sendJson(ctx.res, 200, job);
+  sendJson(ctx.res, 200, publicJob(job));
   return true;
 }
 

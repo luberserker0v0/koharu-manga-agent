@@ -23,7 +23,7 @@ import {
 } from "../api/jobs";
 import { ArtifactsContent } from "./ArtifactsPage";
 import { translateLiteral } from "../i18n/messages";
-import { openDesktopPath } from "../services/desktop_api";
+import { downloadJobArtifact, openDesktopPath } from "../services/desktop_api";
 import { subscribeToJobStream } from "../stream/job_stream";
 import { useLanguageStore } from "../stores/language_store";
 import {
@@ -35,6 +35,7 @@ import { formatSystemDateTime } from "../features/shared/formatters/date_time";
 import { resolveJobStageLabel } from "../features/jobs/viewmodels/job_list_viewmodel";
 import { DeepAuditReviewPane } from "../features/jobs/components/DeepAuditReviewPane";
 import { JobFailurePanel } from "../features/jobs/components/JobFailurePanel";
+import { PipelineMetricsCard } from "../features/jobs/components/PipelineMetricsCard";
 
 function formatValue(value: unknown): string {
   if (value == null) {
@@ -352,6 +353,7 @@ const EXACT_TIMELINE_LABELS: Record<string, string> = {
 
 function formatTimelineEventLabel(event: GuiJobEvent, t: TranslateFn): string {
   const payload = asRecord(event.payload);
+  if (event.type === "pipeline.metrics") return t("jobDetail.timeline.pipelineMetrics");
   if (event.type === "reference_ingestion.progress") {
     return formatReferenceIngestionProgress(payload, t);
   }
@@ -732,10 +734,10 @@ function buildPipelineEngines(job: GuiJob | null, progress: PipelineProgress) {
   const engineKeys = getEngineOrder(job);
   const terminal = job?.status === "succeeded";
   const currentEngine =
-    typeof progress?.engine === "string"
-      ? progress.engine
-      : terminal
-        ? (engineKeys[engineKeys.length - 1] ?? "render")
+    terminal
+      ? (engineKeys[engineKeys.length - 1] ?? "render")
+      : typeof progress?.engine === "string"
+        ? progress.engine
         : null;
   return engineKeys.map((engine) => ({
     engine,
@@ -779,6 +781,13 @@ function resolveCompletedPages(progress: PipelineProgress, totalPages: number | 
   return Math.max(0, Math.min(totalPages, Math.round(totalPages * progress.progress)));
 }
 
+function finalSourcePageName(sourcePreflight: unknown, totalPages: number | null) {
+  const images = asRecord(sourcePreflight)?.images;
+  if (!Array.isArray(images) || totalPages === null) return null;
+  const image = asRecord(images[totalPages - 1]);
+  return typeof image?.orderedName === "string" ? image.orderedName : null;
+}
+
 function buildPageProgress(
   job: GuiJob | null,
   progress: PipelineProgress,
@@ -787,19 +796,19 @@ function buildPageProgress(
 ) {
   const totalPages = resolveTotalPages(progress, asRecord(sourcePreflight), job, asRecord(artifactMetadata));
   const terminal = job?.status === "succeeded";
-  const completedPages = resolveCompletedPages(progress, totalPages) ?? (terminal ? totalPages : null);
+  const completedPages = terminal ? totalPages : resolveCompletedPages(progress, totalPages);
   const engineKeys = getEngineOrder(job);
   return {
     totalPages,
     completedPages,
-    currentPageIndex: firstNumber(progress?.currentPageIndex, terminal ? totalPages : null),
-    currentPageName: typeof progress?.currentPageName === "string" ? progress.currentPageName : null,
+    currentPageIndex: terminal ? totalPages : firstNumber(progress?.currentPageIndex),
+    currentPageName: terminal
+      ? finalSourcePageName(sourcePreflight, totalPages)
+      : typeof progress?.currentPageName === "string" ? progress.currentPageName : null,
     currentEngine:
-      typeof progress?.engine === "string"
-        ? progress.engine
-        : terminal
-          ? (engineKeys[engineKeys.length - 1] ?? "render")
-          : null,
+      terminal
+        ? (engineKeys[engineKeys.length - 1] ?? "render")
+        : typeof progress?.engine === "string" ? progress.engine : null,
   };
 }
 
@@ -921,17 +930,16 @@ function openJobStream(
   jobId: string,
   timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
   setConnectionState: (state: StreamConnectionState) => void,
-  context: Omit<JobStreamContext, "selectedJobId">,
+  contextRef: MutableRefObject<Omit<JobStreamContext, "selectedJobId">>,
 ) {
   setConnectionState("connecting");
-  const streamContext = { ...context, selectedJobId: jobId };
   return subscribeToJobStream(jobId, {
     onOpen: () => {
       clearReconnectTimer(timerRef);
       setConnectionState("live");
     },
     onError: () => scheduleReconnectNotice(timerRef, setConnectionState),
-    onEvent: (event) => handleJobStreamEvent(event, streamContext),
+    onEvent: (event) => handleJobStreamEvent(event, { ...contextRef.current, selectedJobId: jobId }),
   });
 }
 
@@ -940,20 +948,20 @@ function useSelectedJobStream(
   status: string | undefined,
   timerRef: MutableRefObject<ReturnType<typeof setTimeout> | null>,
   setConnectionState: (state: StreamConnectionState) => void,
-  context: Omit<JobStreamContext, "selectedJobId">,
+  contextRef: MutableRefObject<Omit<JobStreamContext, "selectedJobId">>,
 ) {
   useEffect(() => {
     if (!jobId || isTerminalJobStatus(status)) {
       if (isTerminalJobStatus(status)) setConnectionState("closed");
       return;
     }
-    const unsubscribe = openJobStream(jobId, timerRef, setConnectionState, context);
+    const unsubscribe = openJobStream(jobId, timerRef, setConnectionState, contextRef);
     return () => {
       clearReconnectTimer(timerRef);
       unsubscribe();
       setConnectionState("closed");
     };
-  }, [context, jobId, setConnectionState, status, timerRef]);
+  }, [contextRef, jobId, setConnectionState, status, timerRef]);
 }
 
 function formatCollapsedEventTime(value: string, t: TranslateFn) {
@@ -1131,12 +1139,17 @@ function DetailTabBar({ active, select, t }: {
   );
 }
 
-function PreflightArtifactRow({ artifact, t }: { artifact: GuiArtifact; t: TranslateFn }) {
+async function openJobArtifact(jobId: string, artifactId: number) {
+  const result = await downloadJobArtifact({ jobId, artifactId });
+  return openDesktopPath(result.path);
+}
+
+function PreflightArtifactRow({ jobId, artifact, t }: { jobId: string; artifact: GuiArtifact; t: TranslateFn }) {
   return (
     <li className="artifact-item">
-      <div><strong>{artifact.kind}</strong><div className="job-subtext">{artifact.path}</div>
+      <div><strong>{artifact.kind}</strong><div className="job-subtext">{artifact.fileName}</div>
         <div className="job-subtext">{formatValue(artifact.metadata)}</div></div>
-      <button className="secondary-button" onClick={() => openDesktopPath(artifact.path)} type="button">
+      <button className="secondary-button" onClick={() => void openJobArtifact(jobId, artifact.id).catch(console.error)} type="button">
         {t("jobDetail.preflight.open")}
       </button>
     </li>
@@ -1149,13 +1162,12 @@ function PreflightPanel({ job, artifacts, loading, t }: {
   return (
     <div className="detail-tab-panel">
       <div className="summary-grid">
-        <div><strong>{t("jobDetail.preflight.sourceFolder")}</strong><span>{formatValue(job.payload.sourceFolder)}</span></div>
         <div><strong>{t("jobDetail.preflight.sourcePreflight")}</strong><span>{formatValue(job.payload.sourcePreflightId)}</span></div>
       </div>
       {loading ? <p>{t("jobDetail.preflight.loadingArtifacts")}</p> : null}
       {artifacts.length === 0 && !loading ? <p>{t("jobDetail.preflight.emptyArtifacts")}</p> : (
         <ul className="artifact-list">
-          {artifacts.map((artifact) => <PreflightArtifactRow artifact={artifact} t={t} key={artifact.id} />)}
+          {artifacts.map((artifact) => <PreflightArtifactRow jobId={job.id} artifact={artifact} t={t} key={artifact.id} />)}
         </ul>
       )}
     </div>
@@ -1290,9 +1302,7 @@ function jobIdentityFields(job: GuiJob, target: string | null, t: TranslateFn): 
   if (job.type === "translation") fields.push({ label: t("jobDetail.summary.translationTarget"), value: target });
   if (job.type === "translation_knowledge_commit") {
     fields.push({ label: t("jobDetail.summary.sourceTranslationJob"), value: job.payload.sourceTranslationJobId });
-  } else if (["translation", "post_edit_export"].includes(job.type)) {
-    fields.push({ label: t("jobDetail.summary.outputFolder"), value: job.payload.outputFolder });
-  } else {
+  } else if (!["translation", "post_edit_export"].includes(job.type)) {
     fields.push({ label: t("jobDetail.summary.referenceSet"), value: job.payload.referenceSetId });
   }
   if (job.outcome) fields.push({ label: t("jobDetail.outcome.label"), value: t(`jobList.outcome.${job.outcome}`) });
@@ -1627,8 +1637,10 @@ function useJobStreamBinding(
     hydrateJob: runtime.hydrateJob, refetchJob: queries.jobQuery.refetch,
     refetchArtifacts: queries.artifactsQuery.refetch }),
   [queryClient, queries.artifactsQuery.refetch, queries.jobQuery.refetch, runtime.appendEvent, runtime.hydrateJob]);
+  const contextRef = useRef(context);
+  contextRef.current = context;
   useSelectedJobStream(jobId, runtime.runtimeJob?.status ?? queries.jobQuery.data?.status,
-    reconnectTimerRef, runtime.setConnectionState, context);
+    reconnectTimerRef, runtime.setConnectionState, contextRef);
 }
 
 function useJobDetailModel() {
@@ -1674,7 +1686,8 @@ function JobDetailLayout({ model, embedded }: { model: JobDetailModel; embedded:
     <DeepAuditSummaryCard job={job} selectJob={model.setSelectedJobId} selectPage={model.setSelectedPage} t={model.t} />
     <WorkflowCard entries={model.workflowSummary} t={model.t} />
     {job.type === "translation" ? <><PipelineCard engines={model.pipelineEngines}
-      progress={model.latestPipelineProgress} t={model.t} /><PageProgressCard progress={model.pageProgress} t={model.t} /></> : null}
+      progress={model.latestPipelineProgress} t={model.t} /><PageProgressCard progress={model.pageProgress} t={model.t} />
+      <PipelineMetricsCard events={model.runtimeEvents} t={model.t} /></> : null}
     <NoticesCard notices={model.notices} t={model.t} />
     <TimelineCard timeline={model.timeline} t={model.t} />
     <ResultCard job={job} t={model.t} />

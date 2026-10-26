@@ -56,6 +56,14 @@ const DEFAULT_CONFIG = {
       providerId: "openai-compatible",
       modelId: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
     },
+    generationOptions: {
+      temperature: 0.7,
+      reasoning: "off",
+    },
+    lmStudio: {
+      baseUrl: "http://127.0.0.1:25555",
+      koharuProxyBaseUrl: "http://127.0.0.1:4001/api/v1/lmstudio-openai/v1",
+    },
     machineTranslation: {
       referencePostEdit: true,
       learningPostEdit: true,
@@ -153,12 +161,27 @@ const DEFAULT_CONFIG = {
     messageTimeoutMs: 600000,
     modelSilenceTimeoutMs: 600000,
   },
-  engines: null,
+  pipeline: {
+    defaultProfile: "quality",
+    modeProfiles: {
+      quick: "fast",
+      reference_style: "quality",
+      local_style: "quality",
+      learning_style: "quality",
+    },
+    profiles: {
+      fast: { engines: { clean: "lama-manga" } },
+      quality: { engines: { clean: "flux2-klein" } },
+      low_memory: { engines: { clean: "aot-inpainting" } },
+    },
+  },
 };
 
 function loadProjectConfig() {
   try {
-    return JSON.parse(fs.readFileSync(PROJECT_CONFIG_PATH, "utf-8"));
+    const loaded = JSON.parse(fs.readFileSync(PROJECT_CONFIG_PATH, "utf-8"));
+    if (loaded && typeof loaded === "object") delete loaded.engines;
+    return loaded;
   } catch {
     return {};
   }

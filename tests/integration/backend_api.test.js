@@ -16,6 +16,7 @@ const {
 } = require("../../backend/src/domains/knowledge/registry/knowledge_paths");
 const { referenceSetPaths } = require("../../backend/src/domains/reference/sets/reference_sets");
 const { SourcePreflightModule } = require("../../backend/src/domains/translation/preflight/source_preflight");
+const { UploadService } = require("../../backend/src/domains/uploads/upload_service");
 
 function createTempDbPath() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "manga-api-"));
@@ -27,6 +28,20 @@ const PNG_1X1_BASE64 =
 
 function writePng(targetPath) {
   fs.writeFileSync(targetPath, Buffer.from(PNG_1X1_BASE64, "base64"));
+}
+
+async function uploadImageFolder(baseUrl, sourceFolder, kind) {
+  const created = await (await fetch(`${baseUrl}/api/v1/uploads`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }),
+  })).json();
+  const fileNames = fs.readdirSync(sourceFolder).filter((name) => path.extname(name).toLowerCase() === ".png");
+  for (const fileName of fileNames) {
+    await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/files/${encodeURIComponent(fileName)}`, {
+      method: "PUT", body: fs.readFileSync(path.join(sourceFolder, fileName)),
+    });
+  }
+  await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/complete`, { method: "POST" });
+  return created.uploadId;
 }
 
 async function waitForJobTerminal(baseUrl, jobId, timeoutMs = 2000) {
@@ -117,6 +132,25 @@ describe("backend api", () => {
 
     expect(response.status).toBe(400);
     expect((await response.json()).error).toContain("translatorId, chapterId");
+    expect(jobManager.listJobs()).toEqual([]);
+  });
+
+  test("POST /jobs/translation rejects client filesystem fields", async () => {
+    const store = new JobStore(createTempDbPath());
+    const jobManager = new JobManager({
+      store, engine: { runTranslationJob: jest.fn() },
+      runtimeConfig: { host: "127.0.0.1", port: 0 }, resolvedConfig: {},
+    });
+    api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
+    await api.listen();
+    baseUrl = `http://127.0.0.1:${api.server.address().port}`;
+    const response = await fetch(`${baseUrl}/jobs/translation`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translationMode: "quick", mangaId: "series", translatorId: "team",
+        chapterId: "chapter", sourcePreflightId: "preflight", outputDir: "C:\\exports" }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("outputDir");
     expect(jobManager.listJobs()).toEqual([]);
   });
 
@@ -283,7 +317,6 @@ describe("backend api", () => {
         mangaId: "managed_series",
         translatorId: "managed_translator",
         chapterId: "managed_chapter",
-        outputDir: "C:\\exports\\managed",
       }),
     });
     const created = await createRes.json();
@@ -326,7 +359,6 @@ describe("backend api", () => {
         mangaId: "external_series",
         translatorId: "external_translator",
         chapterId: "external_chapter",
-        outputDir: "C:\\exports\\external",
         baseUrl: "http://127.0.0.1:4999",
       }),
     });
@@ -368,6 +400,7 @@ describe("backend api", () => {
 
       api = createApiServer({
         jobManager,
+        uploadService: new UploadService({ root: path.join(tempRoot, "uploads") }),
         host: "127.0.0.1",
         port: 0,
       });
@@ -375,7 +408,6 @@ describe("backend api", () => {
       await api.listen();
       const address = api.server.address();
       baseUrl = `http://127.0.0.1:${address.port}`;
-
       const referencesRes = await fetch(`${baseUrl}/references`);
       expect(referencesRes.status).toBe(200);
       const referencesPayload = await referencesRes.json();
@@ -420,6 +452,7 @@ describe("backend api", () => {
 
       api = createApiServer({
         jobManager,
+        uploadService: new UploadService({ root: path.join(tempRoot, "uploads") }),
         host: "127.0.0.1",
         port: 0,
       });
@@ -427,12 +460,13 @@ describe("backend api", () => {
       await api.listen();
       const address = api.server.address();
       baseUrl = `http://127.0.0.1:${address.port}`;
+      const uploadId = await uploadImageFolder(baseUrl, importedFolder, "reference");
 
       const response = await fetch(`${baseUrl}/references/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sourceFolder: importedFolder,
+          uploadId,
           label: "Imported Volume",
           language: "zh-TW",
         }),
@@ -490,6 +524,7 @@ describe("backend api", () => {
 
       api = createApiServer({
         jobManager,
+        uploadService: new UploadService({ root: path.join(tempRoot, "uploads") }),
         host: "127.0.0.1",
         port: 0,
       });
@@ -497,12 +532,13 @@ describe("backend api", () => {
       await api.listen();
       const address = api.server.address();
       baseUrl = `http://127.0.0.1:${address.port}`;
+      const uploadId = await uploadImageFolder(baseUrl, importedFolder, "reference");
 
       const response = await fetch(`${baseUrl}/references/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sourceFolder: importedFolder,
+          uploadId,
           label: "Imported Bound Volume",
           language: "zh-TW",
           mangaId: indexedManga.mangaId,
@@ -853,6 +889,7 @@ describe("backend api", () => {
         resolvedConfig: { workflow: { qualityCheck: { enabled: true } } },
       }),
       sourcePreflightModule: new SourcePreflightModule({ root: preflightRoot }),
+      uploadService: new UploadService({ root: path.join(preflightRoot, "uploads") }),
       host: "127.0.0.1",
       port: 0,
     });
@@ -860,16 +897,21 @@ describe("backend api", () => {
     await api.listen();
     const address = api.server.address();
     baseUrl = `http://127.0.0.1:${address.port}`;
+    const uploadId = await uploadImageFolder(baseUrl, sourceDir, "source");
 
     const createRes = await fetch(`${baseUrl}/source-preflight`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceFolder: sourceDir }),
+      body: JSON.stringify({ uploadId }),
     });
     expect(createRes.status).toBe(200);
     const created = await createRes.json();
     expect(created.summary.acceptedCount).toBe(2);
-    expect(created.summary.rejectedCount).toBe(1);
+    expect(created.summary.rejectedCount).toBe(0);
+    expect(created).not.toHaveProperty("sourceFolder");
+    expect(created.images[0]).toEqual(expect.objectContaining({ contentUrl: expect.stringContaining("/api/v1/") }));
+    expect(created.images[0]).not.toHaveProperty("previewPath");
+    expect((await fetch(`${baseUrl}${created.images[0].contentUrl}`)).status).toBe(200);
 
     const reorderedIds = created.images.map((image) => image.id).reverse();
     const reorderRes = await fetch(`${baseUrl}/source-preflight/${created.preflightId}/reorder`, {
@@ -993,6 +1035,8 @@ describe("backend api", () => {
       (artifact) => artifact.kind === "workspace_import_manifest"
     );
     expect(workspaceImportManifest.metadata.stage).toBe("quality_review");
+    expect(artifactsPayload.artifacts.every((artifact) => !("path" in artifact))).toBe(true);
+    expect(artifactsPayload.artifacts.every((artifact) => artifact.contentUrl)).toBe(true);
 
     const runtimeRes = await fetch(`${baseUrl}/runtime/status`);
     expect(runtimeRes.status).toBe(200);

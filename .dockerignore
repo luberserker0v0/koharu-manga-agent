@@ -13,11 +13,9 @@ docs
 gui
 knowledge_base
 logs
-original
 post_edit
 references
 tests
 translated
 *.log
-backend/.omo
 backend/ao/opencode/opencode.json

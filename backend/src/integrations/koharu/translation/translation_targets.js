@@ -115,6 +115,26 @@ function validateTranslationTargetShape(target) {
   return { providerId, modelId };
 }
 
+function validateGenerationOptionsShape(options) {
+  if (options == null) return null;
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw targetError("generationOptions must be an object.", 400);
+  }
+  const allowed = ["temperature", "reasoning"];
+  if (Object.keys(options).some((key) => !allowed.includes(key))) {
+    throw targetError("generationOptions only accepts temperature and reasoning.", 400);
+  }
+  const temperature = options.temperature;
+  if (typeof temperature !== "number" || !Number.isFinite(temperature) || temperature < 0 || temperature > 1) {
+    throw targetError("generationOptions.temperature must be a number between 0 and 1.", 400);
+  }
+  const reasoning = options.reasoning || "off";
+  if (!["off", "on", "low", "medium", "high"].includes(reasoning)) {
+    throw targetError("generationOptions.reasoning is invalid.", 400);
+  }
+  return { temperature, reasoning };
+}
+
 function isMachineTranslationTarget(target) {
   return Boolean(target && MACHINE_TRANSLATION_PROVIDERS.has(target.providerId));
 }
@@ -123,6 +143,7 @@ module.exports = {
   MACHINE_TRANSLATION_PROVIDERS,
   normalizeTranslationCatalog,
   resolveTranslationTarget,
+  validateGenerationOptionsShape,
   validateTranslationTargetShape,
   isMachineTranslationTarget,
 };

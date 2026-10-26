@@ -5,6 +5,7 @@ const { config } = require("../../../config");
 const { ensureDir, loadReferenceManifest, normalizeSceneTexts, referenceSetPaths } = require("../sets/reference_sets");
 const { initializeExtractionReview } = require("../review/reference_extraction_review");
 const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
+const { resolvePipelineProfile } = require("../../translation/pipeline/pipeline_profiles");
 
 const IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
 
@@ -93,12 +94,13 @@ async function createExtractionProject(client, referenceSetId, baseUrl) {
   return { projectName, createdProject };
 }
 
-async function executeExtractionPipeline(pipelineMonitor, images, targetLanguage, baseUrl) {
+async function executeExtractionPipeline(pipelineMonitor, images, targetLanguage, baseUrl, isCanceled) {
   const upload = await projectOrchestrator.uploadPages(images, baseUrl);
-  const engines = await projectOrchestrator.resolveEngines(baseUrl, config.engines || {});
+  const profile = resolvePipelineProfile(config.pipeline);
+  const engines = await projectOrchestrator.resolveEngines(baseUrl, profile.engines);
   const steps = buildReferenceExtractionSteps(engines);
   const pipeline = await projectOrchestrator.startPipeline(steps, targetLanguage, baseUrl);
-  const monitorResult = await pipelineMonitor.run({ operationId: pipeline.operationId, baseUrl });
+  const monitorResult = await pipelineMonitor.run({ operationId: pipeline.operationId, baseUrl, isCanceled });
   return { upload, steps, pipeline, monitorResult };
 }
 
@@ -114,14 +116,16 @@ class ReferenceExtractionModule {
     this.pipelineMonitor = pipelineMonitor;
   }
 
-  async run({ referenceSetId, baseUrl, targetLanguage = config.defaults.targetLanguage }) {
+  async run({ referenceSetId, baseUrl, targetLanguage = config.defaults.targetLanguage, isCanceled }) {
     const manifest = loadReferenceManifest(referenceSetId);
     const resolvedBaseUrl = baseUrl || config.api.baseUrl;
     const paths = referenceSetPaths(referenceSetId);
     const images = listReferenceImages(paths.imagesDir);
     validateReferenceImages(manifest, images, paths);
     const project = await createExtractionProject(this.client, referenceSetId, resolvedBaseUrl);
-    const execution = await executeExtractionPipeline(this.pipelineMonitor, images, targetLanguage, resolvedBaseUrl);
+    const execution = await executeExtractionPipeline(
+      this.pipelineMonitor, images, targetLanguage, resolvedBaseUrl, isCanceled,
+    );
     const review = await createExtractionReview(this.client, referenceSetId, project, resolvedBaseUrl, paths);
     await this.client.closeCurrentProject(resolvedBaseUrl);
     return buildReferenceExtractionResult({ referenceSetId, ...project, ...execution, review });

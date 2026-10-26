@@ -19,7 +19,7 @@ import { resolveSelectedTranslatorProfile } from "../../../components/Translator
 import { CREATE_NEW_TRANSLATOR_VALUE } from "../../../components/TranslatorSelector";
 import { ReferenceGlossaryStrategySelector } from "../../../components/ReferenceGlossaryStrategySelector";
 import { getBackendConfig, getKoharuTranslationCatalog } from "../../../api/runtime";
-import { pickDirectory, readSettings, validatePaths, writeSettings } from "../../../services/desktop_api";
+import { pickDirectory, readSettings, uploadImageFolder, validatePaths, writeSettings } from "../../../services/desktop_api";
 import { type TranslationDraft, type TranslationMode, useJobsPageStore } from "../../../stores/jobs_store";
 import { useLanguageStore } from "../../../stores/language_store";
 import { useUiStore } from "../../../stores/ui_store";
@@ -29,7 +29,7 @@ import type {
   SourcePreflightImage,
   SourcePreflightResult,
 } from "../../../types/settings";
-import { buildLocalFileUrl } from "../../shared/formatters/fileUrl";
+import { buildApiUrl } from "../../../api/client";
 import { subscribeToJobsStream } from "../../../stream/job_stream";
 import {
   DEFAULT_REFERENCE_LANGUAGE,
@@ -273,7 +273,6 @@ function draftBlockingIssues(input: {
   draft: TranslationDraft;
   context: ResolvedTranslationContext | null;
   needsReference: boolean;
-  settings: GuiSettings | null;
   validation: PathValidationSummary | null;
   preflight: SourcePreflightResult | null;
   dirty: boolean;
@@ -289,14 +288,11 @@ function draftBlockingIssues(input: {
   if (input.draft.chapterSelection === CREATE_NEW_CHAPTER_VALUE && !input.draft.newChapterTitle.trim()) {
     issues.push("Enter a chapter title when creating a new chapter.");
   }
-  if (!input.settings?.outputFolder.trim()) issues.push("Choose an output folder in Settings.");
-  if (input.validation && !input.validation.outputFolder.ok)
-    issues.push(`Choose a valid output folder: ${input.validation.outputFolder.reason}`);
   if (input.validation && !input.validation.sourceFolder.ok)
     issues.push(`Fix the source folder: ${input.validation.sourceFolder.reason}`);
-  if (!input.preflight) issues.push("Run source preflight.");
-  else if (!input.preflight.ready) issues.push("Source preflight did not produce any usable images.");
-  if (input.dirty) issues.push("Run Validate again after changing translation job settings.");
+  if (!input.preflight) issues.push(input.t("jobs.preflight.required"));
+  else if (!input.preflight.ready) issues.push(input.t("jobs.preflight.noUsableImages"));
+  if (input.dirty) issues.push(input.t("jobs.preflight.rerunRequired"));
   return issues;
 }
 
@@ -353,25 +349,6 @@ function confirmLearningProfileCreation(publication: unknown, chapter: ChapterSu
   );
 }
 
-async function resolveOutputFolder(
-  settings: GuiSettings | null,
-  setSettings: (value: GuiSettings) => void,
-  setStatus: (value: string) => void,
-  setNotice: (value: ComposerNotice | null) => void,
-) {
-  const current = settings || (await readSettings());
-  setSettings(current);
-  const outputDir = current.outputFolder.trim();
-  if (outputDir) return outputDir;
-  reportComposerError(
-    setStatus,
-    setNotice,
-    "Open Settings and choose a valid output folder before starting translation.",
-    "Choose a default output folder in Settings first.",
-  );
-  return null;
-}
-
 async function validatePreflightPaths(draft: TranslationDraft, settings: GuiSettings) {
   const validation = await validatePaths({
     sourceFolder: draft.sourceFolder,
@@ -381,14 +358,6 @@ async function validatePreflightPaths(draft: TranslationDraft, settings: GuiSett
   });
   let error = "";
   if (!validation.sourceFolder.ok) error = `Source folder validation failed: ${validation.sourceFolder.reason}`;
-  else if (!validation.outputFolder.ok) error = `Output folder validation failed: ${validation.outputFolder.reason}`;
-  else if (
-    draft.sourceFolder.trim() &&
-    settings.outputFolder.trim() &&
-    draft.sourceFolder.trim() === settings.outputFolder.trim()
-  ) {
-    error = "Source folder and output folder must be different.";
-  }
   return { validation, error };
 }
 
@@ -444,17 +413,14 @@ function buildTranslationJobInput(
   draft: TranslationDraft,
   context: ResolvedTranslationContext,
   preflightId: string,
-  outputDir: string,
   mode: TranslationModeDefinition,
   qualityCheck: boolean,
 ) {
   return {
-    sourceFolder: draft.sourceFolder.trim(),
     translationMode: draft.translationMode,
     sourcePreflightId: preflightId,
     targetLanguage: normalizeReferenceLanguage(draft.targetLanguage),
     translationTarget: { providerId: draft.translationProviderId, modelId: draft.translationModelId },
-    outputDir,
     mangaId: context.mangaId,
     mangaLabel: sanitizeOptional(context.mangaLabel),
     translatorId: context.translatorId,
@@ -476,7 +442,6 @@ async function prepareTranslationJobInput(params: {
   separate: boolean;
   refresh: () => Promise<void>;
   preflightId: string;
-  outputDir: string;
   mode: TranslationModeDefinition;
   qualityCheck: boolean;
 }) {
@@ -485,7 +450,6 @@ async function prepareTranslationJobInput(params: {
     params.draft,
     context,
     params.preflightId,
-    params.outputDir,
     params.mode,
     params.qualityCheck,
   );
@@ -495,20 +459,15 @@ type ChecklistInput = {
   resolvedMangaLabel: string;
   resolvedTranslatorLabel: string;
   modeDefinition: TranslationModeDefinition;
-  settingsSnapshot: GuiSettings | null;
-  translationPathValidation: PathValidationSummary | null;
   preflightResult: SourcePreflightResult | null;
 };
 
 function buildTranslationChecklist(input: ChecklistInput) {
   const { translationDraft, resolvedMangaLabel, resolvedTranslatorLabel, modeDefinition } = input;
-  const { settingsSnapshot, translationPathValidation, preflightResult } = input;
+  const { preflightResult } = input;
   const sourceFolder = translationDraft.sourceFolder.trim();
   const mangaTitle = resolvedMangaLabel.trim();
   const translatorTitle = resolvedTranslatorLabel.trim();
-  const outputDetail = translationPathValidation?.outputFolder.ok
-    ? settingsSnapshot?.outputFolder || "可寫入"
-    : translationPathValidation?.outputFolder.reason || "尚未設定";
   return [
     { label: "翻譯模式", done: Boolean(modeDefinition.value), detail: modeDefinition.label },
     { label: "來源資料夾", done: Boolean(sourceFolder), detail: sourceFolder || "尚未選擇" },
@@ -516,11 +475,6 @@ function buildTranslationChecklist(input: ChecklistInput) {
       label: "作品 / 譯者",
       done: Boolean(mangaTitle && translatorTitle),
       detail: mangaTitle && translatorTitle ? `${mangaTitle} / ${translatorTitle}` : "尚未指定",
-    },
-    {
-      label: "輸出資料夾",
-      done: Boolean(settingsSnapshot?.outputFolder.trim()) && Boolean(translationPathValidation?.outputFolder.ok),
-      detail: outputDetail,
     },
     {
       label: "來源檢查",
@@ -603,7 +557,7 @@ function PreflightPreviewCard(props: PreflightPreviewCardProps) {
         className="preflight-image-thumb"
         draggable={false}
         onDragStart={(event) => event.preventDefault()}
-        src={buildLocalFileUrl(image.previewPath)}
+        src={buildApiUrl(image.contentUrl)}
       />
       <div className="preflight-image-meta">
         <strong>{image.fileName}</strong>
@@ -871,6 +825,7 @@ type MutationContext = {
   setSelectedJobId: UiState["setSelectedJobId"];
   setSelectedMangaId: UiState["setSelectedMangaId"];
   setSelectedTranslatorId: UiState["setSelectedTranslatorId"];
+  t: Translate;
 };
 
 function selectComposerJob(context: MutationContext, job: GuiJob) {
@@ -901,19 +856,23 @@ function useTranslationMutation(context: MutationContext) {
 
 function useSourcePreflightMutation(context: MutationContext) {
   return useMutation({
-    mutationFn: createSourcePreflight,
+    mutationFn: async ({ sourceFolder }: { sourceFolder: string }) => {
+      const upload = await uploadImageFolder({ sourceFolder, kind: "source" });
+      return createSourcePreflight({ uploadId: upload.uploadId });
+    },
     onSuccess: (result) => {
       context.setPreflightResult(result);
       context.setOrderedImageIds(result.images.map((image) => image.id));
-      context.setStatus(`Source preflight ready: ${result.summary.acceptedCount} images accepted.`);
+      context.setStatus(context.t("jobs.preflight.ready", { count: result.summary.acceptedCount }));
       context.setNotice({
-        message: `Validate completed: ${result.summary.acceptedCount} usable images ready.`,
+        message: context.t("jobs.preflight.ready", { count: result.summary.acceptedCount }),
         tone: "success",
       });
     },
-    onError: () => {
-      context.setStatus("Failed to preflight source images.");
-      context.setNotice({ message: "Validate failed.", tone: "error" });
+    onError: (error) => {
+      const detail = error instanceof Error ? error.message : context.t("jobs.preflight.failed");
+      context.setStatus(detail);
+      context.setNotice({ message: context.t("jobs.preflight.failedDetail", { detail }), tone: "error" });
     },
   });
 }
@@ -1020,13 +979,13 @@ function useComposerFoundation() {
     queryClient, setNotice: local.setCenterNotice, setStatus: jobs.setStatus,
     setPreflightResult: jobs.setPreflightResult, setOrderedImageIds: jobs.setOrderedImageIds,
     setSelectedJobId: ui.setSelectedJobId, setSelectedMangaId: ui.setSelectedMangaId,
-    setSelectedTranslatorId: ui.setSelectedTranslatorId,
+    setSelectedTranslatorId: ui.setSelectedTranslatorId, t,
   }, local.creatingLearningProfile);
   return { t, queryClient, ...queries, ...jobs, ...local, ...ui, ...mutations };
 }
 
 type ReadinessInput = {
-  draft: TranslationDraft; context: ResolvedTranslationContext | null; settings: GuiSettings | null;
+  draft: TranslationDraft; context: ResolvedTranslationContext | null;
   validation: PathValidationSummary | null; preflight: SourcePreflightResult | null; orderedImageIds: string[];
   preflightFingerprint: string | null; target: ReturnType<typeof resolveTranslationTarget>;
   catalogFetching: boolean; catalogError: boolean; memoryFetching: boolean; memoryError: boolean;
@@ -1052,7 +1011,7 @@ function collectReadinessIssues(input: ReadinessInput, draftDirty: boolean) {
       ready: input.target.selectedTranslationProvider?.status === "ready",
       languageSupported: input.target.translationTargetSupportsLanguage, t: input.t }),
     ...draftBlockingIssues({ draft: input.draft, context: input.context,
-      needsReference: input.target.translationModeDefinition.useReference, settings: input.settings,
+      needsReference: input.target.translationModeDefinition.useReference,
       validation: input.validation, preflight: input.preflight, dirty: draftDirty, t: input.t }),
     ...memoryBlockingIssues({ enabled: input.draft.translationMode !== "quick", fetching: input.memoryFetching,
       failed: input.memoryError, error: input.memoryErrorValue, inspection: input.inspection, t: input.t }),
@@ -1063,8 +1022,7 @@ function buildReadinessChecklist(input: ReadinessInput) {
   return buildExtendedChecklist({
     translationDraft: input.draft, resolvedMangaLabel: input.context?.mangaLabel || "",
     resolvedTranslatorLabel: input.context?.translatorLabel || "",
-    modeDefinition: input.target.translationModeDefinition, settingsSnapshot: input.settings,
-    translationPathValidation: input.validation, preflightResult: input.preflight, t: input.t,
+    modeDefinition: input.target.translationModeDefinition, preflightResult: input.preflight, t: input.t,
     providerName: input.target.selectedTranslationProvider?.name, modelName: input.target.selectedTranslationModel?.name,
     providerReady: input.target.selectedTranslationProvider?.status === "ready",
     languageSupported: input.target.translationTargetSupportsLanguage, catalogFetching: input.catalogFetching,
@@ -1112,7 +1070,7 @@ function useComposerTranslationState(foundation: ComposerFoundation, selection: 
   );
   const readiness = resolveComposerReadiness({
     draft: foundation.translationDraft, context: selection.provisionalTranslationContext,
-    settings: foundation.settingsSnapshot, validation: foundation.translationPathValidation,
+    validation: foundation.translationPathValidation,
     preflight: foundation.preflightResult, orderedImageIds: foundation.orderedImageIds,
     preflightFingerprint: foundation.preflightDraftFingerprint, target,
     catalogFetching: foundation.translationCatalogQuery.isFetching,
@@ -1143,7 +1101,12 @@ function createRunPreflight(context: ComposerContext) {
     const { validation, error } = await validatePreflightPaths(context.translationDraft, settings);
     context.setTranslationPathValidation(validation);
     if (error) return context.setStatus(error);
-    await context.sourcePreflightMutation.mutateAsync({ sourceFolder: context.translationDraft.sourceFolder.trim() });
+    context.setStatus(context.t("jobs.preflight.uploading"));
+    try {
+      await context.sourcePreflightMutation.mutateAsync({ sourceFolder: context.translationDraft.sourceFolder.trim() });
+    } catch {
+      return;
+    }
     context.setPreflightDraftFingerprint(translationDraftFingerprint(context.translationDraft));
   };
 }
@@ -1164,16 +1127,12 @@ function createStartTranslation(context: ComposerContext, applyCurrentOrdering: 
     if (error) return reportComposerError(context.setStatus, context.setCenterNotice, error[0], error[1]);
     const activePreflight = context.orderingDirty ? await applyCurrentOrdering() : context.preflightResult;
     if (!activePreflight) return reportMissingPreflight(context.setStatus, context.setCenterNotice);
-    const outputDir = await resolveOutputFolder(
-      context.settingsSnapshot, context.setSettingsSnapshot, context.setStatus, context.setCenterNotice,
-    );
-    if (!outputDir) return;
     context.setCenterNotice({ message: buildTranslationStatusMessage(context.translationDraft), tone: "info" });
     const input = await prepareTranslationJobInput({
       context: context.provisionalTranslationContext!, draft: context.translationDraft,
       separate: context.usesSeparateReferenceProfile,
       refresh: () => context.queryClient.invalidateQueries({ queryKey: ["mangaSeries"] }),
-      preflightId: activePreflight.preflightId, outputDir, mode: context.translationModeDefinition,
+      preflightId: activePreflight.preflightId, mode: context.translationModeDefinition,
       qualityCheck: context.consistencyCheckEnabled,
     });
     await context.translationMutation.mutateAsync(input);
@@ -1234,17 +1193,12 @@ function createPickSourceFolderAction(context: ComposerContext) {
 
 function createComposerActions(context: ComposerContext) {
   const applyCurrentOrdering = createApplyCurrentOrdering(context);
-  const openSettingsForOutputFix = () => {
-    context.setSelectedPage("settings");
-    context.setStatus("Open Settings and choose a valid output folder before starting translation.");
-  };
   return {
     applyCurrentOrdering,
     runPreflight: createRunPreflight(context),
     startTranslation: createStartTranslation(context, applyCurrentOrdering),
     createLearningProfile: createLearningProfileAction(context),
     pickSourceFolder: createPickSourceFolderAction(context),
-    openSettingsForOutputFix,
   };
 }
 
@@ -1260,8 +1214,8 @@ type TranslationJobComposerController = ReturnType<typeof useTranslationJobCompo
 
 function SourceFolderField(c: TranslationJobComposerController) {
   const change = (nextValue: string) => {
+    if (c.translationDraft.sourceFolder !== nextValue) c.clearPreflightState();
     c.setTranslationDraft((current) => ({ ...current, sourceFolder: nextValue }));
-    if (c.preflightResult?.sourceFolder !== nextValue) c.clearPreflightState();
   };
   return (
     <label>
@@ -1864,10 +1818,9 @@ function TranslationBlockers(c: TranslationJobComposerController) {
 }
 
 function PathValidationSummary(c: TranslationJobComposerController) {
-  const { openSettingsForOutputFix, pickSourceFolder, settingsSnapshot, translationPathValidation } = c;
+  const { pickSourceFolder, translationPathValidation } = c;
   if (!translationPathValidation) return null;
   const source = translationPathValidation.sourceFolder;
-  const output = translationPathValidation.outputFolder;
   return (
     <article className="compact-grid">
       <h3>路徑驗證</h3>
@@ -1878,13 +1831,6 @@ function PathValidationSummary(c: TranslationJobComposerController) {
           detail={source.ok ? "可讀取" : source.reason}
           actionLabel="重新選擇來源資料夾"
           onFix={pickSourceFolder}
-        />
-        <PathStatus
-          label="輸出資料夾"
-          ok={output.ok}
-          detail={output.ok ? settingsSnapshot?.outputFolder || "可寫入" : output.reason}
-          actionLabel="開啟 Settings"
-          onFix={openSettingsForOutputFix}
         />
       </div>
     </article>
@@ -1962,8 +1908,8 @@ function RejectedSourceFiles(c: TranslationJobComposerController) {
     <div className="artifact-summary-card">
       <strong>拒絕檔案</strong>
       <ul className="plain-list">
-        {files.map((file) => (
-          <li key={file.path}>
+        {files.map((file, index) => (
+          <li key={`${file.fileName}-${index}`}>
             <strong>{file.fileName}</strong>: {file.reason}
           </li>
         ))}

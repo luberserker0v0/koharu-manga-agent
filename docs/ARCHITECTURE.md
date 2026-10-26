@@ -75,13 +75,18 @@ Formal stage order:
 1. setup project
 2. upload pages
 3. load LLM
-4. resolve engines
+4. resolve the translation mode's named pipeline profile and validate its engines
 5. start pipeline
 6. monitor pipeline
 7. optional quality review
 8. optional knowledge-base update
 9. export
 10. close current project
+
+Active pipeline cancellation crosses the same ownership boundary: the GUI requests cancellation from
+the backend, and the pipeline monitor stops the matching Koharu operation through
+`DELETE /api/v1/operations/:operationId`. A failed stop acknowledgement is preserved as a Job failure;
+the backend does not report an unconfirmed remote stop as `canceled`.
 
 ### AO HTTP Boundary
 AO is the only LLM execution boundary. The backend does not load `agent_sdk`, provider registries,
@@ -217,7 +222,7 @@ Design target:
 The backend remains the only writer for canonical storage:
 - `domains/knowledge/`
 - `domains/reference/`
-- backend-owned export directory beneath `paths.translated` (trusted desktop clients may temporarily override it)
+- backend-owned export directory beneath `paths.translated`; clients cannot override or observe its filesystem path
 
 Current agent audit artifacts:
 - `workspaces/jobs/<jobId>/<stage>/artifacts/import_manifest.json`
@@ -238,6 +243,8 @@ Important GUI-facing runtime rules:
 - refreshing or closing the GUI must not interrupt backend jobs
 - the GUI must restore state from backend snapshot plus live stream
 - interaction history must remain reconstructible from SQLite and disk artifacts
+- local source and reference paths stay inside Electron; the backend receives uploaded bytes and an `uploadId`
+- the GUI downloads artifacts through HTTP into its local output folder instead of opening backend paths
 
 ## Repository Shape
 ```text

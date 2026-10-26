@@ -1,13 +1,19 @@
 import type { ReactNode } from "react";
-import type { BackendConfig, KoharuEngineCatalog, KoharuEngineOption } from "../../api/runtime";
+import type {
+  BackendConfig, KoharuEngineCatalog, KoharuEngineOption, PipelineEngineKey,
+} from "../../api/runtime";
 import { BackendConnectionSettings } from "./components/BackendConnectionSettings";
 import { KoharuHostRuntimeSettings } from "./components/KoharuHostRuntimeSettings";
 import { MaintenanceCleanup } from "./components/MaintenanceCleanup";
 import { StorageLocations } from "./components/StorageLocations";
 import { TIMEOUT_KEYS, type SettingsModel, type TimeoutKey, type Translate, useSettingsModel } from "./useSettingsModel";
 
-const ENGINE_KEYS = ["detect", "fontDetect", "segment", "bubbleSegment", "ocr", "translate", "clean", "render"] as const;
-type EngineKey = (typeof ENGINE_KEYS)[number];
+const ENGINE_KEYS: PipelineEngineKey[] = [
+  "detect", "fontDetect", "segment", "bubbleSegment", "ocr", "translate", "clean", "render",
+];
+type EngineKey = PipelineEngineKey;
+const TRANSLATION_MODES = ["quick", "reference_style", "local_style", "learning_style"] as const;
+type TranslationMode = (typeof TRANSLATION_MODES)[number];
 const ENGINE_CATALOG_KEYS: Record<EngineKey, (keyof KoharuEngineCatalog)[]> = {
   detect: ["detectors"], fontDetect: ["fontDetectors", "detectors"],
   segment: ["segmenters", "detectors"], bubbleSegment: ["bubbleSegmenters", "detectors"],
@@ -140,12 +146,57 @@ function TranslationModelField({ model }: { model: SettingsModel }) {
   </label>;
 }
 
-function EngineField({ model, engine }: { model: SettingsModel; engine: EngineKey }) {
-  const current = model.config?.engines?.[engine] || "";
+function TranslationTemperatureField({ model }: { model: SettingsModel }) {
+  const temperature = model.config?.translation?.generationOptions?.temperature ?? 0.7;
+  return <label className="field"><span>{model.t("settings.koharu.temperature.label")}</span>
+    <small className="muted-text">{model.t("settings.koharu.temperature.help")}</small>
+    <input type="number" min="0" max="1" step="0.1" value={temperature}
+      onChange={(event) => model.updateGenerationOptions({ temperature: Number(event.currentTarget.value) })} />
+  </label>;
+}
+
+function TranslationReasoningField({ model }: { model: SettingsModel }) {
+  const reasoning = model.config?.translation?.generationOptions?.reasoning || "off";
+  return <label className="field"><span>{model.t("settings.koharu.reasoning.label")}</span>
+    <small className="muted-text">{model.t("settings.koharu.reasoning.help")}</small>
+    <select value={reasoning} onChange={(event) => model.updateGenerationOptions({
+      reasoning: event.currentTarget.value as "off" | "on" | "low" | "medium" | "high",
+    })}>
+      {["off", "on", "low", "medium", "high"].map((value) => <option key={value} value={value}>{value}</option>)}
+    </select>
+  </label>;
+}
+
+function LMStudioBaseUrlField({ model }: { model: SettingsModel }) {
+  return <label className="field"><span>{model.t("settings.koharu.lmStudioBaseUrl.label")}</span>
+    <small className="muted-text">{model.t("settings.koharu.lmStudioBaseUrl.help")}</small>
+    <input value={model.config?.translation?.lmStudio?.baseUrl || ""}
+      onChange={(event) => model.updateLmStudio({ baseUrl: event.currentTarget.value })} />
+  </label>;
+}
+
+function LMStudioProxyUrlField({ model }: { model: SettingsModel }) {
+  return <label className="field"><span>{model.t("settings.koharu.lmStudioProxyUrl.label")}</span>
+    <small className="muted-text">{model.t("settings.koharu.lmStudioProxyUrl.help")}</small>
+    <input value={model.config?.translation?.lmStudio?.koharuProxyBaseUrl || ""}
+      onChange={(event) => model.updateLmStudio({ koharuProxyBaseUrl: event.currentTarget.value })} />
+  </label>;
+}
+
+function profileLabel(model: SettingsModel, profileId: string) {
+  return ["fast", "quality", "low_memory"].includes(profileId)
+    ? model.t(`settings.koharu.profile.${profileId}`) : profileId;
+}
+
+function EngineField({ model, engine, profileId }: {
+  model: SettingsModel; engine: EngineKey; profileId: string;
+}) {
+  const current = model.config?.pipeline?.profiles?.[profileId]?.engines?.[engine] || "";
   const options = engineOptionsFor(model.catalogQuery.data?.engines, engine);
   return <label className="field"><span>{engine}</span>
     <small className="muted-text">{model.t("settings.koharu.engineHelp", { engine })}</small>
-    <select value={current} onChange={(event) => model.updateEngine(engine, event.currentTarget.value)}>
+    <select value={current} onChange={(event) =>
+      model.updateProfileEngine(profileId, engine, event.currentTarget.value)}>
       <option value="">{model.t("settings.koharu.engineSelect.placeholder")}</option>
       {current && !options.some((option) => option.id === current) ? <option value={current}>
         {model.t("settings.koharu.engineUnavailable", { engine: current })}</option> : null}
@@ -155,6 +206,30 @@ function EngineField({ model, engine }: { model: SettingsModel; engine: EngineKe
   </label>;
 }
 
+function ModeProfileField({ model, mode }: { model: SettingsModel; mode: TranslationMode }) {
+  const profiles = Object.keys(model.config?.pipeline?.profiles || {});
+  const current = model.config?.pipeline?.modeProfiles?.[mode] || model.config?.pipeline?.defaultProfile || "";
+  return <label className="field"><span>{model.t(`settings.koharu.mode.${mode}`)}</span>
+    <small className="muted-text">{model.t("settings.koharu.modeProfile.help")}</small>
+    <select value={current} onChange={(event) => model.updateModeProfile(mode, event.currentTarget.value)}>
+      {profiles.map((profileId) => <option key={profileId} value={profileId}>
+        {profileLabel(model, profileId)}</option>)}
+    </select>
+  </label>;
+}
+
+function PipelineProfiles({ model }: { model: SettingsModel }) {
+  const profiles = Object.keys(model.config?.pipeline?.profiles || {});
+  return <><div className="form-grid">
+    {TRANSLATION_MODES.map((mode) => <ModeProfileField key={mode} mode={mode} model={model} />)}
+  </div><details><summary>{model.t("settings.koharu.profiles.advanced")}</summary>
+    {profiles.map((profileId) => <details key={profileId}><summary>{profileLabel(model, profileId)}</summary>
+      <div className="form-grid">{ENGINE_KEYS.map((engine) =>
+        <EngineField model={model} engine={engine} profileId={profileId} key={engine} />)}</div>
+    </details>)}
+  </details></>;
+}
+
 function KoharuFields({ model }: { model: SettingsModel }) {
   return <div className="form-grid">
     <label className="field"><span>{model.t("settings.koharu.baseUrl.label")}</span>
@@ -162,7 +237,10 @@ function KoharuFields({ model }: { model: SettingsModel }) {
         onChange={(event) => model.updateApi(event.currentTarget.value)} /></label>
     <TranslationProviderField model={model} />
     <TranslationModelField model={model} />
-    {ENGINE_KEYS.map((engine) => <EngineField model={model} engine={engine} key={engine} />)}
+    <TranslationTemperatureField model={model} />
+    <TranslationReasoningField model={model} />
+    <LMStudioBaseUrlField model={model} />
+    <LMStudioProxyUrlField model={model} />
   </div>;
 }
 
@@ -215,6 +293,7 @@ function KoharuCard({ model }: { model: SettingsModel }) {
       onAutoStartChange={model.updateAutoStart} onExecutablePathChange={(value) => model.updateLocal("koharuExecutablePath", value)}
       onBrowse={() => void model.chooseKoharuExecutable()} t={model.t} /> : null}
     <KoharuFields model={model} />
+    <PipelineProfiles model={model} />
     {model.catalogQuery.isError ? <p className="muted-text">{model.t("settings.koharu.engineCatalog.failed")}</p> : null}
     <KoharuActions model={model} /><KoharuDiagnostics model={model} />
   </Section></SettingsCard>;

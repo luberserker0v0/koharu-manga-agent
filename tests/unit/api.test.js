@@ -1,5 +1,6 @@
 const {
   ENDPOINTS,
+  KoharuClient,
   buildUrl,
   apiFetch,
 } = require("../../backend/src/integrations/koharu/client/koharu_client");
@@ -51,5 +52,24 @@ describe("Koharu HTTP client helpers", () => {
     );
 
     global.fetch = originalFetch;
+  });
+
+  test("stopOperation sends the Koharu operation DELETE request", async () => {
+    const originalFetch = global.fetch;
+    const mockFetch = jest.fn().mockResolvedValue({ ok: true, status: 204 });
+    global.fetch = mockFetch;
+    try {
+      const client = new KoharuClient("http://127.0.0.1:4000");
+      await expect(client.stopOperation("op/id")).resolves.toEqual({
+        success: true,
+        operationId: "op/id",
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://127.0.0.1:4000/api/v1/operations/op%2Fid",
+        expect.objectContaining({ method: "DELETE" }),
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

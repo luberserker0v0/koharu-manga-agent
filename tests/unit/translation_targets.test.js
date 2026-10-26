@@ -1,6 +1,7 @@
 const {
   normalizeTranslationCatalog,
   resolveTranslationTarget,
+  validateGenerationOptionsShape,
   validateTranslationTargetShape,
 } = require("../../backend/src/integrations/koharu/translation/translation_targets");
 
@@ -71,5 +72,12 @@ describe("Koharu translation targets", () => {
       .toEqual({ providerId: "deepl", modelId: "mt" });
     expect(() => validateTranslationTargetShape({ providerId: "deepl", modelId: "mt", apiKey: "secret" }))
       .toThrow("only accepts");
+  });
+
+  test("accepts a bounded temperature and rejects unsupported Thinking declarations", () => {
+    expect(validateGenerationOptionsShape({ temperature: 0.7 })).toEqual({ temperature: 0.7, reasoning: "off" });
+    expect(() => validateGenerationOptionsShape({ temperature: 3 })).toThrow("between 0 and 1");
+    expect(() => validateGenerationOptionsShape({ temperature: 0.7, thinkingEnabled: false }))
+      .toThrow("only accepts temperature and reasoning");
   });
 });

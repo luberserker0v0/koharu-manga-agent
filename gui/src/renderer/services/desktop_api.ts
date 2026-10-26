@@ -1,5 +1,7 @@
 import type { DesktopApi } from "../../preload";
 import type { DesktopInfo, GuiSettings, KoharuHostProcessState, PathValidationSummary } from "../types/settings";
+import type { ImageFolderUploadRequest, ImageUploadResult } from "../../shared/image_upload";
+import type { ArtifactDownloadRequest, ArtifactDownloadResult } from "../../shared/artifact_download";
 
 declare global {
   interface Window {
@@ -91,19 +93,14 @@ export function confirmDialog(options?: {
   return api ? api.confirmDialog(options) : Promise.reject(unavailableError());
 }
 
-export function readJsonFile(targetPath: string): Promise<{ path: string; data: unknown }> {
+export function uploadImageFolder(request: ImageFolderUploadRequest): Promise<ImageUploadResult> {
   const api = getDesktopApi();
-  return api ? api.readJsonFile(targetPath) : Promise.reject(unavailableError());
+  return api ? api.uploadImageFolder(request) : Promise.reject(unavailableError());
 }
 
-export function writeJsonFile(targetPath: string, data: unknown): Promise<{ ok: boolean; path: string }> {
+export function downloadJobArtifact(request: ArtifactDownloadRequest): Promise<ArtifactDownloadResult> {
   const api = getDesktopApi();
-  return api ? api.writeJsonFile(targetPath, data) : Promise.reject(unavailableError());
-}
-
-export function deleteDesktopPath(targetPath: string): Promise<{ ok: boolean; path: string }> {
-  const api = getDesktopApi();
-  return api ? api.deletePath(targetPath) : Promise.reject(unavailableError());
+  return api ? api.downloadJobArtifact(request) : Promise.reject(unavailableError());
 }
 
 export function validatePaths(payload: {

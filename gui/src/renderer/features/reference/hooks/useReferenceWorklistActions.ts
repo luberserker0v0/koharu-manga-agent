@@ -16,6 +16,7 @@ import { runWorklistExtraction, runWorklistItemExtraction } from "./referenceWor
 import { importQueuedReferenceFolders } from "./referenceWorklistImport";
 import { runWorklistIngestion, runWorklistItemIngestion } from "./referenceWorklistIngestion";
 import { selectReferenceMaterial } from "./referenceWorklistSelection";
+import type { ImageFolderUploadRequest, ImageUploadResult } from "../../../../shared/image_upload";
 
 export type BindingResolution = {
   mangaId: string;
@@ -54,7 +55,7 @@ export type WorklistActionParams = {
     chapterTitle: string,
   ) => Promise<{ chapterId: string; chapterTitle: string }>;
   importReferenceFolderFn: (payload: {
-    sourceFolder: string;
+    uploadId: string;
     label: string;
     language: string;
     referenceKind: "source" | "translator";
@@ -65,6 +66,7 @@ export type WorklistActionParams = {
     chapterId?: string;
     chapterTitle?: string;
   }) => Promise<{ referenceSet: ImportedReferenceSet }>;
+  uploadImageFolderFn: (request: ImageFolderUploadRequest) => Promise<ImageUploadResult>;
   createReferenceExtractionJobFn: (payload: ReferenceExtractionPayload) => Promise<GuiJob>;
   createReferenceIngestionJobFn: (payload: ReferenceIngestionPayload) => Promise<GuiJob>;
   createReferenceIngestionJobsFn: (payloads: ReferenceIngestionPayload[]) => Promise<{ jobs: GuiJob[] }>;

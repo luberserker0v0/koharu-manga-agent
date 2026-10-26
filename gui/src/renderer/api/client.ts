@@ -6,8 +6,15 @@ type ApiFetchInit = RequestInit & {
   timeoutMs?: number;
 };
 
+function versionedPath(pathname: string) {
+  const normalized = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return normalized === "/api/v1" || normalized.startsWith("/api/v1/")
+    ? normalized
+    : `/api/v1${normalized}`;
+}
+
 export function buildApiUrl(pathname: string) {
-  return `${activeBaseUrl}${pathname}`;
+  return `${activeBaseUrl}${versionedPath(pathname)}`;
 }
 
 export function setApiBaseUrl(baseUrl: string) {

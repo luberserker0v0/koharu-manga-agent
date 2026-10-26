@@ -42,6 +42,7 @@ import {
   openKoharuEditor,
   pickDirectory,
   pickDirectories,
+  uploadImageFolder,
 } from "../services/desktop_api";
 import { DEFAULT_REFERENCE_LANGUAGE, normalizeReferenceLanguage } from "../constants/languages";
 import { IngestionReportPane } from "../features/reference/components/IngestionReportPane";
@@ -1046,6 +1047,7 @@ function useReferenceWorklistActionBindings(context: ReferenceModel) {
       context.selectedManga, context.selectedTranslator, context.ingestionForm, context.referenceSetOptions),
     createChapterForBinding,
     importReferenceFolderFn: importReferenceFolder,
+    uploadImageFolderFn: uploadImageFolder,
     createReferenceExtractionJobFn: createReferenceExtractionJob,
     createReferenceIngestionJobFn: createReferenceIngestionJob,
     createReferenceIngestionJobsFn: createReferenceIngestionJobs,

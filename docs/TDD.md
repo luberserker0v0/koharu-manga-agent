@@ -36,6 +36,8 @@ Covered scenarios:
 - late-attach recovery
 - timeout recovery
 - translated-scene based completion recovery
+- cancellation stops the matching Koharu operation exactly once
+- an unacknowledged Koharu stop is reported as `koharu_cancel_failed`
 
 ### `backend/src/ao_*`
 - AO conversation create/config/agent/skills/start/get/message/delete flow

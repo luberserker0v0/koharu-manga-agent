@@ -232,7 +232,6 @@ function buildImportedFolderManifest(input) {
     imageDir: `domains/reference/images/${input.referenceSetId}`,
     extractedDir: `domains/reference/extraction/${input.referenceSetId}`,
     enabled: true,
-    importedFrom: input.sourceFolder,
     mangaId: input.mangaId,
     mangaLabel: input.mangaLabel,
     translatorId: input.translatorId,
@@ -289,7 +288,6 @@ function importReferenceFolder(options) {
   syncImportedMangaBinding(input, resolvedLanguage);
   return {
     ...manifest,
-    sourceFolder: input.sourceFolder,
     referenceKind: manifest.referenceKind,
     mangaId: input.mangaId,
     translatorId: input.translatorId,
@@ -489,7 +487,6 @@ function importPostEditReference(options) {
   syncImportedMangaBinding(input, resolvedLanguage);
   return {
     ...manifest,
-    sourceFolder: null,
     referenceKind: manifest.referenceKind,
     mangaId: input.mangaId,
     translatorId: input.translatorId,

@@ -15,6 +15,7 @@ const {
 const { listReferenceSets } = require("../../../domains/reference/sets/reference_sets");
 const { permanentlyDeleteMatchingJobs } = require("../reference/reference_management");
 const { badRequest, sendJson } = require("../../server/http_helpers");
+const { withoutInternalLocations } = require("../jobs/job_http");
 
 const KNOWLEDGE_ASSET_ROUTES = [
   { suffix: "glossary", loader: loadCanonicalGlossary },
@@ -163,7 +164,6 @@ function buildIngestionReport(mangaId, translatorId) {
     ingestionAvailable: state.existing.length > 0,
     ingestionUpdatedAt: state.updatedAt,
     ingestionStale: isIngestionStale(mangaId, translatorId, state.updatedAt),
-    assets: state.paths,
     summary: summarizeIngestionAssets(assets, styleEvidence, referenceKind),
     glossary: assets.glossary,
     candidateTerms: assets.candidateTerms,
@@ -209,7 +209,7 @@ async function handleIngestionDelete(ctx) {
     badRequest(ctx.res, "translatorId is required.");
     return true;
   }
-  sendJson(ctx.res, 200, deleteTranslatorIngestion(ctx, match[1], translatorId));
+  sendJson(ctx.res, 200, withoutInternalLocations(deleteTranslatorIngestion(ctx, match[1], translatorId)));
   return true;
 }
 

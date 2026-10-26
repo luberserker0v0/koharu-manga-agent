@@ -21,6 +21,7 @@ jest.mock("../../backend/src/domains/knowledge/assets/knowledge_assets", () => (
 
 const {
   assertTranslationMemoryReady,
+  buildTranslationSystemPrompt,
   composeTranslationMemory,
   resolveSourceChapterMapping,
 } = require("../../backend/src/domains/translation/memory/translation_memory");
@@ -126,6 +127,31 @@ describe("translation memory composition", () => {
     expect(snapshot.effective.glossary).toEqual([]);
     expect(mockLoadCanonicalGlossary).not.toHaveBeenCalled();
     expect(mockLoadKnowledgeBase).not.toHaveBeenCalled();
+  });
+
+  test("quick mode omits a custom prompt unless user instructions are present", () => {
+    const snapshot = composeTranslationMemory({ translationMode: "quick" });
+    expect(buildTranslationSystemPrompt(snapshot)).toEqual({ text: null, source: "none" });
+
+    const prompt = buildTranslationSystemPrompt(snapshot, "  Keep honorifics.  ");
+    expect(prompt.source).toBe("user_instructions");
+    expect(prompt.text).toBe("User retranslation instructions:\nKeep honorifics.");
+    expect(prompt.text).not.toContain("null");
+  });
+
+  test("memory prompt uses real line breaks and reports its source", () => {
+    const snapshot = composeTranslationMemory({
+      translationMode: "reference_style",
+      mangaId: "manga_1",
+      translatorId: "translator_zh",
+      referenceTranslatorId: "translator_zh",
+      chapterId: "target_a",
+    });
+    const prompt = buildTranslationSystemPrompt(snapshot);
+
+    expect(prompt.source).toBe("translation_memory");
+    expect(prompt.text).toContain("\nCanonical terminology");
+    expect(prompt.text).not.toContain("\\n");
   });
 
   test("learning style keeps reference and local evidence in separate layers", () => {

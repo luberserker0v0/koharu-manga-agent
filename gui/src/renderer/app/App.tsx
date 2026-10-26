@@ -21,6 +21,7 @@ import {
 import { useLanguageStore } from "../stores/language_store";
 import { useUiStore } from "../stores/ui_store";
 import type { GuiSettings } from "../types/settings";
+import { useExportDelivery, type ExportDeliveryNotice } from "../features/jobs/hooks/useExportDelivery";
 
 function renderPage(routeKey: string) {
   switch (routeKey) {
@@ -362,7 +363,25 @@ type AppLayoutProps = {
   chooseAndStartKoharu: () => Promise<void>;
   downloadAndStartKoharu: () => Promise<void>;
   startConfiguredExecutable: (executablePath: string, persist: boolean) => Promise<void>;
+  exportDeliveryNotice: ExportDeliveryNotice | null;
+  dismissExportDelivery: () => void;
 };
+
+function ExportDeliveryAlert(props: Pick<AppLayoutProps, "exportDeliveryNotice" | "dismissExportDelivery" | "t">) {
+  const notice = props.exportDeliveryNotice;
+  if (!notice) return null;
+  const success = notice.tone === "success";
+  return (
+    <div className="service-alert" role={success ? "status" : "alert"}>
+      <div><strong>{props.t(success ? "app.exportDelivery.completed" : "app.exportDelivery.failed")}</strong>
+        <span>{props.t(success ? "app.exportDelivery.saved" : "app.exportDelivery.failedDetail",
+          { fileName: notice.fileName, detail: notice.detail })}</span></div>
+      <button className="secondary-button" type="button" onClick={props.dismissExportDelivery}>
+        {props.t("app.exportDelivery.dismiss")}
+      </button>
+    </div>
+  );
+}
 
 function AppServiceAlert({
   koharuFailureDetail,
@@ -472,6 +491,7 @@ function AppMain(props: AppLayoutProps) {
     props.koharuUnavailable && (props.readinessQuery.data || props.desktopInfoQuery.data?.koharuProcess);
   return (
     <main className="main-content">
+      <ExportDeliveryAlert {...props} />
       {showAlert && (
         <AppServiceAlert
           koharuFailureDetail={props.koharuFailureDetail}
@@ -533,6 +553,7 @@ type AppViewProps = {
   actions: ReturnType<typeof useKoharuRecoveryActions>;
   koharu: ReturnType<typeof resolveKoharuState>;
   statusSummary: string;
+  exportDelivery: ReturnType<typeof useExportDelivery>;
 };
 
 function AppView(props: AppViewProps) {
@@ -542,6 +563,8 @@ function AppView(props: AppViewProps) {
       setSelectedPage={props.stores.setSelectedPage}
       t={props.stores.t}
       statusSummary={props.statusSummary}
+      exportDeliveryNotice={props.exportDelivery.notice}
+      dismissExportDelivery={props.exportDelivery.dismiss}
       koharuUnavailable={props.koharu.unavailable}
       koharuFailureDetail={props.koharu.detail}
       settings={props.settings}
@@ -560,6 +583,7 @@ export function App() {
   const recovery = useRecoveryState();
   const actions = useKoharuRecoveryActions(settings, setSettings, queries, recovery, stores.t);
   const koharu = resolveKoharuState(queries);
+  const exportDelivery = useExportDelivery();
   useAutoRecoveryEffect(
     queries.desktopInfoQuery,
     koharu.unavailable,
@@ -569,5 +593,5 @@ export function App() {
   );
   const statusSummary = useStatusSummary(queries.runtimeQuery, stores.t);
   useLiteralTranslationEffect(stores.locale, stores.selectedPage, stores.t);
-  return <AppView {...{ stores, settings, queries, recovery, actions, koharu, statusSummary }} />;
+  return <AppView {...{ stores, settings, queries, recovery, actions, koharu, statusSummary, exportDelivery }} />;
 }

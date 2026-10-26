@@ -31,8 +31,18 @@ describe("backend-owned export output paths", () => {
     expect(segment).not.toBe("..");
   });
 
-  test("keeps the trusted desktop output override", () => {
-    expect(resolveExportOutputDir({ outputDir: " C:\\Exports\\Chapter " })).toBe("C:\\Exports\\Chapter");
+  test("ignores client output overrides", () => {
+    const outputDir = resolveExportOutputDir({
+      outputDir: " C:\\Exports\\Chapter ",
+      jobId: "job-owned-output",
+    });
+    expect(outputDir).toBe(path.join(
+      paths.translated,
+      "unbound-manga",
+      "unbound-translator",
+      "unbound-chapter",
+      "translation-job-owned-output",
+    ));
   });
 
   test("uses a separate job-specific post-edit directory", () => {

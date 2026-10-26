@@ -25,16 +25,20 @@ function createTempSourceFolder() {
   return dir;
 }
 
-function createTempOutputDir() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "manga-live-output-"));
-}
-
 async function createSourcePreflight(baseUrl) {
   const sourceFolder = createTempSourceFolder();
+  const created = await (await fetch(`${baseUrl}/api/v1/uploads`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "source" }),
+  })).json();
+  await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/files/001.png`, {
+    method: "PUT", body: fs.readFileSync(path.join(sourceFolder, "001.png")),
+  });
+  await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}/complete`, { method: "POST" });
   const res = await fetch(`${baseUrl}/source-preflight`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sourceFolder }),
+    body: JSON.stringify({ uploadId: created.uploadId }),
   });
   const manifest = await res.json();
   return manifest.preflightId;
@@ -77,8 +81,6 @@ describe("live backend smoke", () => {
     "real backend can finish a translation job against Koharu",
     async () => {
     if (!global.KOHARU_AVAILABLE) return;
-    const outputDir = createTempOutputDir();
-
     runtime = createRuntime({
       store: new JobStore(createTempDbPath()),
       sourcePreflightModule: new SourcePreflightModule({
@@ -101,7 +103,6 @@ describe("live backend smoke", () => {
         targetLanguage: "zh-TW",
         qualityCheck: false,
         exportFormat: "rendered",
-        outputDir,
         mangaId: "live_smoke_series",
         mangaLabel: "Live Smoke Series",
         translatorId: "live_smoke_output",
@@ -123,12 +124,9 @@ describe("live backend smoke", () => {
     expect(job.result.knowledge).toBeNull();
     expect(job.result.closed).toBe(true);
     expect(job.artifacts.length).toBeGreaterThan(0);
-    expect(fs.existsSync(job.artifacts[0].path)).toBe(true);
-
-    const translatedAfter = new Set(
-      fs.existsSync(outputDir) ? fs.readdirSync(outputDir) : []
-    );
-    expect(translatedAfter.size).toBeGreaterThan(0);
+    const exportArtifact = job.artifacts.find((artifact) => artifact.kind === "export");
+    expect(exportArtifact).toEqual(expect.objectContaining({ contentUrl: expect.any(String) }));
+    expect((await fetch(`${baseUrl}${exportArtifact.contentUrl}`)).status).toBe(200);
     },
     600000
   );

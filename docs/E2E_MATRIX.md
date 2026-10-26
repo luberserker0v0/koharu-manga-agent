@@ -69,8 +69,8 @@ It answers:
   - source folder contains valid images
 - **Steps**
   1. Open `Job`
-  2. Choose `sourceFolder`
-  3. Run `Validate`
+  2. Choose a local source folder in the desktop GUI
+  3. Run `Validate`; Electron uploads the images and sends only `uploadId` to source preflight
   4. Optionally reorder images
   5. Fill manga/chapter labels
   6. Start translation
@@ -79,11 +79,12 @@ It answers:
   - translation job is created
   - preflight succeeds
   - job reaches export and close
-  - output artifact exists
+  - output artifact contains all 44 rendered pages and is downloadable through the backend artifact content API
+  - while the GUI remains open, the export is downloaded automatically to the configured local output folder
 - **Failure signal**
   - start button enables before validation
   - pipeline never reaches terminal state
-  - export artifact missing
+  - export artifact missing or the desktop GUI attempts to open a backend filesystem path
   - GUI crashes or loses job context
 
 ### `E2E-BLK-SYNC-001` Job List SSE-first sync
@@ -145,11 +146,11 @@ It answers:
 
 `tests/e2e/live_backend_smoke.test.js`, `tests/e2e/pipeline.test.js`, and
 `tests/e2e/knowledge_base.test.js` call `global.checkKoharu()` before their external assertions. A
-normal Jest run remains deterministic when Koharu is absent: those assertions return early and the
-suites log an explicit skip warning. For release validation, start host Koharu on port `4000` first
-and run the three suites directly so the real assertions execute:
+normal Jest run remains deterministic because live access is disabled unless `KOHARU_E2E=1`. For
+release validation, start host Koharu on port `4000`, opt in, and run the three suites directly:
 
 ```powershell
+$env:KOHARU_E2E="1"
 npm test --prefix tests -- --runInBand `
   e2e/live_backend_smoke.test.js `
   e2e/pipeline.test.js `

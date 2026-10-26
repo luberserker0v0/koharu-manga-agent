@@ -7,6 +7,7 @@ const {
 const { assertTranslationMemoryReady } = require("../../../domains/translation/memory/translation_memory");
 const { buildLearningEvidenceSnapshot } = require("../../../domains/knowledge/learning/learning_evidence");
 const { badRequest, conflict, notFound, readJsonBody, sendJson } = require("../../server/http_helpers");
+const { publicJob } = require("../jobs/job_http");
 
 const TRANSLATION_MODES = ["quick", "reference_style", "local_style", "learning_style"];
 const SELECTIVE_RETRANSLATION_FIELDS = new Set([
@@ -41,11 +42,15 @@ function hasInvalidTranslationPayload(res, body) {
     badRequest(res, "translationMode must be quick, reference_style, local_style, or learning_style.");
     return true;
   }
-  const obsolete = ["referenceSetId", "ingestReference", "knowledgeBuilder"].filter((field) =>
+  const obsolete = ["referenceSetId", "ingestReference", "knowledgeBuilder", "sourceFolder", "outputDir"].filter((field) =>
     Object.prototype.hasOwnProperty.call(body, field),
   );
   if (obsolete.length > 0) {
     badRequest(res, `Obsolete translation payload fields are not supported: ${obsolete.join(", ")}.`);
+    return true;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "generationOptions")) {
+    badRequest(res, "generationOptions is runtime configuration; update it through PATCH /config before creating a job.");
     return true;
   }
   const missing = ["mangaId", "translatorId", "chapterId"].filter((field) => !String(body[field] || "").trim());
@@ -74,6 +79,9 @@ async function createTranslationJob(ctx) {
     validateTranslationTargetShape(body.translationTarget) ||
     ctx.jobManager.resolvedConfig?.translation?.defaultTarget ||
     null;
+  body.generationOptions =
+    ctx.jobManager.resolvedConfig?.translation?.generationOptions ||
+    null;
   const duplicate = findActiveTranslationJob(ctx.jobManager, body);
   if (duplicate) {
     conflict(ctx.res, `Translation job ${duplicate.id} is already active for this chapter.`);
@@ -81,7 +89,7 @@ async function createTranslationJob(ctx) {
   }
   await ctx.jobManager.assertAgentAvailableForTranslation?.(body);
   await ctx.jobManager.assertKoharuAvailableForJobType?.("translation", body);
-  sendJson(ctx.res, 202, ctx.jobManager.createTranslationJob(body));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationJob(body)));
 }
 
 async function handleTranslationCreate(ctx) {
@@ -112,7 +120,7 @@ async function handleSelectiveRetranslation(ctx) {
   const body = await readJsonBody(ctx.req);
   if (hasInvalidSelectiveRetranslationPayload(ctx.res, body)) return true;
   const job = await ctx.jobManager.createSelectiveRetranslationJob(match[1], body);
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
   return true;
 }
 
@@ -160,7 +168,7 @@ async function handleDeepAudit(ctx) {
   const createMatch = ctx.url.pathname.match(/^\/jobs\/([^/]+)\/deep-audit$/);
   const reviewMatch = ctx.url.pathname.match(/^\/jobs\/([^/]+)\/deep-audit\/review$/);
   if (ctx.req.method === "POST" && createMatch) {
-    sendJson(ctx.res, 202, ctx.jobManager.createTranslationDeepAuditJob(createMatch[1]));
+    sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationDeepAuditJob(createMatch[1])));
     return true;
   }
   if (ctx.req.method === "GET" && reviewMatch) {
@@ -175,7 +183,7 @@ async function createQualityRepairJob(ctx, sourceJobId) {
   if (!sourceJob) return notFound(ctx.res);
   await ctx.jobManager.assertAgentAvailableForTranslation?.(sourceJob.payload);
   await ctx.jobManager.preflightTranslationQualityRepair(sourceJobId);
-  sendJson(ctx.res, 202, ctx.jobManager.createTranslationQualityRepairJob(sourceJobId));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationQualityRepairJob(sourceJobId)));
 }
 
 async function handleTranslationFollowups(ctx) {
@@ -186,7 +194,7 @@ async function handleTranslationFollowups(ctx) {
   if (auditMatch) {
     const body = await readJsonBody(ctx.req);
     await ctx.jobManager.assertKoharuAvailableForJobType?.("translation_deep_audit_apply", body);
-    sendJson(ctx.res, 202, ctx.jobManager.createTranslationDeepAuditApplyJob(auditMatch[1], body.decisions));
+    sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationDeepAuditApplyJob(auditMatch[1], body.decisions)));
     return true;
   }
   if (repairMatch) {
@@ -194,7 +202,7 @@ async function handleTranslationFollowups(ctx) {
     return true;
   }
   if (!retryMatch) return false;
-  sendJson(ctx.res, 202, ctx.jobManager.createTranslationKnowledgeRetryJob(retryMatch[1]));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationKnowledgeRetryJob(retryMatch[1])));
   return true;
 }
 

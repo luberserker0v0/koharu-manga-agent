@@ -16,16 +16,12 @@ function safePathSegment(value, fallback) {
 }
 
 function resolveExportOutputDir({
-  outputDir = null,
   mangaId = null,
   translatorId = null,
   chapterId = null,
   jobId = null,
   variant = "translation",
 } = {}) {
-  if (typeof outputDir === "string" && outputDir.trim()) {
-    return outputDir.trim();
-  }
   if (!jobId || !String(jobId).trim()) {
     throw new Error("Backend-generated export output requires jobId.");
   }

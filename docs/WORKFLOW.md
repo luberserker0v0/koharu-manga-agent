@@ -10,12 +10,13 @@
 ## Official Flow
 1. Start the backend with `node backend/server.js`
 2. Create a translation job with `POST /jobs/translation`
-3. The backend validates the local source folder and builds a staged source-image set
+3. Electron uploads the selected images and the backend validates a staged upload
 4. The user may confirm or adjust source-image order before translation proceeds
 5. The backend composes and persists `translation_memory_snapshot`
-6. The backend injects that exact snapshot into the Koharu pipeline system prompt
+6. Memory-enabled modes inject the mode-filtered snapshot into the Koharu pipeline system prompt;
+   `quick` omits a custom prompt unless explicit retranslation instructions are present
 7. The backend runs project setup and starts the Koharu pipeline
-8. The backend monitors pipeline completion
+8. The backend monitors pipeline completion and persists black-box page/engine timing metrics
 9. Mode policy builds `quality_context_projection`, runs bounded AO Quality windows, and applies validated revisions
 10. The backend persists `final_translation_snapshot`, `learning_evidence_snapshot`, and the Post Edit document
 11. The backend exports the corrected project and closes Koharu
@@ -39,6 +40,10 @@
 | `local_style` | no | yes | optional | yes |
 | `learning_style` | yes | yes | required | yes |
 
+Prompt metadata records only whether a prompt was applied, its source, byte count, and SHA-256 hash.
+The prompt text is not copied into Job events. Pipeline timing is measured between progress events as
+observed by the backend and does not claim access to Koharu-internal provider latency or token usage.
+
 `translationMode` is required. `referenceSetId`, `ingestReference`, and `knowledgeBuilder` are not
 translation payload controls and are rejected. Reference Ingestion must be completed independently.
 
@@ -49,9 +54,9 @@ Recommended running text:
 - `學習 {referenceLabel} 風格翻譯中...`
 
 ## Source Preflight Flow
-1. The GUI collects a per-job `sourceFolder`
-2. The backend validates that the folder is readable
-3. The system scans local files and separates:
+1. The GUI selects a local `sourceFolder`; the path stays inside Electron
+2. Electron validates read access and uploads supported image bytes through `/api/v1/uploads`
+3. The backend consumes `uploadId` and separates:
    - accepted image files
    - convertible image files
    - rejected files
@@ -61,10 +66,13 @@ Recommended running text:
 7. The staged source images become the upload input for project setup
 
 Rules:
-- the original source folder is read-only from the workflow perspective
-- ordering should not rename source files in place
+- the backend API never receives a desktop filesystem path
+- ordering never renames local source files in place
 - when the user keeps the detected order, rename work should be skipped
-- if source-folder read access fails or output-folder write access fails, translation must not start until the user fixes the issue
+- if local read access or upload fails, source preflight must not start
+- translation exports to backend-owned storage; while the GUI is running, successful exports are
+  downloaded automatically to its local artifact-download destination
+- Pipeline timeout measures lack of progress, not total chapter duration; partial exports fail the Job
 
 ## Reference Style Flow
 1. Import other-translation images through the Reference API

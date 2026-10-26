@@ -256,7 +256,11 @@ Important fields:
 - `paths.*`
 - `defaults.targetLanguage`
 - `defaults.exportFormat`
-- `engines.*`
+- `pipeline.defaultProfile`, `pipeline.modeProfiles.*`, and `pipeline.profiles.*.engines.*`
+
+Translation modes select named image-pipeline profiles. The default `quick` mapping uses the `fast`
+profile with `lama-manga`; the `quality` profile uses `flux2-klein`. Explicit profile engines are
+validated against the live Koharu catalog and never silently replaced.
 
 ## Tests
 ```bash
@@ -268,14 +272,14 @@ npm run test:coverage --prefix tests
 node scripts/check_function_lengths.mjs 30
 ```
 
-The three live Koharu suites probe `config.api.baseUrl` and skip their external assertions when the
-service is unavailable. To exercise them rather than skip them, first start host Koharu on port
-`4000`, then run:
+The three live Koharu suites are opt-in so a normal test run never mutates a running Koharu service.
+To exercise them, first start host Koharu on port `4000`, set `KOHARU_E2E=1`, then run:
 
-```bash
-npm test --prefix tests -- --runInBand \
-  e2e/live_backend_smoke.test.js \
-  e2e/pipeline.test.js \
+```powershell
+$env:KOHARU_E2E="1"
+npm test --prefix tests -- --runInBand `
+  e2e/live_backend_smoke.test.js `
+  e2e/pipeline.test.js `
   e2e/knowledge_base.test.js
 ```
 

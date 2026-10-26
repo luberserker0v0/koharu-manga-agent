@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { IPC_CHANNELS } from "../main/ipc/channels";
+import type { ImageFolderUploadRequest, ImageUploadResult } from "../shared/image_upload";
+import type { ArtifactDownloadRequest, ArtifactDownloadResult } from "../shared/artifact_download";
 
 const backendBaseUrlArgument = process.argv.find((argument) => argument.startsWith("--backend-base-url="));
 const backendBaseUrl = backendBaseUrlArgument
@@ -25,10 +27,10 @@ const desktopApi = {
     confirmLabel?: string;
     cancelLabel?: string;
   }) => ipcRenderer.invoke(IPC_CHANNELS.CONFIRM_DIALOG, options),
-  readJsonFile: (targetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.READ_JSON_FILE, targetPath),
-  writeJsonFile: (targetPath: string, data: unknown) =>
-    ipcRenderer.invoke(IPC_CHANNELS.WRITE_JSON_FILE, targetPath, data),
-  deletePath: (targetPath: string) => ipcRenderer.invoke(IPC_CHANNELS.DELETE_PATH, targetPath),
+  uploadImageFolder: (request: ImageFolderUploadRequest): Promise<ImageUploadResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.UPLOAD_IMAGE_FOLDER, request),
+  downloadJobArtifact: (request: ArtifactDownloadRequest): Promise<ArtifactDownloadResult> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD_JOB_ARTIFACT, request),
   validatePaths: (payload: {
     sourceFolder: string;
     outputFolder: string;

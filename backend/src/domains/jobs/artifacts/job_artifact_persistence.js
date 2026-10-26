@@ -4,7 +4,6 @@ function persistTranslationSnapshotArtifacts(store, jobId, result) {
   if (result?.sourcePreflight?.manifestPath) {
     store.addArtifact(jobId, "source_preflight_manifest", result.sourcePreflight.manifestPath, {
       preflightId: result.sourcePreflight.preflightId,
-      sourceFolder: result.sourcePreflight.sourceFolder,
       orderedDir: result.sourcePreflight.orderedDir,
       acceptedCount: result.sourcePreflight.summary?.acceptedCount || 0,
     });

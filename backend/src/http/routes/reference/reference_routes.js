@@ -16,17 +16,19 @@ const {
 } = require("./reference_management");
 const { applyManagedKoharuBaseUrl } = require("../runtime/runtime_context");
 const { badRequest, notFound, readJsonBody, sendJson } = require("../../server/http_helpers");
+const { publicSourcePreflight, streamPreflightImage } = require("./source_preflight_http");
+const { publicJob, withoutInternalLocations } = require("../jobs/job_http");
 
 async function handleReferenceList(ctx) {
   if (ctx.req.method !== "GET" || ctx.url.pathname !== "/references") return false;
-  sendJson(ctx.res, 200, { referenceSets: hydrateReferenceDisplayLabels(listReferenceSets()) });
+  sendJson(ctx.res, 200, { referenceSets: withoutInternalLocations(hydrateReferenceDisplayLabels(listReferenceSets())) });
   return true;
 }
 
 function referenceImportOptions(ctx, body) {
   const mangaId = body.mangaId || null;
   return {
-    sourceFolder: body.uploadId ? ctx.uploadService.resolveDirectory(body.uploadId, "reference") : body.sourceFolder,
+    sourceFolder: ctx.uploadService.resolveDirectory(body.uploadId, "reference"),
     label: body.label,
     language: normalizeLanguageTag(body.language),
     source: body.source || "imported_folder",
@@ -43,8 +45,35 @@ function referenceImportOptions(ctx, body) {
 async function handleReferenceImport(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/references/import") return false;
   const body = await readJsonBody(ctx.req);
-  sendJson(ctx.res, 201, { referenceSet: importReferenceFolder(referenceImportOptions(ctx, body)) });
+  if (!validUploadRequest(ctx, body)) return true;
+  const referenceSet = importReferenceFolder(referenceImportOptions(ctx, body));
+  releaseUpload(ctx, body.uploadId);
+  sendJson(ctx.res, 201, { referenceSet: withoutInternalLocations(referenceSet) });
   return true;
+}
+
+function validUploadRequest(ctx, body) {
+  if (!String(body.uploadId || "").trim() || Object.prototype.hasOwnProperty.call(body, "sourceFolder")) {
+    badRequest(ctx.res, "uploadId is required; sourceFolder is not accepted by this API.");
+    return false;
+  }
+  if (!ctx.uploadService) {
+    badRequest(ctx.res, "Upload service is unavailable.");
+    return false;
+  }
+  return true;
+}
+
+function releaseUpload(ctx, uploadId) {
+  try {
+    ctx.uploadService.remove(uploadId);
+  } catch (error) {
+    console.warn(`Failed to release upload ${uploadId}: ${error.message}`);
+  }
+}
+
+function sendPublicJson(res, status, payload) {
+  sendJson(res, status, withoutInternalLocations(payload));
 }
 
 function requireExtractionReviewService(ctx) {
@@ -64,7 +93,7 @@ async function handleExtractionReviewRead(ctx) {
   if (ctx.req.method !== "GET" || !match) return false;
   const review = requireExtractionReviewService(ctx).get(match[1]);
   if (!review) notFound(ctx.res);
-  else sendJson(ctx.res, 200, { review });
+  else sendPublicJson(ctx.res, 200, { review });
   return true;
 }
 
@@ -74,10 +103,10 @@ async function handleExtractionReviewSession(ctx) {
   const service = requireExtractionReviewService(ctx);
   if (ctx.req.method === "POST") {
     await prepareExtractionReviewRuntime(ctx);
-    sendJson(ctx.res, 201, { review: await service.start(match[1]) });
+    sendPublicJson(ctx.res, 201, { review: await service.start(match[1]) });
   } else {
     const body = await readJsonBody(ctx.req);
-    sendJson(ctx.res, 200, { review: await service.cancel(match[1], body.sessionId) });
+    sendPublicJson(ctx.res, 200, { review: await service.cancel(match[1], body.sessionId) });
   }
   return true;
 }
@@ -87,7 +116,7 @@ async function handleExtractionReviewSync(ctx) {
   if (ctx.req.method !== "POST" || !match) return false;
   const body = await readJsonBody(ctx.req);
   const review = await requireExtractionReviewService(ctx).sync(match[1], body.sessionId);
-  sendJson(ctx.res, 200, { review });
+  sendPublicJson(ctx.res, 200, { review });
   return true;
 }
 
@@ -96,7 +125,7 @@ async function handleExtractionReviewFinish(ctx) {
   if (ctx.req.method !== "POST" || !match) return false;
   const body = await readJsonBody(ctx.req);
   const review = await requireExtractionReviewService(ctx).finish(match[1], body.sessionId);
-  sendJson(ctx.res, 200, { review });
+  sendPublicJson(ctx.res, 200, { review });
   return true;
 }
 
@@ -105,7 +134,7 @@ async function handleExtractionReviewOrder(ctx) {
   if (ctx.req.method !== "PUT" || !match) return false;
   const body = await readJsonBody(ctx.req);
   const review = requireExtractionReviewService(ctx).saveOrder(match[1], body.pages);
-  sendJson(ctx.res, 200, { review });
+  sendPublicJson(ctx.res, 200, { review });
   return true;
 }
 
@@ -113,7 +142,7 @@ async function handleExtractionReviewConfirm(ctx) {
   const match = ctx.url.pathname.match(/^\/references\/([^/]+)\/extraction-review\/confirm$/);
   if (ctx.req.method !== "POST" || !match) return false;
   const review = requireExtractionReviewService(ctx).confirm(match[1]);
-  sendJson(ctx.res, 200, { review });
+  sendPublicJson(ctx.res, 200, { review });
   return true;
 }
 
@@ -126,7 +155,7 @@ async function handleReferenceDelete(ctx) {
   const deletedJobs = permanentlyDeleteMatchingJobs(ctx.jobManager, (job) =>
     jobs.some((candidate) => candidate.id === job.id),
   );
-  sendJson(ctx.res, 200, { deleted: deleteReferenceSet(referenceSetId), deletedJobs });
+  sendPublicJson(ctx.res, 200, { deleted: deleteReferenceSet(referenceSetId), deletedJobs });
   return true;
 }
 
@@ -145,14 +174,14 @@ function deleteReferenceExtractionData(ctx, referenceSetId) {
 async function handleReferenceExtractionDelete(ctx) {
   const match = ctx.url.pathname.match(/^\/references\/([^/]+)\/extraction$/);
   if (ctx.req.method !== "DELETE" || !match) return false;
-  sendJson(ctx.res, 200, deleteReferenceExtractionData(ctx, match[1]));
+  sendPublicJson(ctx.res, 200, deleteReferenceExtractionData(ctx, match[1]));
   return true;
 }
 
 async function handleReferenceObservation(ctx) {
   const match = ctx.url.pathname.match(/^\/references\/([^/]+)\/observation$/);
   if (ctx.req.method !== "GET" || !match) return false;
-  sendJson(ctx.res, 200, inspectChapterObservation(match[1]));
+  sendPublicJson(ctx.res, 200, inspectChapterObservation(match[1]));
   return true;
 }
 
@@ -171,7 +200,7 @@ async function handleReferenceObservationRebuild(ctx) {
   const match = ctx.url.pathname.match(/^\/references\/([^/]+)\/observation\/rebuild$/);
   if (ctx.req.method !== "POST" || !match) return false;
   const job = ctx.jobManager.createReferenceObservationJob({ ...observationJobInput(match[1]), force: true });
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
   return true;
 }
 
@@ -184,7 +213,7 @@ async function handleReferenceDeepReview(ctx) {
     nodeKeys: Array.isArray(body.nodeKeys) ? body.nodeKeys : [],
     reviewReason: body.reviewReason || "manual_review",
   });
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
   return true;
 }
 
@@ -201,7 +230,7 @@ async function handleBilingualEvidence(ctx) {
   const translatorId = requireTranslatorId(ctx);
   if (!translatorId) return true;
   const module = ctx.jobManager.engine.referenceBilingualEnrichmentModule;
-  sendJson(ctx.res, 200, module.load({ mangaId: match[1], translatorId }));
+  sendPublicJson(ctx.res, 200, module.load({ mangaId: match[1], translatorId }));
   return true;
 }
 
@@ -219,7 +248,7 @@ async function handleBilingualEnrichment(ctx) {
     targetFingerprint: prerequisites.target.fingerprint,
     trigger: "manual",
   });
-  sendJson(ctx.res, 202, job);
+  sendJson(ctx.res, 202, publicJob(job));
   return true;
 }
 
@@ -237,15 +266,18 @@ async function handleBilingualEvidenceLink(ctx) {
     sourceNodeKeys: body.sourceNodeKeys,
     targetNodeKeys: body.targetNodeKeys,
   });
-  sendJson(ctx.res, 200, result);
+  sendPublicJson(ctx.res, 200, result);
   return true;
 }
 
 async function handleSourcePreflightCreate(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/source-preflight") return false;
   const body = await readJsonBody(ctx.req);
-  const sourceFolder = body.uploadId ? ctx.uploadService.resolveDirectory(body.uploadId, "source") : body.sourceFolder;
-  sendJson(ctx.res, 200, ctx.sourcePreflightModule.preflight({ sourceFolder }));
+  if (!validUploadRequest(ctx, body)) return true;
+  const sourceFolder = ctx.uploadService.resolveDirectory(body.uploadId, "source");
+  const result = ctx.sourcePreflightModule.preflight({ sourceFolder });
+  releaseUpload(ctx, body.uploadId);
+  sendJson(ctx.res, 200, publicSourcePreflight(result));
   return true;
 }
 
@@ -254,14 +286,21 @@ async function handleSourcePreflightReorder(ctx) {
   if (ctx.req.method !== "POST" || !match) return false;
   const body = await readJsonBody(ctx.req);
   const result = ctx.sourcePreflightModule.reorder({ preflightId: match[1], orderedImageIds: body.orderedImageIds });
-  sendJson(ctx.res, 200, result);
+  sendJson(ctx.res, 200, publicSourcePreflight(result));
+  return true;
+}
+
+async function handleSourcePreflightImage(ctx) {
+  const match = ctx.url.pathname.match(/^\/source-preflight\/([^/]+)\/images\/([^/]+)\/content$/);
+  if (ctx.req.method !== "GET" || !match) return false;
+  streamPreflightImage(ctx.res, ctx.sourcePreflightModule.resolvePreviewImage(match[1], match[2]));
   return true;
 }
 
 async function handleSourcePreflightRead(ctx) {
   const match = ctx.url.pathname.match(/^\/source-preflight\/([^/]+)$/);
   if (ctx.req.method !== "GET" || !match) return false;
-  sendJson(ctx.res, 200, ctx.sourcePreflightModule.get(match[1]));
+  sendJson(ctx.res, 200, publicSourcePreflight(ctx.sourcePreflightModule.get(match[1])));
   return true;
 }
 
@@ -269,7 +308,7 @@ async function handleReferenceExtractionJob(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/jobs/reference-extraction") return false;
   const body = await readJsonBody(ctx.req);
   await ctx.jobManager.assertKoharuAvailableForJobType?.("reference_extraction", body);
-  sendJson(ctx.res, 202, ctx.jobManager.createReferenceExtractionJob(body));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createReferenceExtractionJob(body)));
   return true;
 }
 
@@ -289,7 +328,7 @@ async function handleReferenceIngestionJob(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/jobs/reference-ingestion") return false;
   const body = await readJsonBody(ctx.req);
   if (invalidReferenceIngestion(ctx.res, body)) return true;
-  sendJson(ctx.res, 202, ctx.jobManager.createReferenceIngestionJob(body));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createReferenceIngestionJob(body)));
   return true;
 }
 
@@ -314,7 +353,7 @@ async function handleReferenceIngestionBatch(ctx) {
   const body = await readJsonBody(ctx.req);
   const items = Array.isArray(body.items) ? body.items : [];
   if (invalidReferenceIngestionBatch(ctx.res, items)) return true;
-  sendJson(ctx.res, 202, { jobs: ctx.jobManager.createReferenceIngestionJobs(items) });
+  sendJson(ctx.res, 202, { jobs: ctx.jobManager.createReferenceIngestionJobs(items).map(publicJob) });
   return true;
 }
 
@@ -337,6 +376,7 @@ const REFERENCE_ROUTE_HANDLERS = [
   handleBilingualEvidenceLink,
   handleSourcePreflightCreate,
   handleSourcePreflightReorder,
+  handleSourcePreflightImage,
   handleSourcePreflightRead,
   handleReferenceExtractionJob,
   handleReferenceIngestionJob,

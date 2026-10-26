@@ -54,7 +54,8 @@ The backend accepts the configured per-file and file-count limits. Upload reques
 POST /api/v1/uploads/{uploadId}/complete
 ```
 
-A completed session is immutable. Create another session to replace its contents.
+A completed session is immutable. Create another session to replace its contents. A successful
+preflight consumes the session after copying accepted images into preflight-owned storage.
 
 ### 4. Run source preflight
 
@@ -98,7 +99,9 @@ Content-Type: application/json
 }
 ```
 
-The backend owns the export location and generates it beneath its configured `paths.translated` root. Browser clients must not send `outputDir` or depend on a backend filesystem path. A trusted desktop deployment may still supply the optional legacy override while that GUI integration remains supported.
+The backend owns the export location and generates it beneath its configured `paths.translated` root.
+No client may send `outputDir` or depend on a backend filesystem path. Desktop clients download Job
+Artifacts into their locally configured output folder after export completes.
 
 The response is `202 Accepted` with the queued Job. Keep its `id`. A `202` response means accepted, not completed.
 
@@ -214,11 +217,10 @@ Activation is atomic and idempotent. Use the same endpoint with an older `revisi
 The extension should persist `rootJobId` and backend revision IDs, but the backend remains the
 authoritative active-version store.
 
-### 11. Upload retention
+### 11. Upload lifecycle
 
-Do not delete the source upload immediately after Translation. Post-edit and re-export operations can still depend on the original source images referenced by the preflight record.
-
-When the chapter no longer needs those operations, delete it explicitly:
+Source preflight and Reference import release a completed upload after successfully copying its
+images into backend-owned durable storage. To abandon an upload before submitting it, delete it explicitly:
 
 ```http
 DELETE /api/v1/uploads/{uploadId}

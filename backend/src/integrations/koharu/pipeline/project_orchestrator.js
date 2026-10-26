@@ -166,7 +166,7 @@ async function verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKin
   };
 }
 
-async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provider") {
+async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provider", generationOptions = null) {
   const response = await apiFetch(ENDPOINTS.LLM_CURRENT, {
     method: "PUT",
     baseUrl,
@@ -176,6 +176,7 @@ async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provi
         modelId,
         providerId: targetKind === "local" ? null : providerId,
       },
+      ...(generationOptions ? { options: generationOptions } : {}),
     },
   });
   if (!response.ok) {
@@ -194,7 +195,7 @@ async function fetchTranslationCatalog(baseUrl) {
   return ensureOkJson(await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl }), "Fetch translation catalog");
 }
 
-async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLanguage = null) {
+async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLanguage = null, generationOptions = null) {
   const catalog = await fetchTranslationCatalog(baseUrl);
   const selected = resolveTranslationTarget({
     catalog,
@@ -202,12 +203,42 @@ async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLang
     defaultTarget: config.translation?.defaultTarget,
     targetLanguage,
   });
-  const loaded = await loadModelTarget(selected.modelId, baseUrl, selected.providerId, selected.targetKind);
+  const effectiveOptions = selected.kind === "machine_translation" || generationOptions?.temperature == null
+    ? null : { temperature: generationOptions.temperature };
+  const loaded = await loadModelTarget(
+    selected.modelId, baseUrl, selected.providerId, selected.targetKind, effectiveOptions,
+  );
   return {
     ...selected,
     data: loaded.data,
+    generationOptions: effectiveOptions,
     verifiedAfterEmptyBody: loaded.verifiedAfterEmptyBody === true,
   };
+}
+
+function providerPatch(provider, proxy) {
+  return {
+    id: provider.id,
+    baseUrl: provider.id === proxy.providerId ? proxy.baseUrl : provider.base_url || provider.baseUrl,
+    apiKey: provider.api_key || provider.apiKey || "[REDACTED]",
+  };
+}
+
+async function ensureTranslationProviderProxy(koharuBaseUrl, proxy) {
+  if (!proxy?.providerId || !proxy?.baseUrl) return null;
+  const current = await ensureOkJson(await apiFetch(ENDPOINTS.CONFIG, { baseUrl: koharuBaseUrl }), "Read Koharu config");
+  const providers = Array.isArray(current.providers) ? current.providers : [];
+  const target = providers.find((provider) => provider?.id === proxy.providerId);
+  if (!target) throw new Error(`Koharu provider is unavailable: ${proxy.providerId}.`);
+  if ((target.base_url || target.baseUrl) === proxy.baseUrl) {
+    return { changed: false, providerId: proxy.providerId, baseUrl: proxy.baseUrl };
+  }
+  const response = await apiFetch(ENDPOINTS.CONFIG, {
+    method: "PATCH", baseUrl: koharuBaseUrl,
+    body: { providers: providers.map((provider) => providerPatch(provider, proxy)) },
+  });
+  if (!response.ok) throw new Error(`Configure Koharu provider proxy failed (${response.status}).`);
+  return { changed: true, providerId: proxy.providerId, baseUrl: proxy.baseUrl };
 }
 
 async function fetchEnginesCatalog(baseUrl) {
@@ -243,12 +274,15 @@ async function resolveEngines(baseUrl, configuredEngines = null) {
   const usedEngineIds = new Set();
 
   for (const definition of ENGINE_ORDER) {
-    if (
-      resolved[definition.key] &&
-      !usedEngineIds.has(resolved[definition.key]) &&
-      catalogHasEngine(definition.key, resolved[definition.key], catalog)
-    ) {
-      usedEngineIds.add(resolved[definition.key]);
+    const configured = resolved[definition.key];
+    if (configured && !catalogHasEngine(definition.key, configured, catalog)) {
+      throw new Error(`Configured Koharu engine is unavailable: ${definition.key}=${configured}.`);
+    }
+    if (configured && usedEngineIds.has(configured)) {
+      throw new Error(`Configured Koharu engine is duplicated: ${configured}.`);
+    }
+    if (configured) {
+      usedEngineIds.add(configured);
       continue;
     }
     const selected = pickEngineFromCatalog(definition.key, catalog, usedEngineIds);
@@ -301,10 +335,12 @@ async function createAndOpenProject(baseUrl) {
 }
 
 async function orchestrate(options) {
+  const translationProxy = await ensureTranslationProviderProxy(options.baseUrl, options.translationProxy);
   const translationTarget = await loadTranslationTarget(
     options.baseUrl,
     options.translationTarget || null,
     options.targetLanguage || null,
+    options.generationOptions || null,
   );
   const { projectName } = await createAndOpenProject(options.baseUrl);
   const upload = await uploadPages(options.sourceImagePaths, options.baseUrl);
@@ -318,6 +354,7 @@ async function orchestrate(options) {
     steps,
     upload,
     translationTarget,
+    translationProxy,
   };
 }
 
@@ -325,6 +362,7 @@ module.exports = {
   ENGINE_ORDER,
   buildPipelineSteps,
   createProjectName,
+  ensureTranslationProviderProxy,
   loadTranslationTarget,
   orchestrate,
   resolveEngines,

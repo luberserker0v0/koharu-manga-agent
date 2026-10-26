@@ -112,9 +112,9 @@ These are stored locally and reused by default for future jobs.
 
 #### Source and Output
 - `outputFolder`
-  - required for usable translation jobs
+  - local destination where successful export artifacts are downloaded automatically
   - default should be the current user Downloads folder
-  - this remains an optional trusted-desktop export override; browser clients use the backend-owned export directory and Artifact API
+  - never sent to the backend as a Translation or Post-edit Export payload field
 - `referenceFolder`
   - optional
   - root folder for other translated chapters used for comparison
@@ -147,14 +147,10 @@ These are stored locally and reused by default for future jobs.
 - `koharu.baseUrl`
 
 #### Pipeline Engines
-- `engines.detect`
-- `engines.fontDetect`
-- `engines.segment`
-- `engines.bubbleSegment`
-- `engines.ocr`
-- `engines.translate`
-- `engines.clean`
-- `engines.render`
+- map each translation mode to a named `pipeline` profile
+- show `fast`, `quality`, and `low_memory` profile summaries
+- edit `pipeline.profiles.<id>.engines.*` only in the advanced profile editor
+- do not expose a second global engine override source
 
 ### Per-Job Settings
 These must be visible and editable at job creation time.
@@ -234,7 +230,7 @@ Responsibilities:
 - create reference ingestion jobs
 - capture an optional translator name for reference-preparation jobs
 - inspect OCR / extracted reference outputs
-- edit or delete extracted reference JSON files when operator review is needed
+- edit or discard Extraction review drafts through backend review APIs; never mutate backend files directly
 - preview ingestion artifacts such as glossary, story context, style profile, and translation context
 - separate reference preparation from translation-job creation so OCR review happens before ingestion when needed
 
@@ -244,7 +240,6 @@ Current v1 translation form behavior:
 - `Start translation` stays disabled until:
   - `sourceFolder` is chosen
   - `mangaLabel` is entered
-  - `outputFolder` is valid
   - source preflight succeeds
   - no relevant translation-job fields changed after the most recent validation
 - while disabled, `Start translation` is gray and shows blocking reasons through hover text and an on-page checklist
@@ -268,10 +263,10 @@ Mode-specific translation requirements:
 
 | Mode | Goal | Required fields | Conditional fields | Running text |
 | --- | --- | --- | --- | --- |
-| `quick` / `快速翻譯` | complete this translation only, without reference-style input and without local-style updates | `sourceFolder`, manga/output translator/chapter binding | none | `快速翻譯中...` |
-| `reference_style` / `參考風格翻譯` | translate using completed Reference style and terminology without updating local memory | `sourceFolder`, manga/output clone/chapter binding | `sourceChapterId`, `glossaryMode`, optional Quality | `參考風格翻譯中...` |
-| `local_style` / `本地風格翻譯` | translate using a clone's accumulated local memory and replace that chapter's learned evidence | `sourceFolder`, manga/clone/chapter binding | optional quality validation | `使用本地風格翻譯中...` |
-| `learning_style` / `學習風格翻譯` | use completed Reference and clone memory, force Quality, then replace that chapter's learned evidence | `sourceFolder`, manga/reference translator/output clone/chapter binding | `sourceChapterId`, `glossaryMode` | `學習風格翻譯中...` |
+| `quick` / `快速翻譯` | complete this translation only, without reference-style input and without local-style updates | completed source preflight, manga/output translator/chapter binding | none | `快速翻譯中...` |
+| `reference_style` / `參考風格翻譯` | translate using completed Reference style and terminology without updating local memory | completed source preflight, manga/output clone/chapter binding | `sourceChapterId`, `glossaryMode`, optional Quality | `參考風格翻譯中...` |
+| `local_style` / `本地風格翻譯` | translate using a clone's accumulated local memory and replace that chapter's learned evidence | completed source preflight, manga/clone/chapter binding | optional quality validation | `使用本地風格翻譯中...` |
+| `learning_style` / `學習風格翻譯` | use completed Reference and clone memory, force Quality, then replace that chapter's learned evidence | completed source preflight, manga/reference translator/output clone/chapter binding | `sourceChapterId`, `glossaryMode` | `學習風格翻譯中...` |
 
 Recommended secondary stage text:
 - `更新本地風格中...`

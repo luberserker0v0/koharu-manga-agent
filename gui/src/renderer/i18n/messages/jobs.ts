@@ -20,6 +20,15 @@ export const jobsMessagesZhTW = {
   "jobs.translationTarget.unsupportedLanguage": "所選翻譯模型不支援目前的目標語言",
   "jobs.translationTarget.machinePostEdit":
     "這個模式會先使用機器翻譯產生初稿，再由 AO 套用 Reference／在地知識進行修訂。",
+  "jobs.preflight.uploading": "正在將來源圖片上傳至後端並執行檢查...",
+  "jobs.preflight.ready": (params?: Record<string, string | number>) =>
+    `來源檢查完成：${params?.count ?? 0} 張圖片可用。`,
+  "jobs.preflight.failed": "來源檢查失敗。",
+  "jobs.preflight.failedDetail": (params?: Record<string, string | number>) =>
+    `來源檢查失敗：${params?.detail ?? "未知錯誤"}`,
+  "jobs.preflight.required": "請先執行來源檢查。",
+  "jobs.preflight.noUsableImages": "來源檢查未找到可用圖片。",
+  "jobs.preflight.rerunRequired": "翻譯設定變更後，請重新執行來源檢查。",
   "jobs.outputProfile.label": "\u4f5c\u54c1 / \u8f38\u51fa\u8b6f\u8005",
   "jobs.outputProfile.help":
     "\u5fc5\u586b\u3002\u9078\u64c7\u73fe\u6709\u7684\u8f38\u51fa\u8b6f\u8005\u8a2d\u5b9a\uff0c\u6216\u5efa\u7acb\u65b0\u7684\u4f5c\u54c1\u8207\u8b6f\u8005\u7d44\u5408\u3002",
@@ -90,6 +99,15 @@ export const jobsMessagesEnUS = {
   "jobs.translationTarget.unsupportedLanguage": "The selected translation model does not support the target language",
   "jobs.translationTarget.machinePostEdit":
     "This mode uses Machine Translation for the first draft, then AO applies Reference or local-knowledge revisions.",
+  "jobs.preflight.uploading": "Uploading source images to the backend and running preflight...",
+  "jobs.preflight.ready": (params?: Record<string, string | number>) =>
+    `Source preflight completed: ${params?.count ?? 0} usable images.`,
+  "jobs.preflight.failed": "Source preflight failed.",
+  "jobs.preflight.failedDetail": (params?: Record<string, string | number>) =>
+    `Source preflight failed: ${params?.detail ?? "unknown error"}`,
+  "jobs.preflight.required": "Run source preflight.",
+  "jobs.preflight.noUsableImages": "Source preflight did not find any usable images.",
+  "jobs.preflight.rerunRequired": "Run source preflight again after changing translation settings.",
   "jobs.outputProfile.label": "Manga / output translator",
   "jobs.outputProfile.help":
     "Required. Select an existing output translator profile or create a new manga and translator pair.",

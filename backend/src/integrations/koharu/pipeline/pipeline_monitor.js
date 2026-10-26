@@ -1,8 +1,43 @@
 const { config, runtime } = require("../../../config");
 const { ENDPOINTS, buildUrl } = require("../client/koharu_client");
 
+const COMPLETED_PIPELINE_STATUSES = new Set(["completed", "completed_with_errors"]);
+const FAILED_PIPELINE_STATUSES = new Set(["failed", "canceled", "cancelled", "stopped"]);
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createCancellationSignal(isCanceled) {
+  let timer = null;
+  let resolveRequest;
+  const promise = new Promise((resolve) => { resolveRequest = resolve; });
+  if (typeof isCanceled === "function") {
+    if (isCanceled()) resolveRequest();
+    else {
+      const intervalMs = Math.min(Math.max(runtime.pollIntervalMs || 100, 50), 250);
+      timer = setInterval(() => {
+        if (!isCanceled()) return;
+        clearInterval(timer);
+        timer = null;
+        resolveRequest();
+      }, intervalMs);
+    }
+  }
+  return { promise, close: () => { if (timer) clearInterval(timer); } };
+}
+
+function createPipelineCanceledError(operationId) {
+  const error = new Error(`Koharu operation ${operationId} was stopped by user request.`);
+  error.code = "job_canceled";
+  return error;
+}
+
+function createOperationStopError(operationId, cause) {
+  const error = new Error(`Koharu operation ${operationId} could not be stopped: ${cause.message}`);
+  error.code = "koharu_cancel_failed";
+  error.cause = cause;
+  return error;
 }
 
 function createTerminalPipelineError(status, detail = null) {
@@ -12,6 +47,62 @@ function createTerminalPipelineError(status, detail = null) {
   error.pipelineStatus = status;
   error.pipelineDetail = detail;
   return error;
+}
+
+function createPipelineTimeoutError(operationId) {
+  const error = new Error(`Pipeline operation ${operationId} did not reach a terminal state before timeout.`);
+  error.code = "koharu_pipeline_timeout";
+  error.pipelineTerminal = true;
+  error.pipelineStatus = "timeout";
+  return error;
+}
+
+function recoveredSceneIsComplete(summary, totalPagesHint) {
+  const pagesMatch = typeof totalPagesHint !== "number" || summary.totalPages === totalPagesHint;
+  return pagesMatch && summary.totalTextNodes > 0 && summary.translatedNodes >= summary.totalTextNodes;
+}
+
+function pollingProgressSignature(operation, progress) {
+  return JSON.stringify([
+    operation?.status,
+    operation?.progress,
+    progress?.completedPages,
+    progress?.currentPageIndex,
+    progress?.engine,
+  ]);
+}
+
+function markSseActivity(data, state, onActivity) {
+  const signature = JSON.stringify([data?.status, data?.overallPercent, data?.currentPage, data?.step]);
+  if (signature === state.lastProgressSignature) return;
+  state.lastProgressSignature = signature;
+  onActivity();
+}
+
+function createIdleTimeout(operationId, timeoutMs) {
+  const controller = new AbortController();
+  let timeoutHandle = null;
+  let timedOut = false;
+  function touch() {
+    clearTimeout(timeoutHandle);
+    timeoutHandle = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+  }
+  function rethrow(error) {
+    if (timedOut) throw createPipelineTimeoutError(operationId);
+    throw error;
+  }
+  function close() {
+    clearTimeout(timeoutHandle);
+    controller.abort();
+  }
+  return { controller, touch, rethrow, close };
+}
+
+function attachCancellationAbort(cancelState, idle) {
+  const abort = () => idle.close();
+  cancelState.abort = abort;
+  if (cancelState.stopPromise) abort();
+  return () => { if (cancelState.abort === abort) cancelState.abort = null; };
 }
 
 function summarizePage(page) {
@@ -78,6 +169,22 @@ function getSsePageName(sceneSummary, currentPageIndex) {
   return sceneSummary.pageNames[currentPageIndex - 1] || null;
 }
 
+function completedPagesBeforeCurrent(currentPageIndex) {
+  return typeof currentPageIndex === "number" ? Math.max(0, currentPageIndex - 1) : null;
+}
+
+function buildSseTelemetry(data) {
+  return {
+    source: "sse",
+    event: typeof data?.event === "string" ? data.event : "jobProgress",
+    rawStatus: typeof data?.status === "string" ? data.status : null,
+    rawStep: typeof data?.step === "string" ? data.step : null,
+    rawCurrentPage: typeof data?.currentPage === "number" ? data.currentPage : null,
+    rawTotalPages: typeof data?.totalPages === "number" ? data.totalPages : null,
+    rawOverallPercent: typeof data?.overallPercent === "number" ? data.overallPercent : null,
+  };
+}
+
 function buildProgressPayloadFromSseEvent(options) {
   const { operationId, data, sceneSummary, totalPagesHint = null, pipelinePlan = [] } = options;
   const normalizedPlan = normalizePipelinePlan(pipelinePlan);
@@ -98,10 +205,12 @@ function buildProgressPayloadFromSseEvent(options) {
     engine: step,
     engineIndex: engineIndex >= 0 ? engineIndex : null,
     engineStatus: status,
-    completedPages: currentPageIndex,
+    completedPages: completedPagesBeforeCurrent(currentPageIndex),
     totalPages,
     currentPageIndex,
     currentPageName,
+    progressSemanticsVersion: 2,
+    telemetry: buildSseTelemetry(data),
   };
 }
 
@@ -130,7 +239,7 @@ function noPlanProgress(operation, rawProgress) {
   };
 }
 function isCompletedStatus(status) {
-  return status === "completed" || status === "completed_with_errors";
+  return COMPLETED_PIPELINE_STATUSES.has(status);
 }
 function completedProgress(normalizedPlan, rawProgress) {
   return {
@@ -141,7 +250,7 @@ function completedProgress(normalizedPlan, rawProgress) {
   };
 }
 function isTerminalFailureStatus(status) {
-  return status === "failed" || status === "cancelled";
+  return FAILED_PIPELINE_STATUSES.has(status);
 }
 function terminalFailureProgress(normalizedPlan, operation, rawProgress) {
   const fallbackIndex =
@@ -177,10 +286,11 @@ function buildProgressPayloadTotalPages(totalPagesHint, sceneSummary) {
   return typeof totalPagesHint === "number" && totalPagesHint > 0 ? totalPagesHint : sceneSummary.totalPages || null;
 }
 function buildProgressPayloadCompletedPages(sceneSummary, engineProgress, totalPages) {
-  if (sceneSummary.translatedPages > 0) return sceneSummary.translatedPages;
   if (typeof engineProgress.progress === "number" && typeof totalPages === "number") {
-    return Math.max(0, Math.min(totalPages, Math.round(totalPages * engineProgress.progress)));
+    return Math.max(0, Math.min(totalPages, Math.floor(totalPages * engineProgress.progress)));
   }
+  if (engineProgress.engineStatus === "completed" && typeof totalPages === "number") return totalPages;
+  if (sceneSummary.translatedPages > 0) return Math.max(0, sceneSummary.translatedPages - 1);
   return null;
 }
 function buildProgressPayloadCurrentPageIndex(totalPages, completedPages) {
@@ -210,6 +320,12 @@ function buildProgressPayload({ operation, sceneSummary, totalPagesHint = null, 
     totalPages,
     currentPageIndex,
     currentPageName,
+    progressSemanticsVersion: 2,
+    telemetry: {
+      source: "polling",
+      rawStatus: typeof operation?.status === "string" ? operation.status : null,
+      rawProgress: typeof operation?.progress === "number" ? operation.progress : null,
+    },
   };
 }
 
@@ -240,23 +356,32 @@ class PipelineMonitorModule {
   async runWithPolling(options) {
     const { operationId, baseUrl, timeoutMs, onProgress, isCanceled,
       pipelinePlan = [], totalPagesHint = null } = options;
-    const startedAt = Date.now();
-    const terminalStates = new Set(["completed", "failed", "completed_with_errors", "cancelled"]);
-    while (Date.now() - startedAt < timeoutMs) {
-      if (isCanceled && isCanceled()) throw new Error("Job canceled");
+    let lastActivityAt = Date.now();
+    let lastSignature = null;
+    while (Date.now() - lastActivityAt < timeoutMs) {
+      if (isCanceled && isCanceled()) await this.stopCanceledOperation(options);
       const operation = await this.findPollingOperation(baseUrl, operationId);
       if (!operation) {
-        return this.recover({ operationId, baseUrl, reason: "listener_attached_too_late" });
+        return this.recover({ operationId, baseUrl, reason: "listener_attached_too_late", totalPagesHint });
       }
-      if (typeof onProgress === "function") {
-        await this.emitPollingProgress({ operation, baseUrl, totalPagesHint, pipelinePlan, onProgress });
-      }
-      if (terminalStates.has(operation.status)) {
+      const progress = await this.emitPollingProgress({ operation, baseUrl, totalPagesHint, pipelinePlan, onProgress });
+      const signature = pollingProgressSignature(operation, progress);
+      if (signature !== lastSignature) { lastSignature = signature; lastActivityAt = Date.now(); }
+      if (isCompletedStatus(operation.status) || isTerminalFailureStatus(operation.status)) {
         return this.handlePollingTerminal({ operation, baseUrl });
       }
       await sleep(runtime.pollIntervalMs);
     }
-    return this.recover({ operationId, baseUrl, reason: "timeout" });
+    return this.finishPollingTimeout({ operationId, baseUrl, totalPagesHint });
+  }
+
+  async finishPollingTimeout({ operationId, baseUrl, totalPagesHint }) {
+    const operation = await this.findPollingOperation(baseUrl, operationId);
+    if (!operation) return this.recover({ operationId, baseUrl, reason: "operation_disappeared", totalPagesHint });
+    if (isCompletedStatus(operation.status) || isTerminalFailureStatus(operation.status)) {
+      return this.handlePollingTerminal({ operation, baseUrl });
+    }
+    throw createPipelineTimeoutError(operationId);
   }
 
   async findPollingOperation(baseUrl, operationId) {
@@ -266,18 +391,13 @@ class PipelineMonitorModule {
 
   async emitPollingProgress({ operation, baseUrl, totalPagesHint, pipelinePlan, onProgress }) {
     const sceneSummary = await this.buildSceneSummary(baseUrl, totalPagesHint);
-    onProgress(
-      buildProgressPayload({
-        operation,
-        sceneSummary,
-        totalPagesHint,
-        pipelinePlan,
-      }),
-    );
+    const progress = buildProgressPayload({ operation, sceneSummary, totalPagesHint, pipelinePlan });
+    if (typeof onProgress === "function") onProgress(progress);
+    return progress;
   }
 
   async handlePollingTerminal({ operation, baseUrl }) {
-    if (operation.status === "completed" || operation.status === "completed_with_errors") {
+    if (isCompletedStatus(operation.status)) {
       const scene = await this.client.getScene(baseUrl);
       const summary = summarizeScene(scene);
       return {
@@ -300,7 +420,7 @@ class PipelineMonitorModule {
     while (true) {
       if (context.isCanceled && context.isCanceled()) {
         controller.abort();
-        throw new Error("Job canceled");
+        await this.stopCanceledOperation(context);
       }
       const { value, done } = await reader.read();
       if (done) throw new Error("SSE disconnected before terminal event");
@@ -316,27 +436,32 @@ class PipelineMonitorModule {
 
   async runWithSse(options) {
     const { operationId, baseUrl, timeoutMs, onProgress, isCanceled,
-      pipelinePlan = [], totalPagesHint = null } = options;
+      pipelinePlan = [], totalPagesHint = null, cancelState = {} } = options;
     const initialResult = await this.resolveInitialSseOperation({
       operationId,
       baseUrl,
       totalPagesHint,
     });
     if (initialResult) return initialResult;
-    const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(new Error("SSE timeout")), timeoutMs);
+    const idle = createIdleTimeout(operationId, timeoutMs);
+    idle.touch();
+    const detachCancellationAbort = attachCancellationAbort(cancelState, idle);
     const state = {
       sceneSummary: await this.buildSceneSummary(baseUrl, totalPagesHint),
       eventType: "",
+      lastProgressSignature: null,
     };
     try {
-      const response = await this.fetchSseResponse(baseUrl, controller);
+      const response = await this.fetchSseResponse(baseUrl, idle.controller);
       return await this.readSseEvents(response, {
-        state, operationId, baseUrl, totalPagesHint, pipelinePlan, onProgress, isCanceled,
-      }, controller);
+         state, operationId, baseUrl, totalPagesHint, pipelinePlan, onProgress,
+         isCanceled, cancelState, onActivity: idle.touch,
+      }, idle.controller);
+    } catch (error) {
+      idle.rethrow(error);
     } finally {
-      clearTimeout(timeoutHandle);
-      controller.abort();
+      detachCancellationAbort();
+      idle.close();
     }
   }
 
@@ -348,9 +473,10 @@ class PipelineMonitorModule {
         operationId,
         baseUrl,
         reason: "listener_attached_too_late",
+        totalPagesHint,
       });
     }
-    if (currentOperation.status === "completed" || currentOperation.status === "completed_with_errors") {
+    if (isCompletedStatus(currentOperation.status)) {
       const scene = await this.client.getScene(baseUrl);
       const summary = summarizeScene(scene);
       return {
@@ -363,7 +489,7 @@ class PipelineMonitorModule {
         reason: currentOperation.status,
       };
     }
-    if (["failed", "cancelled"].includes(currentOperation.status)) {
+    if (isTerminalFailureStatus(currentOperation.status)) {
       throw createTerminalPipelineError(currentOperation.status);
     }
     return null;
@@ -381,7 +507,7 @@ class PipelineMonitorModule {
     return response;
   }
 
-  async handleSseLine({ rawLine, state, operationId, baseUrl, totalPagesHint, pipelinePlan, onProgress }) {
+  async handleSseLine({ rawLine, state, operationId, baseUrl, totalPagesHint, pipelinePlan, onProgress, onActivity }) {
     const line = rawLine.trimEnd();
     if (!line) {
       state.eventType = "";
@@ -393,6 +519,7 @@ class PipelineMonitorModule {
     }
     const data = await this.parseSseDataPayload(line, state, operationId);
     if (data === null) return null;
+    markSseActivity(data, state, onActivity);
     if ((state.eventType === "jobProgress" || data?.event === "jobProgress") && typeof onProgress === "function") {
       await this.handleSseProgress({
         operationId,
@@ -431,10 +558,8 @@ class PipelineMonitorModule {
   }
 
   async handleSseProgress({ operationId, data, state, baseUrl, totalPagesHint, pipelinePlan, onProgress }) {
-    const overallPercent = typeof data?.overallPercent === "number" ? data.overallPercent : null;
     const currentPage = typeof data?.currentPage === "number" ? data.currentPage : null;
     const totalPages = typeof data?.totalPages === "number" ? data.totalPages : null;
-    const step = typeof data?.step === "string" ? data.step : null;
     const needsSceneRefresh =
       !state.sceneSummary.pageNames.length ||
       (currentPage !== null && currentPage + 1 > state.sceneSummary.pageNames.length) ||
@@ -445,13 +570,7 @@ class PipelineMonitorModule {
     onProgress(
       buildProgressPayloadFromSseEvent({
         operationId,
-        data: {
-          status: "running",
-          overallPercent,
-          currentPage,
-          totalPages,
-          step,
-        },
+        data,
         sceneSummary: state.sceneSummary,
         totalPagesHint,
         pipelinePlan,
@@ -461,7 +580,7 @@ class PipelineMonitorModule {
 
   async handleSseFinished({ data, baseUrl }) {
     const finalStatus = typeof data?.status === "string" ? data.status : "completed";
-    if (["completed", "completed_with_errors"].includes(finalStatus)) {
+    if (isCompletedStatus(finalStatus)) {
       const scene = await this.client.getScene(baseUrl);
       const summary = summarizeScene(scene);
       return {
@@ -473,11 +592,11 @@ class PipelineMonitorModule {
     throw createTerminalPipelineError(finalStatus, data?.error || null);
   }
 
-  async recover({ operationId, baseUrl, reason }) {
+  async recover({ operationId, baseUrl, reason, totalPagesHint = null }) {
     const scene = await this.client.getScene(baseUrl);
     const summary = summarizeScene(scene);
 
-    if (summary.translatedNodes > 0) {
+    if (recoveredSceneIsComplete(summary, totalPagesHint)) {
       return {
         summary: {
           steps: {
@@ -494,11 +613,12 @@ class PipelineMonitorModule {
     throw new Error(`Unable to recover operation ${operationId} after ${reason}. No translated scene state was found.`);
   }
 
-  async run(options) {
+  async runPreferred(options) {
     const { operationId, baseUrl, timeoutMs = config.timeouts.sseListen * 1000,
       onProgress, isCanceled, pipelinePlan = [], totalPagesHint = null } = options;
     try {
       return await this.runWithSse({
+        ...options,
         operationId,
         baseUrl,
         timeoutMs,
@@ -508,8 +628,10 @@ class PipelineMonitorModule {
         totalPagesHint,
       });
     } catch (error) {
-      if (error?.pipelineTerminal || (isCanceled && isCanceled())) throw error;
+      if (isCanceled && isCanceled()) return this.stopCanceledOperation(options);
+      if (error?.pipelineTerminal) throw error;
       return this.runWithPolling({
+        ...options,
         operationId,
         baseUrl,
         timeoutMs,
@@ -518,6 +640,36 @@ class PipelineMonitorModule {
         pipelinePlan,
         totalPagesHint,
       });
+    }
+  }
+
+  async requestOperationStop(operationId, baseUrl) {
+    try {
+      await this.client.stopOperation(operationId, baseUrl);
+    } catch (cause) {
+      throw createOperationStopError(operationId, cause);
+    }
+    throw createPipelineCanceledError(operationId);
+  }
+
+  stopCanceledOperation(options) {
+    const state = options.cancelState || (options.cancelState = {});
+    if (!state.stopPromise) {
+      state.stopPromise = this.requestOperationStop(options.operationId, options.baseUrl);
+    }
+    if (typeof state.abort === "function") state.abort();
+    return state.stopPromise;
+  }
+
+  async run(options) {
+    const monitoredOptions = { ...options, cancelState: {} };
+    const cancellation = createCancellationSignal(options.isCanceled);
+    const stopTask = cancellation.promise.then(() => this.stopCanceledOperation(monitoredOptions));
+    stopTask.catch(() => {});
+    try {
+      return await this.runPreferred(monitoredOptions);
+    } finally {
+      cancellation.close();
     }
   }
 }

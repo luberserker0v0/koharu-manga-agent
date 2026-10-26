@@ -145,7 +145,7 @@ function handleRunJobFailureSideEffects(manager, job, jobId, error, canceled, st
 }
 
 async function handleRunJobFailure(manager, job, jobId, error) {
-  const canceled = manager.cancellations.has(jobId);
+  const canceled = manager.cancellations.has(jobId) && error?.code !== "koharu_cancel_failed";
   const status = canceled ? "canceled" : "failed";
   const current = manager.store.getJob(jobId);
   manager.store.deleteTranslationPageRevisionsForJob?.(jobId);

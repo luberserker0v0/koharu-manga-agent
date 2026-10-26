@@ -34,14 +34,87 @@ const { ensureTranslationChapterObservation } = require("../../translation/execu
 const { ensureReferenceLocaleProjection } = require("../../reference/locale/reference_locale_projection");
 const {
   assertTranslationMemoryReady,
+  buildTranslationSystemPrompt,
   composeTranslationMemory,
-  formatTranslationMemoryPrompt,
 } = require("../../translation/memory/translation_memory");
 const { resolveTranslationModePolicy } = require("../../translation/modes/translation_modes");
+const { resolvePipelineProfile } = require("../../translation/pipeline/pipeline_profiles");
 const { resolveExportOutputDir } = require("../../translation/execution/export_output_path");
 const { isMachineTranslationTarget } = require("../../../integrations/koharu/translation/translation_targets");
 const { deleteChapterLearningData } = require("../../knowledge/learning/knowledge");
 const { buildPipelinePlan, resolveReferenceUsage, translationSceneFingerprint } = require("./workflow_helpers");
+const { PipelineMetricsCollector } = require("../../../integrations/koharu/pipeline/pipeline_metrics");
+const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
+
+function resolveDeepAuditOutputDir(sourceJob, jobId) {
+  return resolveExportOutputDir({
+    mangaId: sourceJob.payload?.mangaId,
+    translatorId: sourceJob.payload?.translatorId,
+    chapterId: sourceJob.payload?.chapterId,
+    jobId,
+    variant: "deep-audit",
+  });
+}
+
+function summarizePipelineTranslationTarget(target) {
+  if (!target || typeof target !== "object") return null;
+  return {
+    kind: target.kind || null,
+    providerId: target.providerId || null,
+    modelId: target.modelId || null,
+    targetKind: target.targetKind || null,
+  };
+}
+
+function createTranslationPipelineMetrics(ctx) {
+  return new PipelineMetricsCollector({
+    operationId: ctx.setup.operationId,
+    translationTarget: summarizePipelineTranslationTarget(ctx.setup.translationTarget),
+    generationSettings: ctx.setup.generationSettings || null,
+    lmStudio: ctx.setup.lmStudio || null,
+    systemPrompt: ctx.setup.systemPromptMetadata || null,
+    pipelineProfile: ctx.setup.pipelineProfile || null,
+  });
+}
+
+function observeTranslationPipeline(metrics, hooks, progress) {
+  metrics.observe(progress);
+  hooks.emit("pipeline.progress", progress);
+}
+
+function completedPipelineProgress(ctx, pipelinePlan, pipeline, totalPagesHint) {
+  const totalPages = pipeline.summary?.totalPages || totalPagesHint;
+  const engineIndex = pipelinePlan.length > 0 ? pipelinePlan.length - 1 : null;
+  const currentPageName = typeof totalPages === "number" && Array.isArray(ctx.sourceImagePaths)
+    ? path.basename(ctx.sourceImagePaths[totalPages - 1] || "") || null
+    : null;
+  return {
+    operationId: ctx.setup.operationId,
+    status: "completed",
+    progress: 1,
+    engine: engineIndex === null ? null : pipelinePlan[engineIndex],
+    engineIndex,
+    engineStatus: "completed",
+    completedPages: totalPages || null,
+    totalPages: totalPages || null,
+    currentPageIndex: totalPages || null,
+    currentPageName,
+    progressSemanticsVersion: 2,
+    telemetry: { source: "backend_terminal", rawStatus: pipeline.summary?.finalStatus || "completed" },
+  };
+}
+
+function completeTranslationPipelineMetrics(metrics, status, pipeline = null, error = null) {
+  return metrics.complete({
+    status,
+    errorCode: error?.code || error?.pipelineStatus || null,
+    pipeline: pipeline ? {
+      finalStatus: pipeline.summary?.finalStatus || null,
+      recovered: pipeline.recovered === true,
+      reason: pipeline.reason || null,
+    } : null,
+  });
+}
 
 class WorkflowEngine {
   constructor(deps) {
@@ -72,6 +145,7 @@ class WorkflowEngine {
       referenceSetId: payload.referenceSetId,
       baseUrl,
       targetLanguage,
+      isCanceled: hooks.isCanceled,
     });
     if (payload.mangaId) this._syncReferenceExtractionBinding(payload, targetLanguage);
     const completedResult = this._buildReferenceExtractionResult(payload, result);
@@ -323,7 +397,6 @@ class WorkflowEngine {
     ctx.targetLanguage = payload.targetLanguage || config.defaults.targetLanguage;
     ctx.exportFormat = payload.exportFormat || config.defaults.exportFormat;
     ctx.outputDir = resolveExportOutputDir({
-      outputDir: payload.outputDir,
       mangaId: payload.mangaId,
       translatorId: payload.translatorId,
       chapterId: payload.chapterId,
@@ -332,6 +405,11 @@ class WorkflowEngine {
     ctx.glossaryMode = payload.glossaryMode || "canonical";
     ctx.translationMode = payload.translationMode;
     ctx.requestedTranslationTarget = payload.translationTarget || config.translation?.defaultTarget || null;
+    ctx.generationOptions = payload.generationOptions || config.translation?.generationOptions || null;
+    ctx.lmStudioBaseUrl = config.translation?.lmStudio?.baseUrl || null;
+    ctx.translationProxy = ctx.requestedTranslationTarget?.providerId === "openai-compatible"
+      ? { providerId: "openai-compatible", baseUrl: config.translation?.lmStudio?.koharuProxyBaseUrl || null }
+      : null;
     ctx.machineTranslationRequested = isMachineTranslationTarget(ctx.requestedTranslationTarget);
     ctx.machineTranslationSettings = config.translation?.machineTranslation || {};
   }
@@ -405,7 +483,6 @@ class WorkflowEngine {
       ctx.sourceImagePaths = sourceSelection.images.map((image) => image.orderedPath);
       hooks.emit("source_preflight.resolved", {
         preflightId: ctx.sourcePreflight.preflightId,
-        sourceFolder: ctx.sourcePreflight.sourceFolder,
         acceptedCount: ctx.sourceImagePaths.length,
         convertedCount: ctx.sourcePreflight.summary.convertedCount,
         orderChanged: ctx.sourcePreflight.orderChanged,
@@ -464,10 +541,9 @@ class WorkflowEngine {
   _persistTranslationMemorySnapshot(ctx) {
     const { payload, hooks } = ctx;
     const translationMemory = ctx.translationMemory;
-    const baseSystemPrompt = formatTranslationMemoryPrompt(translationMemory);
-    ctx.systemPrompt = payload.instructions
-      ? `${baseSystemPrompt}\n\nUser retranslation instructions:\n${payload.instructions}`
-      : baseSystemPrompt;
+    const systemPrompt = buildTranslationSystemPrompt(translationMemory, payload.instructions);
+    ctx.systemPrompt = systemPrompt.text;
+    ctx.systemPromptSource = systemPrompt.source;
     ctx.translationWorkspace = path.join(
       paths.workspaceRoot,
       hooks.jobId || `translation_${Date.now()}`,
@@ -523,6 +599,7 @@ class WorkflowEngine {
       operationId: resume.operationId || null,
       engines: resume.engines || {},
       steps: resume.steps || [],
+      pipelineProfile: resume.pipelineProfile || null,
       resumed: true,
     };
     ctx.pipeline = {
@@ -547,8 +624,13 @@ class WorkflowEngine {
       targetLanguage,
       baseUrl,
       systemPrompt: ctx.machineTranslationRequested ? null : ctx.systemPrompt,
+      systemPromptSource: ctx.machineTranslationRequested ? "none" : ctx.systemPromptSource,
       sourceImagePaths: ctx.sourceImagePaths,
       translationTarget: ctx.requestedTranslationTarget,
+      generationOptions: ctx.generationOptions,
+      lmStudioBaseUrl: ctx.lmStudioBaseUrl,
+      translationProxy: ctx.translationProxy,
+      translationMode: ctx.translationMode,
     });
     hooks.emit("translation_target.selected", {
       kind: ctx.setup.translationTarget?.kind || null,
@@ -566,16 +648,38 @@ class WorkflowEngine {
     const baseUrl = ctx.baseUrl;
     const pipelinePlan = buildPipelinePlan(ctx.setup.engines);
     const totalPagesHint = Array.isArray(ctx.sourceImagePaths) ? ctx.sourceImagePaths.length : null;
-    const pipeline = await this.pipelineMonitor.run({
-      operationId: ctx.setup.operationId,
-      baseUrl,
-      pipelinePlan,
-      totalPagesHint,
-      onProgress: (progress) => hooks.emit("pipeline.progress", progress),
-      isCanceled: hooks.isCanceled,
-    });
-    hooks.emit("pipeline.completed", pipeline);
-    return pipeline;
+    const metrics = createTranslationPipelineMetrics(ctx);
+    try {
+      const pipeline = await this.pipelineMonitor.run({
+        operationId: ctx.setup.operationId,
+        baseUrl,
+        pipelinePlan,
+        totalPagesHint,
+        onProgress: (progress) => observeTranslationPipeline(metrics, hooks, progress),
+        isCanceled: hooks.isCanceled,
+      });
+      observeTranslationPipeline(metrics, hooks, completedPipelineProgress(ctx, pipelinePlan, pipeline, totalPagesHint));
+      const summary = await this._publishTranslationPipelineMetrics(ctx, metrics, hooks, "completed", pipeline);
+      hooks.emit("pipeline.completed", pipeline);
+      return { ...pipeline, metrics: summary };
+    } catch (error) {
+      const status = error?.code === "job_canceled" ? "canceled" : "failed";
+      await this._publishTranslationPipelineMetrics(ctx, metrics, hooks, status, null, error);
+      throw error;
+    }
+  }
+
+  async _publishTranslationPipelineMetrics(ctx, metrics, hooks, status, pipeline, error = null) {
+    const result = completeTranslationPipelineMetrics(metrics, status, pipeline, error);
+    if (typeof this.projectSetup.refreshRuntimeMetadata === "function") {
+      ctx.setup = await this.projectSetup.refreshRuntimeMetadata(ctx.setup, ctx.lmStudioBaseUrl);
+      metrics.setExecutionMetadata({
+        generationSettings: ctx.setup.generationSettings,
+        lmStudio: ctx.setup.lmStudio,
+      });
+    }
+    hooks.emit("pipeline.metrics", result);
+    return result;
   }
 
   _validateSceneClient(ctx) {
@@ -961,6 +1065,7 @@ class WorkflowEngine {
       baseUrl,
       exportFormat,
       outputDir,
+      expectedImageCount: Array.isArray(ctx.sourceImagePaths) ? ctx.sourceImagePaths.length : null,
     });
     hooks.emit("export.completed", ctx.artifact);
   }
@@ -1521,7 +1626,8 @@ class WorkflowEngine {
   async _exportDeepAuditApply(state, hooks) {
     const { sourceJob, sourceResult, baseUrl, finalTranslations } = state;
     hooks.setStage("exporting", "deep_audit_apply_render");
-    const exportSteps = buildExportPipelineSteps(sourceResult.engines || config.engines || {});
+    const profile = resolvePipelineProfile(config.pipeline);
+    const exportSteps = buildExportPipelineSteps(sourceResult.engines || profile.engines);
     const pipeline = await startPipeline(
       exportSteps,
       sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,
@@ -1535,10 +1641,11 @@ class WorkflowEngine {
       onProgress: (progress) => hooks.emit("pipeline.progress", progress),
       isCanceled: hooks.isCanceled,
     });
+    const outputDir = resolveDeepAuditOutputDir(sourceJob, hooks.jobId);
     const artifact = await this.exportModule.run({
       baseUrl,
       exportFormat: sourceJob.payload?.exportFormat || config.defaults.exportFormat,
-      outputDir: sourceJob.payload?.outputDir,
+      outputDir,
     });
     await this.projectLifecycle.closeCurrentProject({ baseUrl });
     return artifact;
@@ -1620,7 +1727,6 @@ class WorkflowEngine {
     const baseUrl = payload.baseUrl || config.api.baseUrl;
     const exportFormat = payload.exportFormat || config.defaults.exportFormat;
     const outputDir = resolveExportOutputDir({
-      outputDir: payload.outputDir,
       mangaId: sourceJob.payload?.mangaId,
       translatorId: sourceJob.payload?.translatorId,
       chapterId: sourceJob.payload?.chapterId,
@@ -1674,7 +1780,9 @@ class WorkflowEngine {
   }
 
   async _startPostEditBootstrapPipeline(state, baseUrl) {
-    const bootstrapSteps = buildBootstrapPipelineSteps(config.engines || {});
+    const profile = resolvePipelineProfile(config.pipeline);
+    const engines = await projectOrchestrator.resolveEngines(baseUrl, profile.engines);
+    const bootstrapSteps = buildBootstrapPipelineSteps(engines);
     return startPipeline(
       bootstrapSteps,
       state.sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,
@@ -1740,7 +1848,9 @@ class WorkflowEngine {
   }
 
   async _startPostEditExportPipeline(state, baseUrl) {
-    const exportSteps = buildExportPipelineSteps(config.engines || {});
+    const profile = resolvePipelineProfile(config.pipeline);
+    const engines = await projectOrchestrator.resolveEngines(baseUrl, profile.engines);
+    const exportSteps = buildExportPipelineSteps(engines);
     return startPipeline(
       exportSteps,
       state.sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,

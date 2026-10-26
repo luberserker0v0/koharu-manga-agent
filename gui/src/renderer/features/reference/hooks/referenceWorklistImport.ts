@@ -17,8 +17,9 @@ async function importOne(entry: QueuedReferenceFolder, base: BindingResolution |
   const binding = await ensureImportChapter(entry, base, params);
   params.setPageStatus(`正在匯入 ${entry.label}...`);
   const language = params.normalizeReferenceLanguage(params.importForm.language);
+  const upload = await params.uploadImageFolderFn({ sourceFolder: entry.sourceFolder, kind: "reference" });
   const result = await params.importReferenceFolderFn({
-    sourceFolder: entry.sourceFolder,
+    uploadId: upload.uploadId,
     label: entry.label.trim() || params.folderBaseName(entry.sourceFolder),
     language,
     referenceKind: params.importForm.referenceKind,

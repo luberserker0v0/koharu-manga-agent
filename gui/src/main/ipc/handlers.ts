@@ -7,6 +7,10 @@ import { shellPaths } from "../services/shell_paths";
 import { IPC_CHANNELS } from "./channels";
 import { closeKoharuEditorWindow, openKoharuEditorWindow } from "../windows/koharu_editor_window";
 import { koharuHostProcessService } from "../services/koharu_host_process";
+import { uploadImageFolder } from "../services/image_folder_upload";
+import type { ImageFolderUploadRequest } from "../../shared/image_upload";
+import { downloadJobArtifact } from "../services/artifact_download";
+import type { ArtifactDownloadRequest } from "../../shared/artifact_download";
 
 function emptyPathResult() {
   return {
@@ -174,21 +178,6 @@ function registerConfirmDialogHandler() {
   );
 }
 
-function registerJsonFileHandlers() {
-  ipcMain.handle(IPC_CHANNELS.READ_JSON_FILE, async (_event, targetPath: string) => {
-    const raw = fs.readFileSync(targetPath, "utf-8");
-    return { path: targetPath, data: JSON.parse(raw) };
-  });
-  ipcMain.handle(IPC_CHANNELS.WRITE_JSON_FILE, async (_event, targetPath: string, data: unknown) => {
-    fs.writeFileSync(targetPath, JSON.stringify(data, null, 2), "utf-8");
-    return { ok: true, path: targetPath };
-  });
-  ipcMain.handle(IPC_CHANNELS.DELETE_PATH, async (_event, targetPath: string) => {
-    fs.rmSync(targetPath, { recursive: true, force: true });
-    return { ok: true, path: targetPath };
-  });
-}
-
 function registerEditorHandlers() {
   ipcMain.handle(IPC_CHANNELS.OPEN_KOHARU_EDITOR, (_event, payload: { url: string; sessionId: string }) =>
     openKoharuEditorWindow(payload),
@@ -220,6 +209,20 @@ function registerValidatePathsHandler() {
   );
 }
 
+function registerImageUploadHandler() {
+  ipcMain.handle(IPC_CHANNELS.UPLOAD_IMAGE_FOLDER, (_event, request: ImageFolderUploadRequest) =>
+    uploadImageFolder(request, backendProcessService.getState().baseUrl),
+  );
+}
+
+function registerArtifactDownloadHandler(settingsStore: SettingsStore) {
+  ipcMain.handle(IPC_CHANNELS.DOWNLOAD_JOB_ARTIFACT, (_event, request: ArtifactDownloadRequest) => {
+    const settings = settingsStore.read();
+    const directory = settings.outputFolder.trim() || shellPaths.downloads;
+    return downloadJobArtifact(request, backendProcessService.getState().baseUrl, directory);
+  });
+}
+
 export function registerIpcHandlers(settingsStore: SettingsStore): void {
   registerSettingsHandlers(settingsStore);
   registerDesktopHandlers(settingsStore);
@@ -229,7 +232,8 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
   registerKoharuHostHandlers();
   registerPickDirectoriesHandler();
   registerConfirmDialogHandler();
-  registerJsonFileHandlers();
   registerEditorHandlers();
   registerValidatePathsHandler();
+  registerImageUploadHandler();
+  registerArtifactDownloadHandler(settingsStore);
 }

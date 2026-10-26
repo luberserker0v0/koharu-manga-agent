@@ -54,17 +54,18 @@ describe("process-trigger runtime", () => {
       }),
     });
 
+    const emit = jest.fn();
     const result = await engine.runTranslationJob(
       {
         translationMode: "reference_style",
         targetLanguage: "zh-TW",
         qualityCheck: true,
         sourceImagePaths: ["C:\\source\\001.png"],
-        outputDir: "C:\\exports\\runtime-default",
       },
       {
+        jobId: "runtime-default-job",
         setStage: jest.fn(),
-        emit: jest.fn(),
+        emit,
         isCanceled: jest.fn().mockReturnValue(false),
       }
     );
@@ -74,6 +75,17 @@ describe("process-trigger runtime", () => {
     expect(knowledge.run).not.toHaveBeenCalled();
     expect(exporter.run).toHaveBeenCalledTimes(1);
     expect(lifecycle.closeCurrentProject).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith("pipeline.metrics", expect.objectContaining({
+      schemaVersion: 1,
+      status: "completed",
+    }));
+    expect(emit).toHaveBeenCalledWith("pipeline.progress", expect.objectContaining({
+      status: "completed",
+      completedPages: 1,
+      totalPages: 1,
+      telemetry: { source: "backend_terminal", rawStatus: "completed" },
+    }));
+    expect(result.pipeline.metrics).toEqual(expect.objectContaining({ schemaVersion: 1 }));
   });
 
   test("workflow engine builds a translation system prompt from manga assets when available", async () => {
@@ -119,9 +131,9 @@ describe("process-trigger runtime", () => {
         mangaId: "phantom_fantasy",
         chapterId: "ch_001",
         sourceImagePaths: ["C:\\source\\001.png"],
-        outputDir: "C:\\exports\\runtime-context",
       },
       {
+        jobId: "runtime-context-job",
         setStage: jest.fn(),
         emit: jest.fn(),
         isCanceled: jest.fn().mockReturnValue(false),
@@ -133,10 +145,18 @@ describe("process-trigger runtime", () => {
       baseUrl: "http://127.0.0.1:4000",
       sourceImagePaths: ["C:\\source\\001.png"],
       systemPrompt: expect.any(String),
+      systemPromptSource: "translation_memory",
       translationTarget: {
         providerId: "openai-compatible",
         modelId: "gemma-4-e4b-uncensored-hauhaucs-aggressive",
       },
+      generationOptions: { temperature: 0.7, reasoning: "off" },
+      lmStudioBaseUrl: "http://127.0.0.1:25555",
+      translationProxy: {
+        providerId: "openai-compatible",
+        baseUrl: "http://127.0.0.1:4001/api/v1/lmstudio-openai/v1",
+      },
+      translationMode: "reference_style",
     });
   });
 
@@ -178,7 +198,6 @@ describe("process-trigger runtime", () => {
       targetLanguage: "zh-TW",
       translationTarget: { providerId: "deepl", modelId: "mt" },
       sourceImagePaths: ["C:\\source\\001.png"],
-      outputDir: "C:\\exports\\mt-reference",
     }, {
       jobId: "mt-reference-job",
       setStage: jest.fn(), emit: jest.fn(), isCanceled: jest.fn().mockReturnValue(false),
@@ -256,6 +275,7 @@ describe("process-trigger runtime", () => {
       referenceSetId: "ref_001",
       baseUrl: "http://127.0.0.1:4000",
       targetLanguage: "zh-TW",
+      isCanceled: expect.any(Function),
     });
     expect(result.referenceSetId).toBe("ref_001");
     expect(result.closed).toBe(true);
@@ -361,5 +381,33 @@ describe("process-trigger runtime", () => {
 
     expect(result.recovered).toBe(true);
     expect(result.summary.finalStatus).toBe("completed_before_listener_attached");
+  });
+
+  test("pipeline monitor fails when a running operation exceeds its timeout", async () => {
+    const monitor = new PipelineMonitorModule({
+      listOperations: jest.fn().mockResolvedValue([{ id: "op-running", status: "running" }]),
+      getScene: jest.fn(),
+    });
+
+    await expect(monitor.runWithPolling({
+      operationId: "op-running",
+      baseUrl: "http://127.0.0.1:9999",
+      timeoutMs: 0,
+    })).rejects.toMatchObject({ code: "koharu_pipeline_timeout" });
+  });
+
+  test("pipeline monitor does not recover from a partial scene", async () => {
+    const monitor = new PipelineMonitorModule({
+      getScene: jest.fn().mockResolvedValue({
+        scene: { pages: { page1: { nodes: { n1: { kind: { text: { translation: "done" } } } } } } },
+      }),
+    });
+
+    await expect(monitor.recover({
+      operationId: "op-partial",
+      baseUrl: "http://127.0.0.1:9999",
+      reason: "operation_disappeared",
+      totalPagesHint: 2,
+    })).rejects.toThrow("No translated scene state was found");
   });
 });

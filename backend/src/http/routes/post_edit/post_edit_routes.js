@@ -1,11 +1,16 @@
 const { importPostEditReference } = require("../../../domains/reference/sets/reference_sets");
 const { badRequest, notFound, readJsonBody, sendJson } = require("../../server/http_helpers");
+const { publicJob, withoutInternalLocations } = require("../jobs/job_http");
 
 async function handlePostEditExport(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/jobs/post-edit-export") return false;
   const body = await readJsonBody(ctx.req);
+  if (Object.prototype.hasOwnProperty.call(body, "outputDir")) {
+    badRequest(ctx.res, "outputDir is backend-owned and is not accepted by this API.");
+    return true;
+  }
   await ctx.jobManager.assertKoharuAvailableForJobType?.("post_edit_export", body);
-  sendJson(ctx.res, 202, ctx.jobManager.createPostEditExportJob(body));
+  sendJson(ctx.res, 202, publicJob(ctx.jobManager.createPostEditExportJob(body)));
   return true;
 }
 
@@ -66,7 +71,7 @@ async function importPostEditReferenceSet(ctx, jobId) {
   }
   const body = await readJsonBody(ctx.req);
   const input = postEditReferenceInput(editedScene, body, jobId);
-  sendJson(ctx.res, 201, { referenceSet: importPostEditReference(input) });
+  sendJson(ctx.res, 201, { referenceSet: withoutInternalLocations(importPostEditReference(input)) });
 }
 
 async function handlePostEditReferenceImport(ctx) {

@@ -1,17 +1,13 @@
 const fs = require("fs");
 const path = require("path");
 const { DEFAULT_CONFIG, PROJECT_CONFIG_PATH, deepMerge } = require("./config");
+const {
+  ENGINE_KEYS: PIPELINE_ENGINE_KEYS,
+  TRANSLATION_MODES,
+} = require("./domains/translation/pipeline/pipeline_profiles");
 
-const ENGINE_KEYS = new Set([
-  "detect",
-  "fontDetect",
-  "segment",
-  "bubbleSegment",
-  "ocr",
-  "translate",
-  "clean",
-  "render",
-]);
+const ENGINE_KEYS = new Set(PIPELINE_ENGINE_KEYS);
+const MODE_KEYS = new Set(TRANSLATION_MODES);
 const TIMEOUT_KEYS = new Set([
   "startTimeoutMs",
   "readyPollIntervalMs",
@@ -21,10 +17,10 @@ const TIMEOUT_KEYS = new Set([
 ]);
 const EDITABLE_KEYS = {
   api: new Set(["baseUrl"]),
-  translation: new Set(["defaultTarget", "machineTranslation"]),
+  translation: new Set(["defaultTarget", "generationOptions", "lmStudio", "machineTranslation"]),
   workflow: new Set(["qualityCheck"]),
   agent: new Set(["baseUrl", "apiKey", "model", "agentName", ...TIMEOUT_KEYS]),
-  engines: ENGINE_KEYS,
+  pipeline: new Set(["defaultProfile", "modeProfiles", "profiles"]),
   defaults: new Set([
     "trashRetentionDays",
     "logRetentionDays",
@@ -75,11 +71,82 @@ function validateMachineTranslation(value) {
   }
 }
 
+function validateGenerationOptions(value) {
+  const allowed = ["temperature", "reasoning"];
+  if (!isPlainObject(value) || Object.keys(value).some((item) => !allowed.includes(item))) {
+    throw invalid("translation.generationOptions only accepts temperature and reasoning.");
+  }
+  if (typeof value.temperature !== "number" || !Number.isFinite(value.temperature) ||
+      value.temperature < 0 || value.temperature > 1) {
+    throw invalid("translation.generationOptions.temperature must be a number between 0 and 1.");
+  }
+  const reasoning = ["off", "on", "low", "medium", "high"];
+  if (!reasoning.includes(value.reasoning)) throw invalid("translation.generationOptions.reasoning is invalid.");
+}
+
+function validateLmStudio(value) {
+  const allowed = ["baseUrl", "koharuProxyBaseUrl"];
+  if (!isPlainObject(value) || Object.keys(value).some((item) => !allowed.includes(item))) {
+    throw invalid("translation.lmStudio only accepts baseUrl and koharuProxyBaseUrl.");
+  }
+  assertHttpUrl(value.baseUrl, "translation.lmStudio.baseUrl");
+  assertHttpUrl(value.koharuProxyBaseUrl, "translation.lmStudio.koharuProxyBaseUrl");
+}
+
 function validateQualityCheck(value) {
   if (!isPlainObject(value) || Object.keys(value).some((item) => item !== "enabled")) {
     throw invalid("workflow.qualityCheck only accepts enabled.");
   }
   if (typeof value.enabled !== "boolean") throw invalid("workflow.qualityCheck.enabled must be a boolean.");
+}
+
+function validProfileId(value) {
+  return typeof value === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(value);
+}
+
+function validateProfileEngines(value, profileId) {
+  if (!isPlainObject(value) || Object.keys(value).some((key) => !ENGINE_KEYS.has(key))) {
+    throw invalid(`pipeline.profiles.${profileId}.engines contains an unsupported engine key.`);
+  }
+  const invalidValue = Object.values(value)
+    .some((engineId) => engineId !== null && (typeof engineId !== "string" || !engineId.trim()));
+  if (invalidValue) {
+    throw invalid(`pipeline.profiles.${profileId}.engines values must be non-empty strings or null.`);
+  }
+}
+
+function validatePipelineProfiles(value) {
+  if (!isPlainObject(value) || Object.keys(value).some((id) => !validProfileId(id))) {
+    throw invalid("pipeline.profiles must use lowercase profile IDs.");
+  }
+  for (const [id, profile] of Object.entries(value)) {
+    if (!isPlainObject(profile) || Object.keys(profile).some((key) => key !== "engines")) {
+      throw invalid(`pipeline.profiles.${id} only accepts engines.`);
+    }
+    validateProfileEngines(profile.engines, id);
+  }
+}
+
+function validateModeProfiles(value) {
+  if (!isPlainObject(value) || Object.keys(value).some((mode) => !MODE_KEYS.has(mode))) {
+    throw invalid("pipeline.modeProfiles contains an unsupported translation mode.");
+  }
+  if (Object.values(value).some((profileId) => !validProfileId(profileId))) {
+    throw invalid("pipeline.modeProfiles values must be valid profile IDs.");
+  }
+}
+
+function validatePipelineEntry(key, value) {
+  if (key === "profiles") return validatePipelineProfiles(value);
+  if (key === "modeProfiles") return validateModeProfiles(value);
+  if (!validProfileId(value)) throw invalid("pipeline.defaultProfile must be a valid profile ID.");
+}
+
+function validatePipelineReferences(pipeline) {
+  const profiles = pipeline?.profiles || {};
+  const references = [pipeline?.defaultProfile, ...Object.values(pipeline?.modeProfiles || {})];
+  const missing = references.find((profileId) => profileId && !profiles[profileId]);
+  if (missing) throw invalid(`Pipeline profile is unavailable: ${missing}.`);
 }
 
 function validateDefaults(key, value) {
@@ -127,7 +194,10 @@ function validateAgentEntry(key, value) {
 
 function validateConfigEntry(section, key, value) {
   if (section === "translation" && key === "defaultTarget") return validateTranslationTarget(value);
+  if (section === "translation" && key === "generationOptions") return validateGenerationOptions(value);
+  if (section === "translation" && key === "lmStudio") return validateLmStudio(value);
   if (section === "translation" && key === "machineTranslation") return validateMachineTranslation(value);
+  if (section === "pipeline") return validatePipelineEntry(key, value);
   if (section === "workflow") return validateQualityCheck(value);
   if (section === "defaults") return validateDefaults(key, value);
   if (section === "cleanup") return validateCleanup(key, value);
@@ -200,17 +270,18 @@ class ConfigService {
 
   update(patch) {
     validateConfigPatch(patch);
-    return this.persist(deepMerge(this.readProjectConfig(), patch));
+    const current = this.readProjectConfig();
+    delete current.engines;
+    const next = deepMerge(current, patch);
+    validatePipelineReferences(deepMerge(this.defaults, next).pipeline);
+    return this.persist(next);
   }
 
   reset() {
     const current = this.readProjectConfig();
+    delete current.engines;
     for (const [section, keys] of Object.entries(EDITABLE_KEYS)) {
       if (!current[section] || typeof current[section] !== "object") continue;
-      if (section === "engines") {
-        delete current.engines;
-        continue;
-      }
       for (const key of keys) delete current[section][key];
       if (Object.keys(current[section]).length === 0) delete current[section];
     }

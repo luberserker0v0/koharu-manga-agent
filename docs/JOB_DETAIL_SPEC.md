@@ -50,8 +50,8 @@ It must show:
 - `chapterId`
 - `createdAt`
 - `updatedAt`
-- `sourceFolder`
-- `outputFolder`
+- `sourcePreflightId`
+- downloadable artifact names and content links
 
 The user should be able to understand what the job is and whether it is still running in under a few seconds.
 
@@ -116,6 +116,8 @@ Required fields:
 - `currentPageName`
 - `currentEngine`
 
+`currentPageIndex` is the one-based active page. `completedPages` must not count that active page.
+
 Preferred presentation:
 - `12 / 45 pages`
 - `current page: page_012`
@@ -130,7 +132,7 @@ If the backend does not yet provide exact page progress, the GUI may display:
 This section should remain visible after translation starts because users often need to confirm what actually entered Koharu.
 
 Required fields:
-- `sourceFolder`
+- `sourcePreflightId`
 - `discoveredCount`
 - `acceptedCount`
 - `convertedCount`
@@ -143,7 +145,7 @@ Required lists:
 - accepted image count
 - converted image count
 
-The original source folder must not be mutated in place; the detail view should point to staged artifacts instead.
+The original desktop source folder must not be exposed or mutated; the detail view points to backend-staged artifacts instead.
 
 ## Quality / Knowledge / Reference
 This section must show which optional stages were enabled and what they produced.
@@ -193,8 +195,10 @@ Each artifact entry should show:
 This section should show non-terminal and terminal problems separately from raw event logs.
 
 Examples:
-- invalid source folder fixed after retry
-- output folder unavailable
+- invalid upload or source preflight fixed before retry
+- artifact download destination unavailable
+- rendered export page count differs from the selected source-image count
+- Pipeline makes no page or engine progress before the configured inactivity timeout
 - fallback mode used for agent provider
 - late-attach recovery occurred
 - export failed
@@ -267,15 +271,15 @@ Currently missing or not yet standardized:
 - current page name
 - current engine per page
 
-Because of this, the GUI can currently:
-- collapse duplicate progress events
-- show scene-derived total pages when available
-- show workflow state
+The backend now emits sanitized raw progress telemetry plus a terminal `pipeline.metrics` summary.
+The GUI can show active-page progress, completed-page progress, event sources, stage distributions,
+the slowest observed page/engine spans, the proxy-enforced Temperature/Thinking values, and a
+sanitized LM Studio model snapshot. LM Studio's model capability default is shown separately and is
+not treated as execution proof. These are black-box event-gap
+measurements rather than Koharu-internal model traces.
 
-But it cannot yet build a perfect engine/page progress model.
-
-## Required Backend Event Model for Full Detail View
-To complete the intended `Job Detail`, the backend should emit structured progress events such as:
+## Backend Event Model for Full Detail View
+The backend emits structured progress events such as:
 
 ```json
 {
@@ -285,9 +289,17 @@ To complete the intended `Job Detail`, the backend should emit structured progre
     "engine": "translate",
     "engineStatus": "running",
     "currentPageIndex": 12,
+    "completedPages": 11,
     "totalPages": 45,
     "currentPageName": "page_012.png",
-    "progress": 0.56
+    "progress": 0.56,
+    "progressSemanticsVersion": 2,
+    "telemetry": {
+      "source": "sse",
+      "rawStep": "llmGenerate",
+      "rawCurrentPage": 11,
+      "rawOverallPercent": 56
+    }
   }
 }
 ```

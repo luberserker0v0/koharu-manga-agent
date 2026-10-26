@@ -21,6 +21,7 @@ beforeAll(() => {
 
 // Utility to check if Koharu service is available
 global.checkKoharu = async function () {
+  if (process.env.KOHARU_E2E !== "1") return false;
   try {
     const { config } = require("../backend/src/config");
     const res = await fetch(`${String(config.api.baseUrl).replace(/\/+$/, "")}/api/v1/projects`);

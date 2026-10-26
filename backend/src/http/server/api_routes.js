@@ -10,6 +10,7 @@ const { handlePostEditRoutes } = require("../routes/post_edit/post_edit_routes")
 const { handleKnowledgeRoutes } = require("../routes/knowledge/knowledge_routes");
 const { handleSystemRoutes } = require("../routes/system/system_routes");
 const { handleRuntimeRoutes } = require("../routes/runtime/runtime_routes");
+const { handleLMStudioProxyRoutes } = require("../routes/lmstudio/lmstudio_proxy_routes");
 const { handleMangaRoutes } = require("../routes/manga/manga_routes");
 const { handleReferenceRoutes } = require("../routes/reference/reference_routes");
 const {
@@ -50,6 +51,7 @@ function authorized(req, authToken) {
 const REQUEST_CHUNKS = [
   handleSystemRoutes,
   handleRuntimeRoutes,
+  handleLMStudioProxyRoutes,
   handleReferenceRoutes,
   handleMangaRoutes,
   handleJobRoutes,
@@ -117,7 +119,9 @@ function prepareApiRequest(req, res, baseCtx) {
     res.end();
     return null;
   }
-  if (!["/health", "/ready"].includes(url.pathname) && !authorized(req, baseCtx.authToken)) {
+  const publicService = ["/health", "/ready"].includes(url.pathname) ||
+    url.pathname.startsWith("/lmstudio-openai/");
+  if (!publicService && !authorized(req, baseCtx.authToken)) {
     res.setHeader("WWW-Authenticate", "Bearer");
     sendJson(res, 401, { error: "Unauthorized" });
     return null;

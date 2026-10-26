@@ -89,6 +89,15 @@ export const settingsMessagesZhTW = {
   "settings.koharu.engineCatalog.failed": "無法載入 Koharu engines；請確認 Koharu 已啟動。",
   "settings.koharu.engineUnavailable": (params?: Record<string, string | number>) =>
     `${params?.engine}（目前 catalog 不存在）`,
+  "settings.koharu.mode.quick": "快速翻譯",
+  "settings.koharu.mode.reference_style": "參考風格翻譯",
+  "settings.koharu.mode.local_style": "本地風格翻譯",
+  "settings.koharu.mode.learning_style": "學習風格翻譯",
+  "settings.koharu.modeProfile.help": "選擇此翻譯模式使用的影像 Pipeline Profile。",
+  "settings.koharu.profiles.advanced": "進階：編輯 Pipeline Profiles",
+  "settings.koharu.profile.fast": "快速（Lama Manga）",
+  "settings.koharu.profile.quality": "品質（Flux.2 Klein）",
+  "settings.koharu.profile.low_memory": "低顯存（AOT Inpainting）",
   "settings.koharu.paths.title": "Koharu 資料位置",
   "settings.koharu.paths.help": "本專案不會主動刪除 Koharu 專案或模型；這裡顯示 Koharu 實際使用的資料夾。",
   "settings.koharu.paths.loading": "讀取 Koharu 路徑中...",
@@ -174,6 +183,17 @@ export const settingsMessagesZhTW = {
   "settings.koharu.translationModel.help":
     "\u683c\u5f0f\uff1amodel_id\uff0c\u4e0d\u5305\u542b provider \u524d\u7db4\u3002",
   "settings.koharu.translationProvider.label": "Koharu \u7ffb\u8b6f provider ID",
+  "settings.koharu.temperature.label": "LLM Temperature",
+  "settings.koharu.temperature.help":
+    "由 Backend LM Studio proxy 對每次翻譯請求明確套用，範圍為 0–1。",
+  "settings.koharu.reasoning.label": "LM Studio Reasoning",
+  "settings.koharu.reasoning.help": "由 Backend proxy 對每次 Native Chat 請求明確套用；off 會關閉 Thinking。",
+  "settings.koharu.lmStudioBaseUrl.label": "LM Studio API 位址",
+  "settings.koharu.lmStudioBaseUrl.help":
+    "Backend 直接讀取 LM Studio 模型載入狀態與 reasoning capability，Docker 通常使用 host.docker.internal。",
+  "settings.koharu.lmStudioProxyUrl.label": "Koharu 使用的 LM Studio Proxy 位址",
+  "settings.koharu.lmStudioProxyUrl.help":
+    "Koharu 主機連到 Backend proxy 的位址；一般使用 127.0.0.1:4001。",
   "settings.koharu.diagnostics.title": "Koharu \u8a3a\u65b7\u8cc7\u8a0a",
   "settings.koharu.host.executable.label": "主機 Koharu 執行檔",
   "settings.koharu.host.executable.help":
@@ -340,6 +360,15 @@ export const settingsMessagesEnUS = {
   "settings.koharu.engineCatalog.failed": "Could not load Koharu engines. Check that Koharu is running.",
   "settings.koharu.engineUnavailable": (params?: Record<string, string | number>) =>
     `${params?.engine} (not in current catalog)`,
+  "settings.koharu.mode.quick": "Quick translation",
+  "settings.koharu.mode.reference_style": "Reference style translation",
+  "settings.koharu.mode.local_style": "Local style translation",
+  "settings.koharu.mode.learning_style": "Learning style translation",
+  "settings.koharu.modeProfile.help": "Select the image pipeline profile used by this translation mode.",
+  "settings.koharu.profiles.advanced": "Advanced: edit pipeline profiles",
+  "settings.koharu.profile.fast": "Fast (Lama Manga)",
+  "settings.koharu.profile.quality": "Quality (Flux.2 Klein)",
+  "settings.koharu.profile.low_memory": "Low memory (AOT Inpainting)",
   "settings.koharu.paths.title": "Koharu data locations",
   "settings.koharu.paths.help":
     "This app does not delete Koharu projects or models automatically. These are the folders Koharu is using.",
@@ -426,6 +455,18 @@ export const settingsMessagesEnUS = {
   "settings.koharu.translationModel.label": "Koharu translation model ID",
   "settings.koharu.translationModel.help": "Format: model_id, without a provider prefix.",
   "settings.koharu.translationProvider.label": "Koharu translation provider ID",
+  "settings.koharu.temperature.label": "LLM temperature",
+  "settings.koharu.temperature.help":
+    "Applied to every translation request by the backend LM Studio proxy; valid range is 0–1.",
+  "settings.koharu.reasoning.label": "LM Studio reasoning",
+  "settings.koharu.reasoning.help":
+    "Applied to every native chat request by the backend proxy. Set off to disable Thinking.",
+  "settings.koharu.lmStudioBaseUrl.label": "LM Studio API address",
+  "settings.koharu.lmStudioBaseUrl.help":
+    "Used by the backend to read LM Studio load state and reasoning capabilities. Docker normally uses host.docker.internal.",
+  "settings.koharu.lmStudioProxyUrl.label": "LM Studio proxy address for Koharu",
+  "settings.koharu.lmStudioProxyUrl.help":
+    "The host-visible backend proxy URL used by Koharu; normally 127.0.0.1:4001.",
   "settings.koharu.diagnostics.title": "Koharu diagnostics",
   "settings.koharu.host.executable.label": "Host Koharu executable",
   "settings.koharu.host.executable.help":

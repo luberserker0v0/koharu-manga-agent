@@ -20,7 +20,9 @@ describe("runtime configuration API", () => {
       translation: { defaultTarget: { providerId: "default-provider", modelId: "default-model" } },
       workflow: { qualityCheck: { enabled: true }, knowledgeBuilder: { enabled: false } },
       agent: { baseUrl: "http://127.0.0.1:32768", model: "provider/default", messageTimeoutMs: 1000 },
-      engines: null,
+      pipeline: { defaultProfile: "quality", modeProfiles: { quick: "fast" }, profiles: {
+        fast: { engines: { clean: "lama-manga" } }, quality: { engines: { clean: "flux2-klein" } },
+      } },
       paths: { reports: "reports" },
     };
     effectiveConfig = structuredClone(defaults);
@@ -64,7 +66,7 @@ describe("runtime configuration API", () => {
         translation: { defaultTarget: { modelId: "gemma", providerId: "lmstudio" } },
         agent: { model: "provider/next", messageTimeoutMs: 2000 },
         workflow: { qualityCheck: { enabled: false } },
-        engines: { ocr: "ocr-engine" },
+        pipeline: { modeProfiles: { quick: "quality" } },
       }),
     });
     expect(response.status).toBe(200);
@@ -92,13 +94,14 @@ describe("runtime configuration API", () => {
     await fetch(`${baseUrl}/config`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent: { model: "provider/custom" }, engines: { ocr: "custom" } }),
+      body: JSON.stringify({ agent: { model: "provider/custom" },
+        pipeline: { modeProfiles: { quick: "quality" } } }),
     });
     const response = await fetch(`${baseUrl}/config/reset`, { method: "POST" });
     expect(response.status).toBe(200);
     const reset = await response.json();
     expect(reset.agent.model).toBe("provider/default");
-    expect(reset.engines).toBeNull();
+    expect(reset.pipeline.modeProfiles.quick).toBe("fast");
     expect(reset.paths.reports).toBe("preserved");
   });
 

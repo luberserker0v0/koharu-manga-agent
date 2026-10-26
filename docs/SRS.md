@@ -31,10 +31,10 @@ The system must:
 
 ### FR-02 Pre-pipeline setup
 The system must:
-- validate the local source folder before translation starts
+- validate the desktop-selected source folder before uploading
 - detect image files and reject non-image files
 - convert unsupported-but-convertible images into supported source images
-- support a staged, ordered source-image set before upload
+- upload image bytes through the REST upload API and build a staged, ordered source-image set
 - create a project
 - open the project
 - upload source pages
@@ -126,9 +126,9 @@ The system must:
 
 ### FR-11 Source preflight
 The system must:
-- validate `sourceFolder` before a translation job can start
-- confirm read access for the selected source folder
-- build a final `source images` set for upload
+- keep `sourceFolder` inside the Electron desktop boundary
+- upload source images and submit only `uploadId` to backend preflight
+- require the returned `sourcePreflightId` when the workflow resolves source images
 - preserve a structured report of:
   - discovered files
   - accepted images
@@ -144,8 +144,8 @@ The system must:
 
 ### FR-13 Folder permission handling
 The system must:
-- validate read access for `sourceFolder`
-- validate write access for `outputFolder`
+- validate local read access for `sourceFolder` in Electron
+- validate local write access for `outputFolder` only when downloading artifacts
 - detect when required folder access is missing
 - provide a GUI remediation path so the user can re-select a folder or retry access checks
 
@@ -222,7 +222,7 @@ Expected GUI flow:
 2. Let Electron auto-start backend, or connect to an existing backend
 3. Open `Settings`
 4. Fill:
-   - output folder
+   - local artifact download folder
    - optional reference folder
    - AO connection, model, agent, polling, and timeout fields
    - quality LLM fields
@@ -254,9 +254,9 @@ Clarified v1 frontend inputs:
 - `translationMode`
   - required
   - one of `敹恍蕃霅畔 / `?◢?潛蕃霅畔 / `?砍憸冽蝧餉陌` / `摮貊?憸冽蝧餉陌`
-- `sourceFolder`
-  - required
-  - chosen from the local filesystem
+- `sourcePreflightId`
+  - required by the executable Translation workflow
+  - returned by backend preflight after Electron uploads the selected local images
 - `mangaLabel`
   - required
   - selected from an existing manga list, or entered through an inline `Create new manga` field
@@ -294,7 +294,6 @@ Clarified v1 frontend flow:
 6. Let the GUI validate:
    - the source folder exists
    - the source folder is readable
-   - the output folder from `Settings` is writable
 7. Review the detected source images
 8. Reorder images if needed
 9. Review system-managed identifiers
@@ -320,7 +319,6 @@ Expected GUI flow:
 4. Let the GUI validate:
    - the source folder exists
    - the source folder is readable
-   - the output folder from `Settings` is writable
 5. Review the detected source images
 6. Reorder images if needed
 7. Review system-generated identifiers
@@ -379,8 +377,8 @@ Clarified v1 frontend inputs across this flow:
 - translation job:
   - `translationMode`
     - `reference_style` or `learning_style`
-  - `sourceFolder`
-    - required
+  - `sourcePreflightId`
+    - required; desktop paths are not accepted by the backend API
   - `mangaLabel`
     - required
   - `chapterLabel`

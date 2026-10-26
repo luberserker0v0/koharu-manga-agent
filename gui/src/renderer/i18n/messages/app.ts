@@ -12,6 +12,12 @@ export const appMessagesZhTW = {
   "route.jobList": "工作列表",
   "app.error.title": "GUI 錯誤",
   "app.error.description": "請重新整理或重新啟動 GUI；若問題持續，請檢查開發者工具與後端紀錄。",
+  "app.exportDelivery.completed": "匯出檔已下載",
+  "app.exportDelivery.saved": (params?: Record<string, string | number>) =>
+    `${params?.fileName} 已儲存至 ${params?.detail}`,
+  "app.exportDelivery.failed": "匯出檔下載失敗",
+  "app.exportDelivery.failedDetail": (params?: Record<string, string | number>) => `下載失敗：${params?.detail}`,
+  "app.exportDelivery.dismiss": "關閉",
   "app.koharuWarning.title": "Koharu 尚未執行",
   "app.koharuWarning.unavailable":
     "無法連線到主機的 127.0.0.1:4000。請啟動外部 Koharu，或設定 koharu.exe 路徑與自動啟動。",
@@ -91,6 +97,12 @@ export const appMessagesEnUS = {
   "app.error.title": "GUI error",
   "app.error.description":
     "Reload or restart the GUI. If the problem continues, inspect the developer tools and backend logs.",
+  "app.exportDelivery.completed": "Export downloaded",
+  "app.exportDelivery.saved": (params?: Record<string, string | number>) =>
+    `${params?.fileName} was saved to ${params?.detail}`,
+  "app.exportDelivery.failed": "Export download failed",
+  "app.exportDelivery.failedDetail": (params?: Record<string, string | number>) => `Download failed: ${params?.detail}`,
+  "app.exportDelivery.dismiss": "Dismiss",
   "app.koharuWarning.title": "Koharu is not running",
   "app.koharuWarning.unavailable":
     "The host service at 127.0.0.1:4000 is unreachable. Start external Koharu, or configure the koharu.exe path and auto-start.",

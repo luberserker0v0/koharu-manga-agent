@@ -13,10 +13,8 @@ import {
   type EditedSceneDocument,
   type GuiJob,
 } from "../../api/jobs";
-import { readSettings, validatePaths } from "../../services/desktop_api";
 import { useLanguageStore } from "../../stores/language_store";
 import { useUiStore } from "../../stores/ui_store";
-import type { GuiSettings } from "../../types/settings";
 import {
   cloneScene,
   isEditableJob,
@@ -98,16 +96,7 @@ function useBranchState() {
 function usePreviewState() {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
-  const [settings, setSettings] = useState<GuiSettings | null>(null);
-  return { dimensions, setDimensions, failedImageIds, setFailedImageIds, settings, setSettings };
-}
-
-function useSettingsEffect(setSettings: (value: GuiSettings) => void) {
-  useEffect(() => {
-    readSettings()
-      .then(setSettings)
-      .catch(() => {});
-  }, [setSettings]);
+  return { dimensions, setDimensions, failedImageIds, setFailedImageIds };
 }
 
 function useJobSelectionEffect(jobId: string | null, jobs: { id: string }[], selectJob: (id: string | null) => void) {
@@ -222,8 +211,7 @@ function useExportMutation(document: ReturnType<typeof useDocumentState>, t: Tra
   const selectJob = useUiStore((state) => state.setSelectedJobId);
   const selectPage = useUiStore((state) => state.setSelectedPage);
   return useMutation({
-    mutationFn: ({ jobId, outputDir }: { jobId: string; outputDir: string }) =>
-      createPostEditExportJob({ sourceJobId: jobId, outputDir }),
+    mutationFn: (jobId: string) => createPostEditExportJob({ sourceJobId: jobId }),
     onSuccess: async (job) => {
       document.setStatus(t("postEdit.status.exportCreated"));
       selectJob(job.id);
@@ -297,27 +285,14 @@ function useDocumentActions(
 
 function useExportAction(
   document: ReturnType<typeof useDocumentState>,
-  preview: ReturnType<typeof usePreviewState>,
   mutation: ReturnType<typeof useExportMutation>,
   t: Translate,
 ) {
   return async () => {
     if (!document.draft) return;
     try {
-      const settings = preview.settings || (await readSettings());
-      preview.setSettings(settings);
-      const outputDir = settings.outputFolder.trim();
-      if (!outputDir) throw new Error(t("postEdit.export.outputRequired"));
-      const result = await validatePaths({
-        sourceFolder: "",
-        outputFolder: outputDir,
-        referenceFolder: settings.referenceFolder,
-        sourceRequired: false,
-      });
-      if (!result.outputFolder.ok)
-        throw new Error(t("postEdit.export.outputInvalid", { reason: result.outputFolder.reason }));
       const saved = await saveEditedScene(document.draft.jobId, document.draft);
-      mutation.mutate({ jobId: saved.editedScene.jobId, outputDir });
+      mutation.mutate(saved.editedScene.jobId);
     } catch (error) {
       document.setStatus(error instanceof Error ? error.message : t("postEdit.status.exportFailed"));
     }
@@ -372,7 +347,6 @@ function useControllerEffects(context: {
   job: GuiJob | null;
   t: Translate;
 }) {
-  useSettingsEffect(context.preview.setSettings);
   useJobSelectionEffect(context.jobId, context.jobs, context.selectJob);
   useSceneEffect(context.queries.scene, context.document);
   usePreviewResetEffect(context.jobId, context.preview);
@@ -403,7 +377,7 @@ export function usePostEditController() {
     save,
     exportJob,
     createBranchJob,
-    actions: { ...actions, export: useExportAction(document, preview, exportJob, t) },
+    actions: { ...actions, export: useExportAction(document, exportJob, t) },
     derived: deriveWorkspace(document, preview, queries),
   };
 }

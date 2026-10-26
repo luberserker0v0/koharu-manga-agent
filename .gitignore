@@ -20,15 +20,11 @@ blobs/
 gui/dist/
 gui/release/
 gui/.local-backend-runtime/
-backend/.omo/
 
 # 翻譯輸出（可重新生成）
 /outputs/
 /ingress/
 /domains/
-
-# 原始圖片（版權考量 & 檔案大小）
-original/
 
 # 測試覆蓋率（含本地路徑）
 coverage/

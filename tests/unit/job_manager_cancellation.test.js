@@ -112,6 +112,27 @@ describe("JobManager cancellation", () => {
     expect(canceled.error).toBeNull();
   });
 
+  test("fails instead of claiming cancellation when Koharu stop fails", async () => {
+    let notifyStarted;
+    const started = new Promise((resolve) => { notifyStarted = resolve; });
+    const engine = {
+      runReferenceExtractionJob: jest.fn(async (_payload, hooks) => {
+        notifyStarted();
+        while (!hooks.isCanceled()) await nextTurn();
+        const error = new Error("Koharu operation could not be stopped");
+        error.code = "koharu_cancel_failed";
+        throw error;
+      }),
+    };
+    const { manager } = createManager(engine);
+    const job = manager.createReferenceExtractionJob({ referenceSetId: "ref-stop-failure" });
+    await started;
+
+    expect(manager.cancelJob(job.id).status).toBe("cancel_requested");
+    const failed = await waitForStatus(manager, job.id, "failed");
+    expect(failed.error).toContain("could not be stopped");
+  });
+
   test("deleting an active job requests cancellation and moves it to trash", async () => {
     let notifyStarted;
     const started = new Promise((resolve) => { notifyStarted = resolve; });

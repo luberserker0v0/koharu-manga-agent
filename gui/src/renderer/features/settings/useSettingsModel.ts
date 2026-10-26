@@ -4,7 +4,7 @@ import {
   getAOProviderCatalog, getBackendConfig, getKoharuEngineCatalog, getKoharuRuntimePaths,
   getKoharuTranslationCatalog, getRuntimeStatus, prepareKoharuRuntime, resetBackendConfig,
   startKoharuRuntime, stopKoharuRuntime, testAOConnection, updateBackendConfig,
-  type AOModelOption, type BackendConfig,
+  type AOModelOption, type BackendConfig, type PipelineEngineKey,
 } from "../../api/runtime";
 import {
   getDesktopInfo, installAndStartKoharuHost, openDesktopPath, pickDirectory, pickFile,
@@ -32,12 +32,16 @@ function buildConfigPatch(config: BackendConfig): BackendConfig {
   return {
     api: { baseUrl: config.api?.baseUrl || "" },
     translation: { defaultTarget: { modelId: config.translation?.defaultTarget?.modelId || "",
-      providerId: config.translation?.defaultTarget?.providerId || "" }, machineTranslation: {
+      providerId: config.translation?.defaultTarget?.providerId || "" }, generationOptions: {
+      temperature: config.translation?.generationOptions?.temperature ?? 0.7,
+      reasoning: config.translation?.generationOptions?.reasoning || "off" }, lmStudio: {
+      baseUrl: config.translation?.lmStudio?.baseUrl || "",
+      koharuProxyBaseUrl: config.translation?.lmStudio?.koharuProxyBaseUrl || "" }, machineTranslation: {
       referencePostEdit: config.translation?.machineTranslation?.referencePostEdit !== false,
       learningPostEdit: config.translation?.machineTranslation?.learningPostEdit !== false } },
     workflow: { qualityCheck: { enabled: config.workflow?.qualityCheck?.enabled !== false } },
     agent: buildAgentPatch(config),
-    engines: Object.fromEntries(Object.entries(config.engines || {}).filter(([, value]) => Boolean(value))),
+    pipeline: config.pipeline,
     defaults: { trashRetentionDays: config.defaults?.trashRetentionDays,
       logRetentionDays: config.defaults?.logRetentionDays, logMaxFiles: config.defaults?.logMaxFiles,
       translatedRetentionDays: config.defaults?.translatedRetentionDays,
@@ -157,6 +161,22 @@ function updateMaintenance(state: SettingsState, patch: BackendConfig) {
     cleanup: patch.cleanup ? { ...current.cleanup, ...patch.cleanup } : current.cleanup } : current);
 }
 
+function updateModeProfile(state: SettingsState, mode: string, profileId: string) {
+  state.setConfig((current) => current ? { ...current, pipeline: { ...current.pipeline,
+    modeProfiles: { ...current.pipeline?.modeProfiles, [mode]: profileId } } } : current);
+}
+
+function updateProfileEngine(state: SettingsState, profileId: string, key: PipelineEngineKey, value: string) {
+  state.setConfig((current) => {
+    if (!current) return current;
+    const profiles = current.pipeline?.profiles || {};
+    const profile = profiles[profileId] || {};
+    const engines = { ...profile.engines, [key]: value || null };
+    return { ...current, pipeline: { ...current.pipeline,
+      profiles: { ...profiles, [profileId]: { ...profile, engines } } } };
+  });
+}
+
 function createSettingsUpdates(state: SettingsState) {
   return {
     updateLocal: (key: LocalKey, value: string) => updateLocal(state, key, value),
@@ -164,6 +184,12 @@ function createSettingsUpdates(state: SettingsState) {
       ? { ...current, api: { ...current.api, baseUrl } } : current),
     updateTranslationTarget: (key: "modelId" | "providerId", value: string) =>
       updateTranslationTarget(state, key, value),
+    updateGenerationOptions: (patch: { temperature?: number; reasoning?: "off" | "on" | "low" | "medium" | "high" }) =>
+      state.setConfig((current) => current ? { ...current, translation: { ...current.translation,
+        generationOptions: { ...current.translation?.generationOptions, ...patch } } } : current),
+    updateLmStudio: (patch: { baseUrl?: string; koharuProxyBaseUrl?: string }) =>
+      state.setConfig((current) => current ? { ...current, translation: { ...current.translation,
+        lmStudio: { ...current.translation?.lmStudio, ...patch } } } : current),
     updateAgent: (key: "baseUrl" | "model" | "apiKey" | "agentName" | TimeoutKey, value: string | number) =>
       state.setConfig((current) => current ? { ...current, agent: { ...current.agent, [key]: value } } : current),
     updateMaintenance: (patch: BackendConfig) => updateMaintenance(state, patch),
@@ -171,8 +197,9 @@ function createSettingsUpdates(state: SettingsState) {
       ? { ...current, koharuAutoStart } : current),
     updateQualityEnabled: (enabled: boolean) => state.setConfig((current) => current
       ? { ...current, workflow: { ...current.workflow, qualityCheck: { enabled } } } : current),
-    updateEngine: (key: string, value: string) => state.setConfig((current) => current
-      ? { ...current, engines: { ...current.engines, [key]: value } } : current),
+    updateModeProfile: (mode: string, profileId: string) => updateModeProfile(state, mode, profileId),
+    updateProfileEngine: (profileId: string, key: PipelineEngineKey, value: string) =>
+      updateProfileEngine(state, profileId, key, value),
   };
 }
 

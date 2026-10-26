@@ -61,6 +61,7 @@ function qualityRepairPayload(source, reusable) {
       operationId: source.result.operationId || null,
       engines: source.result.engines || {},
       steps: source.result.steps || [],
+      pipelineProfile: source.result.pipelineProfile || null,
       translationMemorySnapshotPath: source.result.translationMemorySnapshotPath,
       resumeAtStage: "quality_context",
       qualityCheckpointPaths: reusable.qualityCheckpointPaths,

@@ -114,13 +114,7 @@ export type GuiJob = {
     payload: unknown;
     createdAt: string;
   }>;
-  artifacts: Array<{
-    id: number;
-    kind: string;
-    path: string;
-    metadata: unknown;
-    createdAt: string;
-  }>;
+  artifacts: GuiArtifact[];
   children?: GuiJob[];
 };
 
@@ -134,7 +128,8 @@ export type GuiJobEvent = {
 export type GuiArtifact = {
   id: number;
   kind: string;
-  path: string;
+  fileName: string;
+  contentUrl: string;
   metadata: unknown;
   createdAt: string;
 };
@@ -326,12 +321,7 @@ export type ExtractionReviewDocument = {
 };
 
 export type ImportedReferenceSet = ReferenceSetSummary & {
-  imageDir: string;
-  extractedDir: string;
-  importedFrom?: string;
   createdAt?: string;
-  sourceFolder?: string;
-  textsPath?: string;
 };
 
 export type MangaSeriesSummary = {
@@ -368,14 +358,6 @@ export type IngestionKnowledgeReport = {
   ingestionAvailable: boolean;
   ingestionUpdatedAt: string | null;
   ingestionStale: boolean;
-  assets: {
-    glossaryPath: string;
-    candidateTermsPath: string;
-    storyContextPath: string;
-    styleEvidencePath: string;
-    styleProfilePath: string;
-    translationContextPath: string;
-  };
   summary: {
     glossaryEntries: number;
     acceptedTerminology: number;
@@ -584,7 +566,7 @@ export function confirmExtractionReview(referenceSetId: string): Promise<{ revie
 }
 
 export function importReferenceFolder(payload: {
-  sourceFolder: string;
+  uploadId: string;
   label?: string;
   language?: string;
   referenceKind?: "source" | "translator";
@@ -746,6 +728,10 @@ export function getJobArtifacts(jobId: string): Promise<{ artifacts: GuiArtifact
   return apiFetch(`/jobs/${jobId}/artifacts`);
 }
 
+export function getJobArtifactContent(jobId: string, artifactId: number): Promise<unknown> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/artifacts/${artifactId}/content`);
+}
+
 export function getTranslatedImages(jobId: string): Promise<TranslatedImageManifest> {
   return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images`, {
     timeoutMs: 30000,
@@ -804,8 +790,6 @@ export function deleteIngestionKnowledgeReport(
     translatorId: string;
     label: string;
     deleted: boolean;
-    clearedKnowledgeBaseDir: string;
-    clearedReportDir: string;
   };
   deletedJobs: Array<{ id: string; status: string; type: string }>;
 }> {
@@ -816,12 +800,9 @@ export function deleteIngestionKnowledgeReport(
 
 export type TranslationJobPayload = {
   translationMode: "quick" | "reference_style" | "local_style" | "learning_style";
-  sourceFolder?: string;
   sourcePreflightId?: string;
   targetLanguage?: string;
   baseUrl?: string;
-  /** @deprecated Trusted desktop-only override. Browser clients must omit this field. */
-  outputDir?: string;
   qualityCheck?: boolean;
   exportFormat?: string;
   mangaId?: string;
@@ -927,8 +908,6 @@ export type PostEditExportPayload = {
   sourceJobId: string;
   baseUrl?: string;
   exportFormat?: string;
-  /** @deprecated Trusted desktop-only override. Browser clients must omit this field. */
-  outputDir?: string;
 };
 
 export function createTranslationJob(payload: TranslationJobPayload): Promise<GuiJob> {
@@ -975,10 +954,13 @@ export function getTranslationPublications(
   );
 }
 
-export function createSourcePreflight(payload: { sourceFolder: string }): Promise<SourcePreflightResult> {
+export type SourcePreflightPayload = { uploadId: string };
+
+export function createSourcePreflight(payload: SourcePreflightPayload): Promise<SourcePreflightResult> {
   return apiFetch("/source-preflight", {
     method: "POST",
     body: JSON.stringify(payload),
+    timeoutMs: 300_000,
   });
 }
 

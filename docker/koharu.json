@@ -3,6 +3,12 @@
     "baseUrl": "http://host.docker.internal:4000",
     "pageUploadMode": "multipart"
   },
+  "translation": {
+    "lmStudio": {
+      "baseUrl": "http://host.docker.internal:25555",
+      "koharuProxyBaseUrl": "http://127.0.0.1:4001/api/v1/lmstudio-openai/v1"
+    }
+  },
   "runtime": {
     "host": "0.0.0.0",
     "port": 4001,

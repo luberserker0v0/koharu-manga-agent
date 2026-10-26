@@ -168,21 +168,21 @@ function createPreflightPaths(root, preflightId) {
   };
 }
 
-function recordRejectedFile(fileName, filePath, reason, discoveredFiles, rejectedFiles) {
-  rejectedFiles.push({ fileName, path: filePath, reason });
-  discoveredFiles.push({ fileName, path: filePath, accepted: false, converted: false, reason });
+function recordRejectedFile(fileName, reason, discoveredFiles, rejectedFiles) {
+  rejectedFiles.push({ fileName, reason });
+  discoveredFiles.push({ fileName, accepted: false, converted: false, reason });
 }
 
-function recordAcceptedFile(fileName, filePath, imageId, copyResult, discoveredFiles, acceptedImages) {
+function recordAcceptedFile(fileName, imageId, copyResult, discoveredFiles, acceptedImages) {
   acceptedImages.push({
-    id: imageId, fileName, sourcePath: filePath,
+    id: imageId, fileName,
     normalizedPath: copyResult.normalizedPath,
     actualFormat: copyResult.actualFormat,
     converted: copyResult.converted,
     convertedFrom: copyResult.convertedFrom,
   });
   discoveredFiles.push({
-    fileName, path: filePath, accepted: true, converted: copyResult.converted, reason: "",
+    fileName, accepted: true, converted: copyResult.converted, reason: "",
   });
 }
 
@@ -209,7 +209,7 @@ class SourcePreflightModule {
       orderedImageIds,
     });
     const manifest = this.buildPreflightManifest({
-      preflightId, sourceFolder, preflightRoot, normalizedDir, orderedDir, manifestPath,
+      preflightId, preflightRoot, normalizedDir, orderedDir, manifestPath,
       discoveredFiles, rejectedFiles, orderedImages, orderedImageIds,
     });
     persistManifest(manifestPath, manifest);
@@ -236,16 +236,15 @@ class SourcePreflightModule {
       ffmpegPath: this.ffmpegPath,
     });
     if (!copyResult.accepted) {
-      recordRejectedFile(fileName, filePath, copyResult.reason, discoveredFiles, rejectedFiles);
+      recordRejectedFile(fileName, copyResult.reason, discoveredFiles, rejectedFiles);
       return;
     }
-    recordAcceptedFile(fileName, filePath, imageId, copyResult, discoveredFiles, acceptedImages);
+    recordAcceptedFile(fileName, imageId, copyResult, discoveredFiles, acceptedImages);
   }
 
   buildPreflightManifest(input) {
     return {
       preflightId: input.preflightId,
-      sourceFolder: input.sourceFolder,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       preflightRoot: input.preflightRoot,
@@ -333,14 +332,6 @@ class SourcePreflightModule {
       error.code = "source_preflight_unavailable";
       throw error;
     }
-    if (!manifest.sourceFolder || !fs.existsSync(manifest.sourceFolder)) {
-      const error = new Error(
-        "The retained source upload is unavailable; create a new source preflight before retranslating.",
-      );
-      error.statusCode = 409;
-      error.code = "source_upload_unavailable";
-      throw error;
-    }
     return manifest;
   }
 
@@ -365,6 +356,24 @@ class SourcePreflightModule {
         throw error;
       }
     }
+  }
+
+  resolvePreviewImage(preflightId, imageId) {
+    const manifest = this.get(preflightId);
+    const image = manifest.images.find((entry) => entry.id === imageId);
+    if (!image) {
+      const error = new Error("Source preflight image not found.");
+      error.statusCode = 404;
+      throw error;
+    }
+    const imagePath = path.resolve(image.previewPath);
+    const relative = path.relative(path.resolve(manifest.preflightRoot), imagePath);
+    if (relative.startsWith("..") || path.isAbsolute(relative) || !fs.existsSync(imagePath)) {
+      const error = new Error("Source preflight image is unavailable.");
+      error.statusCode = 409;
+      throw error;
+    }
+    return { path: imagePath, fileName: image.fileName };
   }
 
   isSourceImageAvailable(image) {

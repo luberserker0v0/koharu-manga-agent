@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { getJob, getJobArtifacts, type GuiArtifact } from "../api/jobs";
+import { getJob, getJobArtifactContent, getJobArtifacts, type GuiArtifact } from "../api/jobs";
 import { getGlossary, getStoryContext, getStyleProfile } from "../api/knowledge";
-import { openDesktopPath, readJsonFile } from "../services/desktop_api";
+import { downloadJobArtifact, openDesktopPath } from "../services/desktop_api";
 import { useUiStore } from "../stores/ui_store";
 
 function formatJson(value: unknown): string {
@@ -79,9 +79,11 @@ function describeArtifact(artifact: GuiArtifact): string {
 
 function ArtifactListItem({
   artifact,
+  onOpen,
   onPreview,
 }: {
   artifact: GuiArtifact;
+  onOpen: (artifact: GuiArtifact) => void;
   onPreview?: (artifact: GuiArtifact) => void;
 }) {
   return (
@@ -90,10 +92,10 @@ function ArtifactListItem({
         <strong>{prettyArtifactKind(artifact.kind)}</strong>
         <div className="job-subtext">{artifact.kind}</div>
         {describeArtifact(artifact) ? <div className="job-subtext">{describeArtifact(artifact)}</div> : null}
-        <div className="job-subtext">{artifact.path}</div>
+        <div className="job-subtext">{artifact.fileName}</div>
       </div>
       <div className="job-actions">
-        <button className="secondary-button" onClick={() => openDesktopPath(artifact.path)} type="button">
+        <button className="secondary-button" onClick={() => onOpen(artifact)} type="button">
           Open
         </button>
         {onPreview ? (
@@ -108,10 +110,12 @@ function ArtifactListItem({
 function ArtifactList({
   artifacts,
   title,
+  onOpen,
   onPreview,
 }: {
   artifacts: GuiArtifact[];
   title: string;
+  onOpen: (artifact: GuiArtifact) => void;
   onPreview?: (artifact: GuiArtifact) => void;
 }) {
   if (artifacts.length === 0)
@@ -126,7 +130,7 @@ function ArtifactList({
       <h2>{title}</h2>
       <ul className="artifact-list">
         {artifacts.map((artifact) => (
-          <ArtifactListItem key={artifact.id} artifact={artifact} onPreview={onPreview} />
+          <ArtifactListItem key={artifact.id} artifact={artifact} onOpen={onOpen} onPreview={onPreview} />
         ))}
       </ul>
     </article>
@@ -507,23 +511,33 @@ function useKnowledgeData(mangaId: string, translatorId: string) {
   return { glossary, story, style };
 }
 
-function useArtifactPreview() {
+function useArtifactPreview(selectedJobId: string | null) {
   const [artifact, setArtifact] = useState<GuiArtifact | null>(null);
   const [data, setData] = useState<unknown>(null);
   const [status, setStatus] = useState("");
   const preview = async (nextArtifact: GuiArtifact) => {
+    if (!selectedJobId) return;
     try {
       setArtifact(nextArtifact);
       setStatus("Loading preview...");
-      const result = await readJsonFile(nextArtifact.path);
-      setData(result.data);
+      const result = await getJobArtifactContent(selectedJobId, nextArtifact.id);
+      setData(result);
       setStatus("Preview loaded.");
     } catch (error) {
       setData(null);
       setStatus(error instanceof Error ? `Failed to load preview: ${error.message}` : "Failed to load preview.");
     }
   };
-  return { artifact, data, status, preview };
+  const open = async (nextArtifact: GuiArtifact) => {
+    if (!selectedJobId) return;
+    try {
+      const result = await downloadJobArtifact({ jobId: selectedJobId, artifactId: nextArtifact.id });
+      await openDesktopPath(result.path);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    }
+  };
+  return { artifact, data, status, preview, open };
 }
 
 function OverrideField({
@@ -610,10 +624,12 @@ function ArtifactQueryState({ data }: { data: ReturnType<typeof useArtifactData>
 function SelectedJobArtifacts({
   selectedJobId,
   data,
+  onOpen,
   onPreview,
 }: {
   selectedJobId: string | null;
   data: ReturnType<typeof useArtifactData>;
+  onOpen: (artifact: GuiArtifact) => void;
   onPreview: (artifact: GuiArtifact) => void;
 }) {
   if (!selectedJobId) return null;
@@ -624,10 +640,13 @@ function SelectedJobArtifacts({
       <ArtifactList
         artifacts={data.partitioned.comparison}
         title="Quality and comparison reports"
+        onOpen={onOpen}
         onPreview={onPreview}
       />
-      <ArtifactList artifacts={data.partitioned.workspaceManifests} title="Workspace manifests" onPreview={onPreview} />
-      <ArtifactList artifacts={data.partitioned.general} title="Other job artifacts" onPreview={onPreview} />
+      <ArtifactList artifacts={data.partitioned.workspaceManifests} title="Workspace manifests"
+        onOpen={onOpen} onPreview={onPreview} />
+      <ArtifactList artifacts={data.partitioned.general} title="Other job artifacts"
+        onOpen={onOpen} onPreview={onPreview} />
     </>
   );
 }
@@ -644,8 +663,7 @@ function ArtifactPreviewCard({ preview }: { preview: ReturnType<typeof useArtifa
               <span>{prettyArtifactKind(preview.artifact.kind)}</span>
             </div>
             <div>
-              <strong>Path</strong>
-              <span>{preview.artifact.path}</span>
+              <span>{preview.artifact.fileName}</span>
             </div>
           </div>
           <p className="muted-text">{preview.status || "Select an artifact and press Preview."}</p>
@@ -719,13 +737,14 @@ export function ArtifactsContent({ embedded = false }: { embedded?: boolean }) {
   const selection = useArtifactSelection();
   const artifacts = useArtifactData(selection.selectedJobId);
   const knowledge = useKnowledgeData(selection.mangaId, selection.translatorId);
-  const preview = useArtifactPreview();
+  const preview = useArtifactPreview(selection.selectedJobId);
   return (
     <section className="page">
       {!embedded ? <h1>Artifacts</h1> : null}
       <div className="card-stack">
         <ArtifactContextCard embedded={embedded} selection={selection} />
-        <SelectedJobArtifacts selectedJobId={selection.selectedJobId} data={artifacts} onPreview={preview.preview} />
+        <SelectedJobArtifacts selectedJobId={selection.selectedJobId} data={artifacts}
+          onOpen={preview.open} onPreview={preview.preview} />
         <ArtifactPreviewCard preview={preview} />
         <ArtifactKnowledgeCards selection={selection} knowledge={knowledge} />
       </div>

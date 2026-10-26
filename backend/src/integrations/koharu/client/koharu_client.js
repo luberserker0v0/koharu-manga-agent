@@ -5,6 +5,7 @@ const { config } = require("../../../config");
 const ENDPOINTS = {
   PROJECTS: "/api/v1/projects",
   PROJECTS_CURRENT: "/api/v1/projects/current",
+  CONFIG: "/api/v1/config",
   SCENE: "/api/v1/scene.json",
   PAGES: "/api/v1/pages",
   PAGES_FROM_PATHS: "/api/v1/pages/from-paths",
@@ -20,6 +21,10 @@ const ENDPOINTS = {
 
 function buildUrl(endpoint, baseUrl = config.api.baseUrl) {
   return `${String(baseUrl).replace(/\/+$/, "")}${endpoint}`;
+}
+
+function operationEndpoint(operationId) {
+  return `${ENDPOINTS.OPERATIONS}/${encodeURIComponent(operationId)}`;
 }
 
 async function apiFetch(endpoint, opts = {}) {
@@ -150,6 +155,18 @@ class KoharuClient {
     });
     const data = await ensureJson(res, "List operations");
     return data.operations || [];
+  }
+
+  async stopOperation(operationId, baseUrl) {
+    const res = await apiFetch(operationEndpoint(operationId), {
+      method: "DELETE",
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
+    if (!res.ok) {
+      const text = await readTextSafe(res);
+      throw new Error(`Stop operation failed (${res.status}): ${text}`);
+    }
+    return { success: true, operationId };
   }
 
   async startPipeline({ steps, targetLanguage, pages, systemPrompt, defaultFont, baseUrl }) {

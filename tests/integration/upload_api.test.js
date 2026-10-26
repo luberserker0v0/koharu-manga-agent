@@ -67,9 +67,33 @@ describe("browser upload and artifact APIs", () => {
       body: JSON.stringify({ uploadId: created.uploadId }),
     });
     expect(preflight.status).toBe(200);
+    expect(await preflight.json()).not.toHaveProperty("sourceFolder");
     expect(sourcePreflightModule.preflight).toHaveBeenCalledWith({
       sourceFolder: path.join(directory, created.uploadId, "files"),
     });
+    expect((await fetch(`${baseUrl}/api/v1/uploads/${created.uploadId}`)).status).toBe(404);
+  });
+
+  test("rejects a client filesystem path for source preflight", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/source-preflight`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceFolder: "C:\\manga\\chapter-1" }),
+    });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain("sourceFolder is not accepted");
+  });
+
+  test("lists artifacts with content URLs instead of server paths", async () => {
+    const response = await fetch(`${baseUrl}/api/v1/jobs/job-1/artifacts`);
+    expect(response.status).toBe(200);
+    const artifact = (await response.json()).artifacts[0];
+    expect(artifact).toEqual(expect.objectContaining({
+      id: 7,
+      fileName: "result.json",
+      contentUrl: "/api/v1/jobs/job-1/artifacts/7/content",
+    }));
+    expect(artifact).not.toHaveProperty("path");
   });
 
   test("rejects traversal filenames and oversized image bodies", async () => {

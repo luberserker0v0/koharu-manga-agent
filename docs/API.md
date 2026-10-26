@@ -33,7 +33,7 @@ Content-Type: image/png
 <raw image bytes>
 ```
 
-Complete and inspect the session:
+Complete and inspect the session before committing it:
 
 ```http
 POST /api/v1/uploads/{uploadId}/complete
@@ -51,6 +51,8 @@ Content-Type: application/json
 ```
 
 Reference uploads use `kind: "reference"` and the same `uploadId` field with `POST /api/v1/references/import`.
+Source preflight and Reference import copy accepted images into backend-owned durable storage, then
+release the consumed upload session. `DELETE` is only needed to abandon a session before submission.
 
 ### Download a job artifact
 
@@ -109,8 +111,8 @@ Content-Type: application/json
 ```
 
 `sourceImageIds` is required, non-empty, and unique. Every ID must belong to the exact retained
-preflight used by the root Translation Job, and the retained upload and normalized image must still
-be available. The backend restores chapter order even if the request sends IDs in another order.
+preflight used by the root Translation Job, and its backend-owned normalized image must still be
+available. The backend restores chapter order even if the request sends IDs in another order.
 
 The four other fields are optional overrides. Omitted settings inherit from the selected parent Job.
 Provider, model, target-language support, and BCP 47 language tags are validated before persistence.
@@ -134,8 +136,8 @@ Only the selected source images are uploaded to Koharu and exported. A successfu
 creates inactive page revisions; it does not replace the chapter publication or any active page.
 Failed, blocked, or canceled Jobs create no revisions and are never retried automatically.
 
-Missing source data returns `409` with one of `source_preflight_unavailable`,
-`source_upload_unavailable`, or `source_image_unavailable`. These errors do not disclose filesystem
+Missing source data returns `409` with either `source_preflight_unavailable` or
+`source_image_unavailable`. These errors do not disclose filesystem
 paths. Unknown or duplicated selections return `400`/`422` validation errors.
 
 ### List and activate page revisions
@@ -245,13 +247,23 @@ Request body:
 Koharu translation provider and model. If `translationTarget` is omitted, the backend uses
 `translation.defaultTarget` from configuration. Clients must send only `providerId` and `modelId`;
 the backend derives whether the target is a local LLM, hosted LLM, or machine-translation provider.
+Generation settings are runtime configuration rather than Job payload fields. Configure
+`translation.generationOptions.temperature` (`0`–`1`) and `reasoning` (`off`, `on`, `low`, `medium`,
+or `high`) through `PATCH /config` before creating a Job. For the configured OpenAI-compatible LM
+Studio target, the backend routes Koharu Chat Completions through its local proxy, converts them to
+LM Studio Native Chat requests, and enforces both values on every inference call.
+Image engines are selected through named `pipeline` profiles. By default, `quick` maps to `fast`
+and uses `lama-manga` for `clean`; the other translation modes map to `quality` and use
+`flux2-klein`. `pipeline.modeProfiles` changes the mapping and
+`pipeline.profiles.<id>.engines` edits a profile. An explicitly configured engine that is absent
+from the live Koharu catalog fails before project execution instead of falling back silently.
 Translation jobs also require `mangaId`, `translatorId`, and `chapterId`. These fields identify the
 single output publication; chapter numbers do not need to be contiguous.
 The backend generates the export directory beneath its configured `paths.translated` root using the
-manga, translator, chapter, and Job identifiers. Browser clients must not send `outputDir`; exported
-files are discovered and downloaded through the Job Artifact API. A trusted desktop deployment may
-temporarily supply an optional `outputDir` override for its native folder-picker integration. An
-override outside the backend data root is not downloadable through the Artifact Content API.
+manga, translator, chapter, and Job identifiers. Clients must not send `outputDir`; exported files
+are discovered and downloaded through the Job Artifact API. While the desktop GUI is running, a
+new successful export is downloaded automatically. The desktop output-folder setting is a local
+download destination and is never sent to the backend.
 `qualityCheck` controls the optional Quality stage for LLM-backed `reference_style` and `local_style`;
 `quick` always skips it and `learning_style` always runs it. When a machine-translation target is used
 with `reference_style`, `local_style`, or `learning_style`, the backend automatically runs the existing
@@ -517,6 +529,7 @@ Event categories currently emitted:
 - `reference_extraction.completed`
 - `setup.completed`
 - `pipeline.progress`
+- `pipeline.metrics`
 - `pipeline.completed`
 - `quality.completed`
 - `knowledge.completed`
@@ -525,6 +538,22 @@ Event categories currently emitted:
 - `job.completed`
 - `job.failed`
 - `job.cancel_requested`
+
+`pipeline.progress` uses one-based `currentPageIndex`. `completedPages` excludes the active page, so
+an event for current page 12 reports 11 completed pages until Koharu advances. `telemetry` preserves
+the sanitized raw Koharu step, page, total, percent, status, and whether the observation came from SSE
+or polling. When Koharu finishes, the backend emits one terminal progress event with source
+`backend_terminal`, `status: completed`, and `completedPages === totalPages` before Export starts.
+`progressSemanticsVersion` is `2` for this contract.
+
+`pipeline.metrics` is emitted for both successful and failed translation Pipelines. It summarizes
+backend-observed event gaps by page and last-reported engine, including total duration, P50/P90/P95,
+slowest spans, provider/model identity, and non-secret prompt metadata. These measurements do not
+represent Koharu-internal token usage, provider retries, queue time, or time-to-first-token.
+For an LM Studio-backed target, the summary also includes a sanitized snapshot from LM Studio
+`GET /api/v1/models`: loaded instance state, selected performance settings, and the model's public
+reasoning capability/default. When the native proxy is active, `generationSettings` separately records
+the enforced per-request Temperature and Thinking value; capability defaults are never used as proof.
 
 ### Retry job
 ```http
@@ -547,12 +576,20 @@ Job responses include `outcome` (`clean`, `warnings`, or `partial`), `diagnostic
 POST /jobs/{jobId}/cancel
 ```
 
-Cancellation is cooperative and handled by the workflow engine.
+Cancellation is cooperative outside external operations. While a Koharu pipeline is active, the backend
+also sends `DELETE /api/v1/operations/{operationId}` to Koharu and marks the Job `canceled` only after
+Koharu acknowledges the stop request. If that request fails, the Job becomes `failed` with
+`koharu_cancel_failed` diagnostics because the remote operation may still be running.
 
 ### Read resolved config
 ```http
 GET /config
 ```
+
+`translation.generationOptions` controls the Temperature and reasoning values enforced by the native
+proxy. `translation.lmStudio.baseUrl` points from Backend to LM Studio; Docker normally uses
+`host.docker.internal`. `translation.lmStudio.koharuProxyBaseUrl` is the host-visible Backend URL that
+Koharu uses instead of connecting to LM Studio directly.
 
 ### Health check
 ```http
@@ -696,6 +733,10 @@ GET /engines
 ```
 
 ### Pipelines and Operations
+
+Pipeline monitoring uses the configured timeout as an inactivity limit. Continued page or engine
+progress keeps a long-running operation alive. A Translation Job cannot succeed unless its export
+contains exactly one rendered image for every selected source image.
 ```http
 POST /pipelines
 GET /operations

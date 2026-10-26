@@ -16,7 +16,8 @@ async function synchronizePageRevisions(manager, job, jobId, diagnostics) {
   try {
     await manager.pageRevisionService.synchronizeJob(jobId, { allowRunning: true });
   } catch (error) {
-    if (job.payload?.revision?.reason === "selective_retranslation") throw error;
+    const criticalMismatch = error.code === "translated_image_mapping_mismatch";
+    if (criticalMismatch || job.payload?.revision?.reason === "selective_retranslation") throw error;
     diagnostics.warningCount += 1;
     diagnostics.warnings.push({
       code: error.code || "page_revision_index_unavailable",
@@ -27,6 +28,11 @@ async function synchronizePageRevisions(manager, job, jobId, diagnostics) {
       message: error.message,
     });
   }
+}
+
+function outcomeWithFinalDiagnostics(outcomeSummary, diagnostics) {
+  if (outcomeSummary.outcome !== "clean" || diagnostics.warningCount === 0) return outcomeSummary;
+  return { ...outcomeSummary, outcome: "warnings", warnings: diagnostics.warnings };
 }
 
 function updateQueuedKnowledgeStatus(manager, payload, knowledgeJob) {
@@ -230,11 +236,12 @@ function runJobPostSuccess(manager, job, jobId, result) {
 }
 
 async function handleJobSuccess(manager, job, jobId, result) {
-  const outcomeSummary = summarizeJobOutcome(result);
-  const diagnostics = buildRunJobDiagnostics(outcomeSummary);
+  const initialOutcome = summarizeJobOutcome(result);
+  const diagnostics = buildRunJobDiagnostics(initialOutcome);
   manager.store.updateJob({ id: jobId, status: "running", stage: "finalizing" });
   manager.persistArtifacts(jobId, result);
   await synchronizePageRevisions(manager, job, jobId, diagnostics);
+  const outcomeSummary = outcomeWithFinalDiagnostics(initialOutcome, diagnostics);
   manager.store.updateJob({
     id: jobId,
     status: "succeeded",

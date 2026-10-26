@@ -7,7 +7,7 @@ const {
 function createTranslationJob(manager, payload) {
   const translationTarget = payload?.translationTarget || manager.resolvedConfig.translation?.defaultTarget || null;
   const policy = resolveTranslationModePolicy(payload?.translationMode, payload?.qualityCheck === true);
-  const obsoleteFields = ["referenceSetId", "ingestReference", "knowledgeBuilder"].filter((field) =>
+  const obsoleteFields = ["referenceSetId", "ingestReference", "knowledgeBuilder", "sourceFolder"].filter((field) =>
     Object.prototype.hasOwnProperty.call(payload, field),
   );
   if (obsoleteFields.length > 0) {
@@ -146,7 +146,7 @@ function validateRetranslationRequestFields(payload, request) {
 }
 
 function applySelectiveRetranslationRequestFields(manager, payload, request) {
-  for (const field of ["translationTarget", "targetLanguage", "sourceLanguage", "instructions"]) {
+  for (const field of ["translationTarget", "generationOptions", "targetLanguage", "sourceLanguage", "instructions"]) {
     if (Object.prototype.hasOwnProperty.call(request, field)) payload[field] = request[field];
   }
   validateRetranslationRequestFields(payload, request);

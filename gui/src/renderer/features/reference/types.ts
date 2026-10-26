@@ -1,5 +1,4 @@
 import type {
-  GuiArtifact,
   GuiJob,
   IngestionKnowledgeReport,
   MangaSeriesSummary,
@@ -55,13 +54,6 @@ export type ImportedReferenceBinding = {
 export type WorklistJobSnapshot = {
   extractionJob: GuiJob | null;
   ingestionJob: GuiJob | null;
-};
-
-export type ArtifactPreviewState = {
-  previewArtifact: GuiArtifact | null;
-  previewData: unknown;
-  editorValue: string;
-  previewStatus: string;
 };
 
 export type ReferenceMangaOption = MangaSeriesSummary;

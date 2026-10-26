@@ -71,12 +71,30 @@ export type TranslationTarget = {
   modelId: string;
 };
 
+export type PipelineEngineKey =
+  | "detect" | "fontDetect" | "segment" | "bubbleSegment"
+  | "ocr" | "translate" | "clean" | "render";
+
+export type PipelineConfig = {
+  defaultProfile?: string;
+  modeProfiles?: Partial<Record<"quick" | "reference_style" | "local_style" | "learning_style", string>>;
+  profiles?: Record<string, { engines?: Partial<Record<PipelineEngineKey, string | null>> }>;
+};
+
 export type BackendConfig = {
   api?: {
     baseUrl?: string;
   };
   translation?: {
     defaultTarget?: TranslationTarget;
+    generationOptions?: {
+      temperature?: number;
+      reasoning?: "off" | "on" | "low" | "medium" | "high";
+    };
+    lmStudio?: {
+      baseUrl?: string;
+      koharuProxyBaseUrl?: string;
+    };
     machineTranslation?: {
       referencePostEdit?: boolean;
       learningPostEdit?: boolean;
@@ -98,7 +116,7 @@ export type BackendConfig = {
     messageTimeoutMs?: number;
     modelSilenceTimeoutMs?: number;
   };
-  engines?: Record<string, string> | null;
+  pipeline?: PipelineConfig;
   defaults?: {
     trashRetentionDays?: number;
     logRetentionDays?: number;
