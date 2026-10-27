@@ -16,12 +16,15 @@ describe("selective retranslation Job creation", () => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), "selective-retranslation-"));
     store = new JobStore(path.join(root, "jobs.sqlite"));
     sourcePreflightModule = {
-      resolveSourceSelection: jest.fn().mockReturnValue({
-        manifest: { preflightId: "preflight-1" },
-        images: [
+      resolveSourceSelection: jest.fn().mockImplementation((_preflightId, selectedIds) => {
+        const images = [
           { id: "source-3", orderIndex: 2, orderedPath: "page-3.png" },
           { id: "source-7", orderIndex: 6, orderedPath: "page-7.png" },
-        ],
+        ];
+        return {
+          manifest: { preflightId: "preflight-1" },
+          images: selectedIds ? images.filter((image) => selectedIds.includes(image.id)) : images,
+        };
       }),
     };
     client = {
@@ -129,5 +132,42 @@ describe("selective retranslation Job creation", () => {
       code: "unsupported_retranslation_instructions",
     });
     expect(store.listJobs()).toHaveLength(1);
+  });
+
+  test("creates an inactive text-region correction revision with immutable patch data", async () => {
+    const regionCorrections = { sourceJobId: "root-job", pages: [{
+      sourceImageId: "source-3", baseRegionSetRevisionId: "region-set-1",
+      regions: [{ regionId: "region-1", sourceText: "corrected OCR" }],
+    }] };
+    manager.textRegionCorrectionService = { prepare: jest.fn().mockReturnValue({
+      reason: "text_region_correction",
+      sourceImageIds: ["source-3"],
+      revision: { baseRegionSetRevisionIds: ["region-set-1"] },
+      payload: { regionCorrections },
+    }) };
+
+    const created = await manager.createTextRegionCorrectionJob("root-job", {
+      pages: regionCorrections.pages,
+    });
+
+    expect(created).toEqual(expect.objectContaining({
+      status: "queued", type: "translation", parentJobId: "root-job",
+      revision: expect.objectContaining({ reason: "text_region_correction" }),
+    }));
+    expect(created.payload.regionCorrections).toEqual(regionCorrections);
+    expect(created.payload.sourceImageIds).toEqual(["source-3"]);
+
+    store.updateJob({ id: created.id, status: "failed", stage: "failed" });
+    const retried = manager.retryJob(created.id);
+    expect(retried).toEqual(expect.objectContaining({
+      parentJobId: created.id,
+      retryOf: created.id,
+      revision: expect.objectContaining({
+        rootJobId: "root-job",
+        parentJobId: created.id,
+        reason: "text_region_correction",
+      }),
+    }));
+    expect(retried.payload.regionCorrections).toEqual(regionCorrections);
   });
 });

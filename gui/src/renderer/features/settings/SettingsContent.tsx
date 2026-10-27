@@ -233,6 +233,7 @@ function PipelineProfiles({ model }: { model: SettingsModel }) {
 function KoharuFields({ model }: { model: SettingsModel }) {
   return <div className="form-grid">
     <label className="field"><span>{model.t("settings.koharu.baseUrl.label")}</span>
+      <small className="muted-text">{model.t("settings.koharu.baseUrl.help")}</small>
       <input value={model.config?.api?.baseUrl || ""}
         onChange={(event) => model.updateApi(event.currentTarget.value)} /></label>
     <TranslationProviderField model={model} />

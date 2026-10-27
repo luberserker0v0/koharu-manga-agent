@@ -334,7 +334,7 @@ async function createAndOpenProject(baseUrl) {
   return { projectName, projectId };
 }
 
-async function orchestrate(options) {
+async function prepareProject(options) {
   const translationProxy = await ensureTranslationProviderProxy(options.baseUrl, options.translationProxy);
   const translationTarget = await loadTranslationTarget(
     options.baseUrl,
@@ -345,16 +345,19 @@ async function orchestrate(options) {
   const { projectName } = await createAndOpenProject(options.baseUrl);
   const upload = await uploadPages(options.sourceImagePaths, options.baseUrl);
   const engines = await resolveEngines(options.baseUrl, options.engines);
+  return { projectName, upload, engines, translationTarget, translationProxy };
+}
+
+async function orchestrate(options) {
+  const prepared = await prepareProject(options);
+  const { engines } = prepared;
   const steps = buildPipelineSteps(engines);
   const pipeline = await startPipeline(steps, options.targetLanguage, options.baseUrl, options.systemPrompt);
   return {
-    projectName,
+    ...prepared,
     operationId: pipeline.operationId,
     engines,
     steps,
-    upload,
-    translationTarget,
-    translationProxy,
   };
 }
 
@@ -365,6 +368,7 @@ module.exports = {
   ensureTranslationProviderProxy,
   loadTranslationTarget,
   orchestrate,
+  prepareProject,
   resolveEngines,
   startPipeline,
   uploadPages,

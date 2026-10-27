@@ -43,22 +43,22 @@ function normalizeLanguage(value, fieldName) {
   }
 }
 
-function validateSelectiveRetranslationSourceJob(sourceJob) {
+function validateTranslationRevisionSourceJob(sourceJob) {
   if (!sourceJob || sourceJob.type !== "translation") {
-    const error = new Error("Selective retranslation requires a Translation Job.");
+    const error = new Error("Translation revision requires a Translation Job.");
     error.statusCode = sourceJob ? 409 : 404;
     error.code = sourceJob ? "invalid_retranslation_source" : "translation_job_not_found";
     throw error;
   }
   if (sourceJob.status !== "succeeded") {
-    const error = new Error("Selective retranslation requires a succeeded Translation Job.");
+    const error = new Error("Translation revision requires a succeeded Translation Job.");
     error.statusCode = 409;
     error.code = "translation_job_not_completed";
     throw error;
   }
 }
 
-function validateSelectiveRetranslationImageIds(request) {
+function validateTranslationRevisionImageIds(request) {
   if (!Array.isArray(request.sourceImageIds) || request.sourceImageIds.length === 0) {
     const error = new Error("sourceImageIds must be a non-empty array.");
     error.statusCode = 400;
@@ -83,7 +83,7 @@ function validateSelectiveRetranslationImageIds(request) {
   return sourceImageIds;
 }
 
-function resolveSelectiveRetranslationSource(manager, sourceJob, sourceImageIds) {
+function resolveTranslationRevisionSource(manager, sourceJob, sourceImageIds) {
   const rootJobId = sourceJob.payload?.revision?.rootJobId || sourceJob.id;
   const rootJob = manager.store.getJob(rootJobId);
   const sourcePreflightId = rootJob?.payload?.sourcePreflightId;
@@ -106,18 +106,23 @@ function resolveSelectiveRetranslationSource(manager, sourceJob, sourceImageIds)
   return { rootJobId, sourcePreflightId, sourceSelection };
 }
 
-function buildSelectiveRetranslationBasePayload(sourceJob, sourceSelection, rootJobId, sourcePreflightId) {
+function buildTranslationRevisionBasePayload(sourceJob, sourceContext, options) {
+  const { sourceSelection, rootJobId, sourcePreflightId } = sourceContext;
   const sourceImageIds = sourceSelection.images.map((image) => image.id);
+  const inheritedPayload = { ...sourceJob.payload };
+  delete inheritedPayload.regionCorrections;
   const payload = {
-    ...sourceJob.payload,
+    ...inheritedPayload,
     sourcePreflightId,
     sourceImageIds,
     revision: {
       rootJobId,
       parentJobId: sourceJob.id,
-      reason: "selective_retranslation",
+      reason: options.reason,
       sourceImageIds,
+      ...(options.revision || {}),
     },
+    ...(options.payload || {}),
   };
   delete payload.outputDir;
   delete payload.baseUrl;
@@ -145,7 +150,7 @@ function validateRetranslationRequestFields(payload, request) {
   payload.instructions = payload.instructions.trim();
 }
 
-function applySelectiveRetranslationRequestFields(manager, payload, request) {
+function applyTranslationRevisionRequestFields(manager, payload, request) {
   for (const field of ["translationTarget", "generationOptions", "targetLanguage", "sourceLanguage", "instructions"]) {
     if (Object.prototype.hasOwnProperty.call(request, field)) payload[field] = request[field];
   }
@@ -157,18 +162,13 @@ function applySelectiveRetranslationRequestFields(manager, payload, request) {
   );
 }
 
-function buildSelectiveRetranslationPayload(manager, sourceJob, request, sourceContext) {
-  const payload = buildSelectiveRetranslationBasePayload(
-    sourceJob,
-    sourceContext.sourceSelection,
-    sourceContext.rootJobId,
-    sourceContext.sourcePreflightId,
-  );
-  applySelectiveRetranslationRequestFields(manager, payload, request);
+function buildTranslationRevisionPayload(manager, sourceJob, request, sourceContext, options) {
+  const payload = buildTranslationRevisionBasePayload(sourceJob, sourceContext, options);
+  applyTranslationRevisionRequestFields(manager, payload, request);
   return payload;
 }
 
-async function getSelectiveRetranslationCatalog(manager, client, payload) {
+async function getTranslationRevisionCatalog(manager, client, payload) {
   try {
     return await client.getTranslationCatalog(payload.baseUrl || manager.resolvedConfig.api?.baseUrl);
   } catch (cause) {
@@ -190,7 +190,7 @@ function assertRetranslationInstructionsSupported(payload, resolvedTarget) {
   throw error;
 }
 
-async function resolveSelectiveRetranslationTarget(manager, payload) {
+async function resolveTranslationRevisionTarget(manager, payload) {
   const translationTarget = payload.translationTarget || manager.resolvedConfig.translation?.defaultTarget || null;
   const client = manager.engine?.projectLifecycle?.client;
   if (!client?.getTranslationCatalog) {
@@ -199,7 +199,7 @@ async function resolveSelectiveRetranslationTarget(manager, payload) {
     error.code = "translation_provider_catalog_unavailable";
     throw error;
   }
-  const catalog = await getSelectiveRetranslationCatalog(manager, client, payload);
+  const catalog = await getTranslationRevisionCatalog(manager, client, payload);
   const resolvedTarget = resolveTranslationTarget({
     catalog,
     requestedTarget: translationTarget,
@@ -229,21 +229,43 @@ async function assertAgentAvailableForTranslation(manager, payload) {
   return { required: true, available: true };
 }
 
-async function createSelectiveRetranslationJob(manager, sourceJobId, request = {}) {
+async function createTranslationRevisionJob(manager, sourceJobId, request, options) {
   const sourceJob = manager.store.getJob(sourceJobId);
-  validateSelectiveRetranslationSourceJob(sourceJob);
-  const sourceImageIds = validateSelectiveRetranslationImageIds(request);
-  const sourceContext = resolveSelectiveRetranslationSource(manager, sourceJob, sourceImageIds);
-  const payload = buildSelectiveRetranslationPayload(manager, sourceJob, request, sourceContext);
-  await resolveSelectiveRetranslationTarget(manager, payload);
+  validateTranslationRevisionSourceJob(sourceJob);
+  const prepared = options.prepare ? await options.prepare(sourceJob, request) : options;
+  const sourceImageIds = validateTranslationRevisionImageIds({ sourceImageIds: prepared.sourceImageIds });
+  const sourceContext = resolveTranslationRevisionSource(manager, sourceJob, sourceImageIds);
+  const payload = buildTranslationRevisionPayload(manager, sourceJob, request, sourceContext, prepared);
+  await resolveTranslationRevisionTarget(manager, payload);
   await assertAgentAvailableForTranslation(manager, payload);
   await manager.assertKoharuAvailableForJobType("translation", payload);
   return manager.createJob("translation", payload, { parentJobId: sourceJob.id });
 }
 
+async function createTextRegionCorrectionJob(manager, sourceJobId, request = {}) {
+  if (!manager.textRegionCorrectionService) {
+    const error = new Error("Text-region correction service is unavailable.");
+    error.statusCode = 503;
+    error.code = "text_region_service_unavailable";
+    throw error;
+  }
+  return createTranslationRevisionJob(manager, sourceJobId, request, {
+    prepare: (sourceJob, input) => manager.textRegionCorrectionService.prepare(sourceJob, input),
+  });
+}
+
+async function createSelectiveRetranslationJob(manager, sourceJobId, request = {}) {
+  return createTranslationRevisionJob(manager, sourceJobId, request, {
+    reason: "selective_retranslation",
+    sourceImageIds: request.sourceImageIds,
+  });
+}
+
 module.exports = {
   assertAgentAvailableForTranslation,
   createSelectiveRetranslationJob,
+  createTextRegionCorrectionJob,
+  createTranslationRevisionJob,
   createTranslationJob,
   normalizeLanguage,
 };

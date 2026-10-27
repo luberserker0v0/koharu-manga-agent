@@ -25,6 +25,12 @@ const { JobManager } = require("./domains/jobs/job_manager");
 const { UploadService } = require("./domains/uploads/upload_service");
 const { TranslatedImageService } = require("./domains/translation/exports/translated_image_service");
 const { PageRevisionService } = require("./domains/translation/revisions/page_revision_service");
+const {
+  TranslationRevisionPromotionService,
+} = require("./domains/translation/revisions/translation_revision_promotion");
+const { RegionSnapshotRepository } = require("./domains/translation/text_regions/region_snapshot_repository");
+const { TextRegionQueryService } = require("./domains/translation/text_regions/text_region_query_service");
+const { TextRegionCorrectionService } = require("./domains/translation/text_regions/text_region_correction_service");
 const { createApiServer } = require("./http/server/api_server");
 const { startCleanupScheduler } = require("./domains/maintenance/cleanup_service");
 
@@ -53,33 +59,64 @@ function createRuntimeBaseContext(overrides) {
   return { client, aoClient, aoTaskRunner, store, host, port, overrides };
 }
 
-function createFileServices(ctx) {
-  const { store, overrides } = ctx;
-  const sourcePreflightModule = overrides.sourcePreflightModule || new SourcePreflightModule();
-  const postEditWorkspaceModule = overrides.postEditWorkspaceModule || new PostEditWorkspaceModule();
-  const uploadService =
-    overrides.uploadService ||
-    new UploadService({
-      maxFileBytes: config.server?.maxUploadFileBytes,
-      maxFiles: config.server?.maxUploadFiles,
-    });
-  const translatedImageService =
-    overrides.translatedImageService ||
-    new TranslatedImageService({
-      maxFileBytes: config.server?.maxTranslatedImageBytes,
-      maxFiles: config.server?.maxTranslatedImageFiles,
-      maxTotalBytes: config.server?.maxTranslatedImagesTotalBytes,
-    });
-  const translationPublicationService = overrides.translationPublicationService || new TranslationPublicationService();
-  const pageRevisionService =
-    overrides.pageRevisionService ||
-    new PageRevisionService({
-      store,
+function createTranslationRegionServices(ctx, pageRevisionService) {
+  const regionSnapshotRepository = ctx.overrides.regionSnapshotRepository || new RegionSnapshotRepository();
+  const textRegionQueryService = ctx.overrides.textRegionQueryService || new TextRegionQueryService({
+    store: ctx.store,
+    pageRevisionService,
+    snapshotRepository: regionSnapshotRepository,
+  });
+  const textRegionCorrectionService = ctx.overrides.textRegionCorrectionService || new TextRegionCorrectionService({
+    store: ctx.store,
+    snapshotRepository: regionSnapshotRepository,
+  });
+  return { regionSnapshotRepository, textRegionQueryService, textRegionCorrectionService };
+}
+
+function createTranslatedImageService(overrides) {
+  return overrides.translatedImageService || new TranslatedImageService({
+    maxFileBytes: config.server?.maxTranslatedImageBytes,
+    maxFiles: config.server?.maxTranslatedImageFiles,
+    maxTotalBytes: config.server?.maxTranslatedImagesTotalBytes,
+  });
+}
+
+function createRevisionServices(ctx, sourcePreflightModule, translatedImageService, publicationService) {
+  const pageRevisionService = ctx.overrides.pageRevisionService || new PageRevisionService({
+    store: ctx.store,
+    translatedImageService,
+    sourcePreflightModule,
+  });
+  const translationRevisionPromotionService = ctx.overrides.translationRevisionPromotionService
+    || new TranslationRevisionPromotionService({
+      store: ctx.store,
+      pageRevisionService,
       translatedImageService,
       sourcePreflightModule,
+      translationPublicationService: publicationService,
     });
+  return { pageRevisionService, translationRevisionPromotionService };
+}
+
+function createFileServices(ctx) {
+  const { overrides } = ctx;
+  const sourcePreflightModule = overrides.sourcePreflightModule || new SourcePreflightModule();
+  const postEditWorkspaceModule = overrides.postEditWorkspaceModule || new PostEditWorkspaceModule();
+  const uploadService = overrides.uploadService || new UploadService({
+    maxFileBytes: config.server?.maxUploadFileBytes,
+    maxFiles: config.server?.maxUploadFiles,
+  });
+  const translatedImageService = createTranslatedImageService(overrides);
+  const translationPublicationService = overrides.translationPublicationService || new TranslationPublicationService();
+  const revisionServices = createRevisionServices(
+    ctx, sourcePreflightModule, translatedImageService, translationPublicationService,
+  );
+  const { pageRevisionService, translationRevisionPromotionService } = revisionServices;
+  const regionServices = createTranslationRegionServices(ctx, pageRevisionService);
   return { sourcePreflightModule, postEditWorkspaceModule, uploadService,
-    translatedImageService, translationPublicationService, pageRevisionService };
+    translatedImageService, translationPublicationService, pageRevisionService,
+    translationRevisionPromotionService,
+    ...regionServices };
 }
 
 function createKoharuServices(ctx) {
@@ -89,6 +126,7 @@ function createKoharuServices(ctx) {
     new KoharuRuntimeManager({
       config: config.koharuRuntime || {},
       installRoot: paths.koharuRuntimeInstallRoot,
+      baseUrl: config.api.baseUrl,
     });
   const pipelineMonitor = overrides.pipelineMonitor || new PipelineMonitorModule(client);
   return { koharuRuntimeManager, pipelineMonitor };
@@ -107,6 +145,7 @@ function workflowEngineOptions(ctx) {
     postEditWorkspaceModule,
     store,
     translationPublicationService,
+    regionSnapshotRepository,
     overrides,
   } = ctx;
   return {
@@ -124,7 +163,7 @@ function workflowEngineOptions(ctx) {
     translationDeepAuditModule: overrides.translationDeepAuditModule || new TranslationDeepAuditModule(aoTaskRunner),
     exportModule: overrides.exportModule || new ExportModule(client),
     projectLifecycle: overrides.projectLifecycle || new ProjectLifecycleModule(client),
-    postEditWorkspaceModule, jobStore: store, translationPublicationService,
+    postEditWorkspaceModule, regionSnapshotRepository, jobStore: store, translationPublicationService,
   };
 }
 
@@ -133,7 +172,8 @@ function createRuntimeEngine(ctx) {
 }
 
 function createRuntimeJobManager(ctx) {
-  const { store, engine, koharuRuntimeManager, aoClient, pageRevisionService, host, port, overrides } = ctx;
+  const { store, engine, koharuRuntimeManager, aoClient, pageRevisionService,
+    translationRevisionPromotionService, textRegionCorrectionService, host, port, overrides } = ctx;
   const jobManager =
     overrides.jobManager ||
     new JobManager({
@@ -144,6 +184,8 @@ function createRuntimeJobManager(ctx) {
       koharuRuntimeManager,
       aoClient,
       pageRevisionService,
+      translationRevisionPromotionService,
+      textRegionCorrectionService,
     });
   ctx.jobManager = jobManager;
 }
@@ -170,7 +212,7 @@ function createRuntimeServices(ctx) {
 }
 
 function aoClientApply(nextConfig, ctx) {
-  const { aoClient, aoTaskRunner, client, extractionReviewService, jobManager } = ctx;
+  const { aoClient, aoTaskRunner, client, extractionReviewService, jobManager, koharuRuntimeManager } = ctx;
   aoClient.baseUrl = String(nextConfig.agent.baseUrl || "").replace(/\/+$/, "");
   aoClient.apiKey = nextConfig.agent.apiKey || null;
   aoClient.readyPollIntervalMs = nextConfig.agent.readyPollIntervalMs;
@@ -178,6 +220,7 @@ function aoClientApply(nextConfig, ctx) {
   aoTaskRunner.settings = nextConfig.agent;
   client.defaultBaseUrl = nextConfig.api.baseUrl;
   extractionReviewService.baseUrl = nextConfig.api.baseUrl;
+  koharuRuntimeManager?.setExternalBaseUrl?.(nextConfig.api.baseUrl);
   jobManager.resolvedConfig = nextConfig;
 }
 
@@ -190,6 +233,8 @@ function apiServerOptions(ctx) {
     uploadService: ctx.uploadService,
     translatedImageService: ctx.translatedImageService,
     pageRevisionService: ctx.pageRevisionService,
+    translationRevisionPromotionService: ctx.translationRevisionPromotionService,
+    textRegionQueryService: ctx.textRegionQueryService,
     configService: ctx.configService,
     translationPublicationService: ctx.translationPublicationService,
     host: ctx.host,
@@ -231,6 +276,7 @@ function finalizeRuntime(ctx) {
     uploadService: ctx.uploadService,
     translatedImageService: ctx.translatedImageService,
     pageRevisionService: ctx.pageRevisionService,
+    textRegionQueryService: ctx.textRegionQueryService,
     store: ctx.store,
     client: ctx.client,
     aoClient: ctx.aoClient,

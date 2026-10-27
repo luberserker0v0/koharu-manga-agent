@@ -1,7 +1,10 @@
 const { EventEmitter } = require("events");
 
 const { collectWorkspaceManifestArtifacts } = require("./artifacts/job_artifact_collection");
-const { persistJobArtifacts } = require("./artifacts/job_artifact_persistence");
+const {
+  persistJobArtifacts,
+  persistPromotedRevisionArtifacts,
+} = require("./artifacts/job_artifact_persistence");
 const { recoverInterruptedJobs } = require("./lifecycle/recovery");
 const {
   cancelJob: cancelManagedJob,
@@ -54,6 +57,7 @@ const {
 const {
   assertAgentAvailableForTranslation: assertTranslationAgentAvailable,
   createSelectiveRetranslationJob: createSelectiveRetranslation,
+  createTextRegionCorrectionJob: createTextRegionCorrection,
   createTranslationJob: createTranslation,
   normalizeLanguage: normalizeTranslationLanguage,
 } = require("./workflows/translation_job_workflow");
@@ -92,6 +96,8 @@ class JobManager {
     koharuRuntimeManager = null,
     aoClient = null,
     pageRevisionService = null,
+    translationRevisionPromotionService = null,
+    textRegionCorrectionService = null,
   }) {
     this.store = store;
     this.engine = engine;
@@ -100,6 +106,8 @@ class JobManager {
     this.koharuRuntimeManager = koharuRuntimeManager;
     this.aoClient = aoClient;
     this.pageRevisionService = pageRevisionService;
+    this.translationRevisionPromotionService = translationRevisionPromotionService;
+    this.textRegionCorrectionService = textRegionCorrectionService;
     this.events = new EventEmitter();
     this.cancellations = new Set();
     this.activeJobs = new Set();
@@ -194,6 +202,10 @@ class JobManager {
     return createSelectiveRetranslation(this, sourceJobId, request);
   }
 
+  async createTextRegionCorrectionJob(sourceJobId, request = {}) {
+    return createTextRegionCorrection(this, sourceJobId, request);
+  }
+
   async assertAgentAvailableForTranslation(payload) {
     return assertTranslationAgentAvailable(this, payload);
   }
@@ -272,6 +284,10 @@ class JobManager {
 
   persistArtifacts(jobId, result) {
     persistJobArtifacts(this.store, jobId, result);
+  }
+
+  persistPromotedRevisionArtifacts(jobId, result) {
+    persistPromotedRevisionArtifacts(this.store, jobId, result);
   }
 
   cancelJob(jobId) {

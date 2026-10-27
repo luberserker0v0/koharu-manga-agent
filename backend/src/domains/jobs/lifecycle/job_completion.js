@@ -17,7 +17,7 @@ async function synchronizePageRevisions(manager, job, jobId, diagnostics) {
     await manager.pageRevisionService.synchronizeJob(jobId, { allowRunning: true });
   } catch (error) {
     const criticalMismatch = error.code === "translated_image_mapping_mismatch";
-    if (criticalMismatch || job.payload?.revision?.reason === "selective_retranslation") throw error;
+    if (criticalMismatch || job.payload?.revision?.reason) throw error;
     diagnostics.warningCount += 1;
     diagnostics.warnings.push({
       code: error.code || "page_revision_index_unavailable",
@@ -28,6 +28,20 @@ async function synchronizePageRevisions(manager, job, jobId, diagnostics) {
       message: error.message,
     });
   }
+}
+
+async function promoteTranslationRevision(manager, job, jobId, result) {
+  const revision = job.type === "translation" && job.payload?.revision?.rootJobId;
+  if (!revision || !manager.translationRevisionPromotionService) return result;
+  const promoted = await manager.translationRevisionPromotionService.promote(jobId, result);
+  manager.persistPromotedRevisionArtifacts(jobId, promoted);
+  manager.publish(jobId, "page_revision.promoted", {
+    rootJobId: promoted.currentChapter?.rootJobId,
+    pageCount: promoted.currentChapter?.pageCount,
+    sourceImageIds: promoted.currentChapter?.promotedSourceImageIds || [],
+    publicationRevisionId: promoted.publication?.revisionId || null,
+  });
+  return promoted;
 }
 
 function outcomeWithFinalDiagnostics(outcomeSummary, diagnostics) {
@@ -241,20 +255,21 @@ async function handleJobSuccess(manager, job, jobId, result) {
   manager.store.updateJob({ id: jobId, status: "running", stage: "finalizing" });
   manager.persistArtifacts(jobId, result);
   await synchronizePageRevisions(manager, job, jobId, diagnostics);
+  const finalizedResult = await promoteTranslationRevision(manager, job, jobId, result);
   const outcomeSummary = outcomeWithFinalDiagnostics(initialOutcome, diagnostics);
   manager.store.updateJob({
     id: jobId,
     status: "succeeded",
     stage: "succeeded",
-    result,
+    result: finalizedResult,
     error: null,
     outcome: outcomeSummary.outcome,
     diagnostics,
     resumeMetadata: null,
   });
-  const completedResult = scheduleRunJobKnowledge(manager, job, jobId, result);
+  const completedResult = scheduleRunJobKnowledge(manager, job, jobId, finalizedResult);
   publishRunJobCompletion(manager, job, jobId, completedResult, outcomeSummary, diagnostics);
-  runJobPostSuccess(manager, job, jobId, result);
+  runJobPostSuccess(manager, job, jobId, finalizedResult);
 }
 
 module.exports = {

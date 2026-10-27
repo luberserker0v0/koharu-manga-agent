@@ -93,16 +93,14 @@ class PageRevisionService {
     const ordered = (manifest.images || [])
       .slice()
       .sort((left, right) => left.orderIndex - right.orderIndex);
-    const selectedIds =
-      job.payload?.revision?.reason === "selective_retranslation"
-        ? new Set(job.payload.sourceImageIds || [])
-        : null;
+    const revisionImageIds = job.payload?.revision?.sourceImageIds;
+    const selectedIds = Array.isArray(revisionImageIds) ? new Set(revisionImageIds) : null;
     const images = selectedIds
       ? ordered.filter((image) => selectedIds.has(image.id))
       : ordered;
     if (selectedIds && images.length !== selectedIds.size) {
       throw apiError(
-        "The retranslation source-image selection no longer matches its retained preflight.",
+        "The translation revision source-image selection no longer matches its retained preflight.",
         409,
         "source_preflight_mismatch",
       );
@@ -363,12 +361,49 @@ class PageRevisionService {
     };
   }
 
+  compositeRevisionLookup(rootJobId) {
+    const root = this.resolveRootJob(rootJobId);
+    const sources = this.getPreflightManifest(root.payload.sourcePreflightId).images || [];
+    const revisions = new Map(this.store.listTranslationPageRevisions(rootJobId)
+      .map((entry) => [entry.revisionId, entry]));
+    const active = new Map(this.store.listActiveTranslationPageRevisions(rootJobId)
+      .map((entry) => [entry.sourceImageId, revisions.get(entry.revisionId)]));
+    return new Map(sources.map((source) => [source.orderIndex, {
+      source,
+      revision: active.get(source.id),
+    }]));
+  }
+
+  enrichCompositeImage(image, lookup) {
+    const selected = lookup.get(image.index);
+    if (!selected?.revision) return image;
+    return {
+      ...image,
+      sourceImageId: selected.source.id,
+      sourceOrderIndex: selected.source.orderIndex,
+      revisionId: selected.revision.revisionId,
+      revisionNumber: selected.revision.revisionNumber,
+      active: true,
+    };
+  }
+
+  isCurrentChapterArtifact(jobId, artifactId) {
+    return this.store.getArtifacts(jobId).some(
+      (entry) => entry.id === artifactId && entry.kind === "current_chapter_export",
+    );
+  }
+
   async enrichTranslatedImages(jobId, response) {
     const job = this.store.getJob(jobId);
     if (!job || job.type !== "translation" || job.status !== "succeeded")
       return response;
     const rootJobId = this.rootJobIdFor(job);
     await this.synchronizeRoot(rootJobId);
+    if (this.isCurrentChapterArtifact(jobId, response.artifactId)) {
+      const lookup = this.compositeRevisionLookup(rootJobId);
+      return { ...response, rootJobId,
+        images: response.images.map((image) => this.enrichCompositeImage(image, lookup)) };
+    }
     const lookup = this.revisionLookup(rootJobId, jobId);
     return {
       ...response,

@@ -40,6 +40,7 @@ const {
 const { resolveTranslationModePolicy } = require("../../translation/modes/translation_modes");
 const { resolvePipelineProfile } = require("../../translation/pipeline/pipeline_profiles");
 const { resolveExportOutputDir } = require("../../translation/execution/export_output_path");
+const { buildTextRegionCorrectionOps } = require("../../translation/text_regions/text_region_patch_ops");
 const { isMachineTranslationTarget } = require("../../../integrations/koharu/translation/translation_targets");
 const { deleteChapterLearningData } = require("../../knowledge/learning/knowledge");
 const { buildPipelinePlan, resolveReferenceUsage, translationSceneFingerprint } = require("./workflow_helpers");
@@ -104,6 +105,14 @@ function completedPipelineProgress(ctx, pipelinePlan, pipeline, totalPagesHint) 
   };
 }
 
+function buildCorrectionCompletionSteps(engines) {
+  const steps = [engines.translate, engines.clean, engines.render].filter(Boolean);
+  if (![engines.translate, engines.clean, engines.render].every((engine) => steps.includes(engine))) {
+    throw new Error("Text-region correction requires translate, clean, and render engines.");
+  }
+  return steps;
+}
+
 function completeTranslationPipelineMetrics(metrics, status, pipeline = null, error = null) {
   return metrics.complete({
     status,
@@ -131,6 +140,7 @@ class WorkflowEngine {
       exportModule: deps.exportModule,
       projectLifecycle: deps.projectLifecycle,
       postEditWorkspaceModule: deps.postEditWorkspaceModule,
+      regionSnapshotRepository: deps.regionSnapshotRepository,
       jobStore: deps.jobStore,
     });
     this.translationMemoryComposer = deps.translationMemoryComposer || composeTranslationMemory;
@@ -374,6 +384,8 @@ class WorkflowEngine {
     await this._resolveTranslationMemoryAndSnapshot(ctx);
     if (ctx.resume) {
       await this._resumeTranslationProject(ctx);
+    } else if (ctx.textRegionCorrection) {
+      await this._setupTextRegionCorrectionProjectAndPipeline(ctx);
     } else {
       await this._setupTranslationProjectAndPipeline(ctx);
     }
@@ -382,6 +394,7 @@ class WorkflowEngine {
     await this._runTranslationQualityIfNeeded(ctx);
     this._emitQualityDegradedIfNeeded(ctx);
     await this._finalizeTranslationSceneAndSnapshot(ctx);
+    this._persistTranslationRegionSnapshot(ctx);
     if (ctx.shouldCommitKnowledge) this._buildTranslationLearningEvidence(ctx);
     this._createTranslationPostEditDocument(ctx);
     await this._exportTranslation(ctx);
@@ -426,10 +439,12 @@ class WorkflowEngine {
           machineTranslationSettings.learningPostEdit !== false));
     ctx.effectiveQualityRequested = payload.qualityCheck === true || ctx.machineTranslationPostEdit;
     ctx.translationPolicy = resolveTranslationModePolicy(translationMode, ctx.effectiveQualityRequested);
-    ctx.selectiveRetranslation = payload.revision?.reason === "selective_retranslation";
-    ctx.shouldCommitKnowledge = ctx.translationPolicy.commitKnowledge && !ctx.selectiveRetranslation;
+    ctx.revisionTranslation = Boolean(payload.revision?.reason);
+    ctx.textRegionCorrection = payload.revision?.reason === "text_region_correction";
+    ctx.shouldCommitKnowledge = ctx.translationPolicy.commitKnowledge && !ctx.revisionTranslation;
     ctx.resume = payload.resumeFromTranslation || null;
     ctx.sourcePreflight = null;
+    ctx.sourceImages = null;
     ctx.sourceImagePaths = null;
     ctx.translationMemory = null;
     ctx.setup = null;
@@ -477,9 +492,10 @@ class WorkflowEngine {
     if (payload.sourcePreflightId && this.sourcePreflightModule) {
       const sourceSelection = this.sourcePreflightModule.resolveSourceSelection(
         payload.sourcePreflightId,
-        ctx.selectiveRetranslation ? payload.sourceImageIds : null,
+        ctx.revisionTranslation ? payload.sourceImageIds : null,
       );
       ctx.sourcePreflight = sourceSelection.manifest;
+      ctx.sourceImages = sourceSelection.images;
       ctx.sourceImagePaths = sourceSelection.images.map((image) => image.orderedPath);
       hooks.emit("source_preflight.resolved", {
         preflightId: ctx.sourcePreflight.preflightId,
@@ -616,13 +632,17 @@ class WorkflowEngine {
   }
 
   async _setupTranslationProjectAndPipeline(ctx) {
-    const { payload, hooks } = ctx;
-    const baseUrl = ctx.baseUrl;
-    const targetLanguage = ctx.targetLanguage;
-    hooks.setStage("running", "setup_project");
-    ctx.setup = await this.projectSetup.run({
-      targetLanguage,
-      baseUrl,
+    ctx.hooks.setStage("running", "setup_project");
+    ctx.setup = await this.projectSetup.run(this._translationProjectOptions(ctx));
+    this._emitTranslationSetup(ctx);
+    ctx.hooks.setStage("waiting_pipeline", "monitor_pipeline");
+    ctx.pipeline = await this._monitorTranslationPipeline(ctx, ctx.hooks);
+  }
+
+  _translationProjectOptions(ctx) {
+    return {
+      targetLanguage: ctx.targetLanguage,
+      baseUrl: ctx.baseUrl,
       systemPrompt: ctx.machineTranslationRequested ? null : ctx.systemPrompt,
       systemPromptSource: ctx.machineTranslationRequested ? "none" : ctx.systemPromptSource,
       sourceImagePaths: ctx.sourceImagePaths,
@@ -631,22 +651,81 @@ class WorkflowEngine {
       lmStudioBaseUrl: ctx.lmStudioBaseUrl,
       translationProxy: ctx.translationProxy,
       translationMode: ctx.translationMode,
-    });
-    hooks.emit("translation_target.selected", {
+    };
+  }
+
+  _emitTranslationSetup(ctx) {
+    ctx.hooks.emit("translation_target.selected", {
       kind: ctx.setup.translationTarget?.kind || null,
       providerId: ctx.setup.translationTarget?.providerId || null,
       modelId: ctx.setup.translationTarget?.modelId || null,
       targetKind: ctx.setup.translationTarget?.targetKind || null,
       referencePostEdit: ctx.machineTranslationPostEdit,
     });
-    hooks.emit("setup.completed", ctx.setup);
-    hooks.setStage("waiting_pipeline", "monitor_pipeline");
-    ctx.pipeline = await this._monitorTranslationPipeline(ctx, hooks);
+    ctx.hooks.emit("setup.completed", ctx.setup);
+  }
+
+  async _setupTextRegionCorrectionProjectAndPipeline(ctx) {
+    ctx.hooks.setStage("running", "setup_correction_project");
+    ctx.setup = await this.projectSetup.prepare(this._translationProjectOptions(ctx));
+    await this._runTextRegionCorrectionBootstrap(ctx);
+    await this._applyTextRegionCorrections(ctx);
+    await this._startTextRegionCorrectionCompletion(ctx);
+    this._emitTranslationSetup(ctx);
+    ctx.hooks.setStage("waiting_pipeline", "monitor_pipeline");
+    ctx.pipeline = await this._monitorTranslationPipeline(ctx, ctx.hooks);
+  }
+
+  async _runTextRegionCorrectionBootstrap(ctx) {
+    const steps = buildBootstrapPipelineSteps(ctx.setup.engines);
+    const started = await startPipeline(steps, ctx.targetLanguage, ctx.baseUrl);
+    ctx.hooks.setStage("waiting_pipeline", "correction_ocr");
+    await this.pipelineMonitor.run({
+      operationId: started.operationId,
+      baseUrl: ctx.baseUrl,
+      pipelinePlan: ["detect", "fontDetect", "segment", "bubbleSegment", "ocr"],
+      totalPagesHint: ctx.sourceImagePaths.length,
+      onProgress: (progress) => ctx.hooks.emit("pipeline.progress", progress),
+      isCanceled: ctx.hooks.isCanceled,
+    });
+    ctx.setup.steps = steps;
+  }
+
+  _loadTextRegionCorrectionSnapshot(ctx) {
+    const sourceJob = this.jobStore.getJob(ctx.payload.regionCorrections.sourceJobId);
+    const snapshot = sourceJob && this.regionSnapshotRepository?.loadForJob(this.jobStore, sourceJob);
+    if (snapshot) return snapshot;
+    const error = new Error("The correction source text-region snapshot is unavailable.");
+    error.code = "text_region_snapshot_unavailable";
+    error.statusCode = 409;
+    throw error;
+  }
+
+  async _applyTextRegionCorrections(ctx) {
+    ctx.hooks.setStage("running", "apply_text_region_corrections");
+    const snapshot = this._loadTextRegionCorrectionSnapshot(ctx);
+    const scene = await this.projectLifecycle.client.getScene(ctx.baseUrl);
+    const ops = buildTextRegionCorrectionOps(snapshot, ctx.payload.regionCorrections, scene);
+    await this.projectLifecycle.client.applyHistoryBatch({
+      ops, label: `text_region_correction_${ctx.hooks.jobId}`, baseUrl: ctx.baseUrl,
+    });
+    ctx.hooks.emit("text_region_correction.applied", { updatedRegions: ops.length });
+  }
+
+  async _startTextRegionCorrectionCompletion(ctx) {
+    const steps = buildCorrectionCompletionSteps(ctx.setup.engines);
+    const started = await startPipeline(
+      steps, ctx.targetLanguage, ctx.baseUrl,
+      ctx.machineTranslationRequested ? null : ctx.systemPrompt,
+    );
+    ctx.setup.operationId = started.operationId;
+    ctx.setup.steps = [...ctx.setup.steps, ...steps];
+    ctx.pipelinePlan = ["translate", "clean", "render"];
   }
 
   async _monitorTranslationPipeline(ctx, hooks) {
     const baseUrl = ctx.baseUrl;
-    const pipelinePlan = buildPipelinePlan(ctx.setup.engines);
+    const pipelinePlan = ctx.pipelinePlan || buildPipelinePlan(ctx.setup.engines);
     const totalPagesHint = Array.isArray(ctx.sourceImagePaths) ? ctx.sourceImagePaths.length : null;
     const metrics = createTranslationPipelineMetrics(ctx);
     try {
@@ -965,6 +1044,35 @@ class WorkflowEngine {
     ctx.finalTranslationSnapshot = finalTranslationSnapshot;
   }
 
+  _regionSnapshotSourceImages(ctx) {
+    if (ctx.sourceImages) return ctx.sourceImages;
+    const selectedIds = Array.isArray(ctx.payload.sourceImageIds) ? ctx.payload.sourceImageIds : null;
+    const selection = this.sourcePreflightModule.resolveSourceSelection(
+      ctx.payload.sourcePreflightId,
+      selectedIds,
+    );
+    return selection.images;
+  }
+
+  _persistTranslationRegionSnapshot(ctx) {
+    ctx.regionSnapshot = null;
+    ctx.regionSnapshotPath = null;
+    if (!this.regionSnapshotRepository || !ctx.hooks.jobId) return;
+    ctx.regionSnapshotPath = path.join(ctx.translationWorkspace, "text_region_snapshot.json");
+    ctx.regionSnapshot = this.regionSnapshotRepository.persist(ctx.regionSnapshotPath, {
+      jobId: ctx.hooks.jobId,
+      rootJobId: ctx.payload.revision?.rootJobId || ctx.hooks.jobId,
+      sourcePreflightId: ctx.payload.sourcePreflightId,
+      sourceImages: this._regionSnapshotSourceImages(ctx),
+      scene: ctx.finalScene,
+    });
+    ctx.hooks.emit("text_region_snapshot.persisted", {
+      path: ctx.regionSnapshotPath,
+      fingerprint: ctx.regionSnapshot.fingerprint,
+      pageCount: ctx.regionSnapshot.pages.length,
+    });
+  }
+
   _buildFinalTranslationSnapshot(ctx) {
     const { payload, hooks, translationMemory, finalTranslations } = ctx;
     const finalTranslationSnapshot = {
@@ -1041,13 +1149,15 @@ class WorkflowEngine {
     const { payload, hooks } = ctx;
     ctx.postEditDocumentPath = null;
     if (this.postEditWorkspaceModule && hooks.jobId) {
-      ctx.postEditDocumentPath = this.postEditWorkspaceModule.createDocumentFromScene({
+      const create = ctx.regionSnapshot && this.postEditWorkspaceModule.createDocumentFromRegionSnapshot
+        ? "createDocumentFromRegionSnapshot" : "createDocumentFromScene";
+      ctx.postEditDocumentPath = this.postEditWorkspaceModule[create]({
         jobId: hooks.jobId,
         sourcePreflightId: payload.sourcePreflightId || null,
         mangaId: payload.mangaId || null,
         translatorId: payload.translatorId || null,
         chapterId: payload.chapterId || null,
-        scene: ctx.finalScene,
+        ...(ctx.regionSnapshot ? { snapshot: ctx.regionSnapshot } : { scene: ctx.finalScene }),
       });
       hooks.emit("post_edit_document.persisted", {
         path: ctx.postEditDocumentPath,
@@ -1144,9 +1254,8 @@ class WorkflowEngine {
 
   _publishTranslation(ctx) {
     const { payload, hooks } = ctx;
-    const selectiveRetranslation = ctx.selectiveRetranslation;
     const translationPolicy = ctx.translationPolicy;
-    const publication = selectiveRetranslation ? null : this._createTranslationPublication(ctx);
+    const publication = ctx.revisionTranslation ? null : this._createTranslationPublication(ctx);
     ctx.publication = publication || null;
     ctx.discardedChapterLearning = null;
     if (publication) {
@@ -1181,6 +1290,15 @@ class WorkflowEngine {
     };
   }
 
+  _translationSnapshotResult(ctx) {
+    return {
+      translationMemorySnapshotPath: ctx.translationMemorySnapshotPath,
+      finalTranslationSnapshotPath: ctx.finalTranslationSnapshotPath,
+      regionSnapshotPath: ctx.regionSnapshotPath,
+      regionSnapshotFingerprint: ctx.regionSnapshot?.fingerprint || null,
+    };
+  }
+
   _buildTranslationResult(ctx) {
     const { payload, hooks } = ctx;
     return {
@@ -1195,8 +1313,7 @@ class WorkflowEngine {
       translationTarget: ctx.setup.translationTarget || ctx.requestedTranslationTarget,
       machineTranslationPostEdit: ctx.machineTranslationPostEdit,
       translationMemoryFingerprint: ctx.translationMemory.fingerprint,
-      translationMemorySnapshotPath: ctx.translationMemorySnapshotPath,
-      finalTranslationSnapshotPath: ctx.finalTranslationSnapshotPath,
+      ...this._translationSnapshotResult(ctx),
       learningEvidenceSnapshotPath: ctx.learningEvidenceSnapshotPath || null,
       publication: ctx.publication,
       discardedChapterLearning: ctx.discardedChapterLearning,

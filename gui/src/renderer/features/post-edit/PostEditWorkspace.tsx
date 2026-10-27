@@ -1,7 +1,8 @@
 import type { DragEvent } from "react";
 import type { EditedSceneDocument, TranslatedImage } from "../../api/jobs";
 import type { PostEditController } from "./usePostEditController";
-import { payloadString, translatedImageForPage, translatedImageUrl } from "./postEditModel";
+import { payloadString, translatedImageForPage, translatedImageUrl, type PostEditPreviewMode } from "./postEditModel";
+import { TextRegionCorrectionEditor } from "./TextRegionCorrectionEditor";
 
 type Controller = PostEditController;
 
@@ -274,13 +275,13 @@ function BubbleOverlay({ c, nodeId, index }: { c: Controller; nodeId: string; in
 
 function ImageStage({ c }: { c: Controller }) {
   const { preview, derived, actions } = c;
-  if (!derived.imageUrl || !derived.page || !derived.image) return null;
+  if (!derived.imageUrl || !derived.page || !derived.previewImageKey) return null;
   return (
     <div className="post-edit-image-stage">
       <img
-        alt={derived.page.pageName}
+        alt={`${derived.page.pageName} – ${c.t(`postEdit.preview.${derived.effectivePreviewMode}`)}`}
         src={derived.imageUrl}
-        onError={() => actions.markImageFailed(derived.image!.id)}
+        onError={() => actions.markImageFailed(derived.previewImageKey as string)}
         onLoad={(event) =>
           preview.setDimensions({
             width: event.currentTarget.naturalWidth,
@@ -302,20 +303,42 @@ function previewMessage(c: Controller) {
   return "postEdit.nodeOrder.noPreview";
 }
 
+function selectPreviewMode(c: Controller, mode: PostEditPreviewMode) {
+  c.preview.setMode(mode);
+  c.preview.setDimensions(null);
+}
+
+function PreviewModeToggle({ c }: { c: Controller }) {
+  const sourceAvailable = Boolean(c.derived.sourceImage);
+  return (
+    <div className="post-edit-preview-mode" role="group" aria-label={c.t("postEdit.preview.modeLabel")}>
+      <PreviewModeButton c={c} mode="translated" disabled={!c.derived.image} />
+      <span title={sourceAvailable ? undefined : c.t("postEdit.preview.sourceUnavailable")}>
+        <PreviewModeButton c={c} mode="source" disabled={!sourceAvailable} />
+      </span>
+    </div>
+  );
+}
+
+function PreviewModeButton(props: { c: Controller; mode: PostEditPreviewMode; disabled: boolean }) {
+  const active = props.c.derived.effectivePreviewMode === props.mode;
+  return <button className={active ? "active" : ""} type="button" aria-pressed={active}
+    disabled={props.disabled} onClick={() => selectPreviewMode(props.c, props.mode)}>
+    {props.c.t(`postEdit.preview.${props.mode}`)}
+  </button>;
+}
+
 function PreviewPane({ c }: { c: Controller }) {
   const { t, document, derived } = c;
   return (
     <main className="post-edit-pane post-edit-preview-pane">
       <div className="post-edit-pane-header">
-        <h2>{t("postEdit.workspace.preview")}</h2>
-        {derived.page && (
-          <span>
-            {t("postEdit.workspace.pagePosition", {
-              page: derived.pageIndex + 1,
-              total: document.draft?.pageOrder.length || 0,
-            })}
-          </span>
-        )}
+        <div><h2>{t("postEdit.workspace.preview")}</h2>
+          {derived.page && <span>{t("postEdit.workspace.pagePosition", {
+            page: derived.pageIndex + 1, total: document.draft?.pageOrder.length || 0,
+          })}</span>}
+        </div>
+        <PreviewModeToggle c={c} />
       </div>
       <div className="post-edit-preview-scroll">
         {derived.imageUrl ? (
@@ -409,6 +432,7 @@ function EditorDock({ c }: { c: Controller }) {
     <div className="post-edit-editor-dock">
       <EditorHeader c={c} />
       <EditorFields c={c} />
+      {c.derived.node && <TextRegionCorrectionEditor correction={c.correction} t={c.t} />}
     </div>
   );
 }

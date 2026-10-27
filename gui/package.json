@@ -1,7 +1,7 @@
 {
   "name": "manga-translation-gui",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Desktop client for the Koharu Manga Agent REST backend",
   "author": "luberserker0v0",
   "type": "module",

@@ -31,6 +31,38 @@ function buildGenerationSettingsMetadata(translationTarget, lmStudio, requested,
   };
 }
 
+function projectSetupContext(options) {
+  const profile = resolvePipelineProfile(config.pipeline, { translationMode: options.translationMode || null });
+  const generationOptions = options.generationOptions || config.translation?.generationOptions || null;
+  return {
+    profile,
+    lmStudioBaseUrl: options.lmStudioBaseUrl || null,
+    systemPromptSource: options.systemPromptSource || "none",
+    request: {
+      ...options,
+      systemPrompt: options.systemPrompt || null,
+      translationTarget: options.translationTarget || config.translation?.defaultTarget || null,
+      generationOptions,
+      engines: profile.engines,
+    },
+  };
+}
+
+function setupState(result, context, execution) {
+  return {
+    projectName: result.projectName,
+    operationId: execution.operationId,
+    engines: result.engines,
+    steps: execution.steps,
+    pipelineProfile: context.profile,
+    translationTarget: result.translationTarget,
+    translationProxy: result.translationProxy,
+    requestedGenerationOptions: context.request.generationOptions,
+    systemPromptApplied: Boolean(context.request.systemPrompt),
+    systemPromptMetadata: buildSystemPromptMetadata(context.request.systemPrompt, context.systemPromptSource),
+  };
+}
+
 class ProjectSetupModule {
   constructor({ lmStudioClient = null } = {}) {
     this.lmStudioClient = lmStudioClient;
@@ -57,32 +89,21 @@ class ProjectSetupModule {
   }
 
   async run(options) {
-    const { targetLanguage, baseUrl, systemPrompt = null, systemPromptSource = "none",
-      sourceImagePaths = null, translationTarget = null, generationOptions = null,
-      lmStudioBaseUrl = null, translationProxy = null, translationMode = null } = options;
-    const pipelineProfile = resolvePipelineProfile(config.pipeline, { translationMode });
-    const result = await projectOrchestrator.orchestrate({
-      targetLanguage,
-      baseUrl,
-      systemPrompt,
-      sourceImagePaths,
-      translationTarget: translationTarget || config.translation?.defaultTarget || null,
-      generationOptions: generationOptions || config.translation?.generationOptions || null,
-      translationProxy,
-      engines: pipelineProfile.engines,
-    });
-    return this.refreshRuntimeMetadata({
-      projectName: result.projectName,
-      operationId: result.operationId,
-      engines: result.engines,
-      steps: result.steps,
-      pipelineProfile,
-      translationTarget: result.translationTarget,
-      translationProxy: result.translationProxy,
-      requestedGenerationOptions: generationOptions || config.translation?.generationOptions || null,
-      systemPromptApplied: Boolean(systemPrompt),
-      systemPromptMetadata: buildSystemPromptMetadata(systemPrompt, systemPromptSource),
-    }, lmStudioBaseUrl);
+    const context = projectSetupContext(options);
+    const result = await projectOrchestrator.orchestrate(context.request);
+    return this.refreshRuntimeMetadata(
+      setupState(result, context, { operationId: result.operationId, steps: result.steps }),
+      context.lmStudioBaseUrl,
+    );
+  }
+
+  async prepare(options) {
+    const context = projectSetupContext(options);
+    const result = await projectOrchestrator.prepareProject(context.request);
+    return this.refreshRuntimeMetadata(
+      setupState(result, context, { operationId: null, steps: [] }),
+      context.lmStudioBaseUrl,
+    );
   }
 }
 

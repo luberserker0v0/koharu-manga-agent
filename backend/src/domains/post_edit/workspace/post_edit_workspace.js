@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { paths } = require("../../../config");
+const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
 
 function ensureDir(targetPath) {
   fs.mkdirSync(targetPath, { recursive: true });
@@ -24,21 +25,16 @@ function writeJson(filePath, payload) {
   fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf-8");
 }
 
-function normalizeTextNode(pageName, nodeId, node = {}) {
-  const textKind = node?.kind?.text || {};
-  const transform = node?.transform || {};
-  const x = Number.isFinite(transform.x) ? transform.x : 0;
-  const y = Number.isFinite(transform.y) ? transform.y : 0;
-  const width = Number.isFinite(transform.width) ? transform.width : 0;
-  const height = Number.isFinite(transform.height) ? transform.height : 0;
-
+function buildPostEditNode(region) {
+  const { x, y, width, height } = region.geometry;
   return {
-    nodeId,
-    originalText: textKind.text || "",
-    originalTranslation: textKind.translation || "",
-    editedTranslation: textKind.translation || "",
+    nodeId: region.internalNodeId,
+    ...(region.regionId ? { regionId: region.regionId } : {}),
+    originalText: region.sourceText,
+    originalTranslation: region.translatedText,
+    editedTranslation: region.translatedText,
     anchor: {
-      pageName,
+      pageName: region.pageName,
       x,
       y,
       width,
@@ -57,8 +53,14 @@ function buildPostEditDocumentFromScene({
   chapterId = null,
   scene,
 }) {
-  const pageEntries = Object.entries(scene?.scene?.pages || {});
-  const { pageOrder, pages, totalNodes } = buildPostEditPages(pageEntries);
+  return buildPostEditDocument({
+    jobId, sourcePreflightId, mangaId, translatorId, chapterId,
+    scenePages: collectSceneTextRegionPages(scene),
+  });
+}
+
+function buildPostEditDocument({ jobId, sourcePreflightId, mangaId, translatorId, chapterId, scenePages }) {
+  const { pageOrder, pages, totalNodes } = buildPostEditPages(scenePages);
   const now = new Date().toISOString();
   return {
     jobId,
@@ -78,27 +80,86 @@ function buildPostEditDocumentFromScene({
   };
 }
 
-function buildPostEditPages(pageEntries) {
-  const pageOrder = pageEntries.map(([pageId]) => pageId);
+function snapshotScenePages(snapshot) {
+  return (snapshot?.pages || []).map((page) => ({
+    internalPageId: page.internalPageId,
+    pageName: page.pageName,
+    sourceImageId: page.sourceImageId,
+    regionSetRevisionId: page.regionSetRevisionId,
+    coordinateSpace: page.coordinateSpace,
+    regions: (page.regions || []).map((region) => ({
+      internalNodeId: region.internalNodeId,
+      regionId: region.id,
+      sourceText: region.sourceText,
+      translatedText: region.translatedText,
+      geometry: region.geometry,
+      pageName: page.pageName,
+    })),
+  }));
+}
+
+function buildPostEditDocumentFromRegionSnapshot(input) {
+  return buildPostEditDocument({
+    jobId: input.jobId,
+    sourcePreflightId: input.sourcePreflightId,
+    mangaId: input.mangaId,
+    translatorId: input.translatorId,
+    chapterId: input.chapterId,
+    scenePages: snapshotScenePages(input.snapshot),
+  });
+}
+
+function buildPostEditPages(scenePages) {
+  const pageOrder = scenePages.map((page) => page.internalPageId);
   const pages = {};
   let totalNodes = 0;
-  for (const [pageId, page] of pageEntries) {
-    const built = buildPostEditPage(pageId, page);
+  for (const page of scenePages) {
+    const built = buildPostEditPage(page);
     totalNodes += built.nodeOrder.length;
-    pages[pageId] = built;
+    pages[page.internalPageId] = built;
   }
   return { pageOrder, pages, totalNodes };
 }
 
-function buildPostEditPage(pageId, page) {
-  const pageName = page?.name || pageId;
-  const nodeEntries = Object.entries(page?.nodes || {}).filter(([, node]) => Boolean(node?.kind?.text));
-  const nodeOrder = nodeEntries.map(([nodeId]) => nodeId);
+function buildPostEditPage(page) {
+  const nodeOrder = page.regions.map((region) => region.internalNodeId);
   const nodes = {};
-  for (const [nodeId, node] of nodeEntries) {
-    nodes[nodeId] = normalizeTextNode(pageName, nodeId, node);
+  for (const region of page.regions) {
+    nodes[region.internalNodeId] = buildPostEditNode(region);
   }
-  return { pageId, pageName, nodeOrder, nodes };
+  return {
+    pageId: page.internalPageId,
+    pageName: page.pageName,
+    ...(page.sourceImageId ? { sourceImageId: page.sourceImageId } : {}),
+    ...(page.regionSetRevisionId ? { regionSetRevisionId: page.regionSetRevisionId } : {}),
+    ...(page.coordinateSpace ? { coordinateSpace: page.coordinateSpace } : {}),
+    nodeOrder,
+    nodes,
+  };
+}
+
+function preserveNodeIdentity(currentNode, nextNode) {
+  return currentNode?.regionId ? { ...nextNode, regionId: currentNode.regionId } : nextNode;
+}
+
+function preservePageIdentity(currentPage, nextPage) {
+  if (!currentPage || !nextPage) return nextPage;
+  const nodes = Object.fromEntries(Object.entries(nextPage.nodes || {}).map(([nodeId, node]) => [
+    nodeId, preserveNodeIdentity(currentPage.nodes?.[nodeId], node),
+  ]));
+  return {
+    ...nextPage,
+    ...(currentPage.sourceImageId ? { sourceImageId: currentPage.sourceImageId } : {}),
+    ...(currentPage.regionSetRevisionId ? { regionSetRevisionId: currentPage.regionSetRevisionId } : {}),
+    ...(currentPage.coordinateSpace ? { coordinateSpace: currentPage.coordinateSpace } : {}),
+    nodes,
+  };
+}
+
+function preserveCorrectionIdentities(current, pages) {
+  return Object.fromEntries(Object.entries(pages || {}).map(([pageId, page]) => [
+    pageId, preservePageIdentity(current.pages?.[pageId], page),
+  ]));
 }
 
 function validateAnchor(anchor, pageId, nodeId) {
@@ -175,6 +236,13 @@ class PostEditWorkspaceModule {
     return target;
   }
 
+  createDocumentFromRegionSnapshot(input) {
+    const document = buildPostEditDocumentFromRegionSnapshot(input);
+    const target = getPostEditPaths(input.jobId, this.root).documentPath;
+    writeJson(target, document);
+    return target;
+  }
+
   exists(jobId) {
     return fs.existsSync(getPostEditPaths(jobId, this.root).documentPath);
   }
@@ -204,6 +272,7 @@ class PostEditWorkspaceModule {
       createdAt: current.createdAt,
       sourcePageOrder: current.sourcePageOrder,
       updatedAt: new Date().toISOString(),
+      pages: preserveCorrectionIdentities(current, payload.pages),
       stats: {
         pageCount: Array.isArray(payload.pageOrder) ? payload.pageOrder.length : current.stats?.pageCount || 0,
         textNodeCount:
@@ -280,6 +349,7 @@ class PostEditWorkspaceModule {
 module.exports = {
   PostEditWorkspaceModule,
   buildPostEditDocumentFromScene,
+  buildPostEditDocumentFromRegionSnapshot,
   getPostEditPaths,
   validatePostEditDocument,
 };

@@ -133,12 +133,69 @@ The response is `202 Accepted` with a normal queued Job. Its immutable `revision
 
 Monitor the Job through the existing Job GET, SSE, events, diagnostics, child Job, and artifact APIs.
 Only the selected source images are uploaded to Koharu and exported. A successful selective Job
-creates inactive page revisions; it does not replace the chapter publication or any active page.
-Failed, blocked, or canceled Jobs create no revisions and are never retried automatically.
+atomically promotes those page revisions, rebuilds a complete chapter export, and replaces the active
+chapter publication. The previous files and page revisions remain immutable internal recovery data.
+Failed, blocked, or canceled Jobs never change the active chapter and are not retried automatically.
 
 Missing source data returns `409` with either `source_preflight_unavailable` or
 `source_image_unavailable`. These errors do not disclose filesystem
 paths. Unknown or duplicated selections return `400`/`422` validation errors.
+
+### Inspect text regions
+
+Completed Translation Jobs created by the current backend retain an immutable text-region snapshot:
+
+```http
+GET /api/v1/jobs/{jobId}/text-regions
+GET /api/v1/jobs/{jobId}/text-regions?sourceImageId={sourceImageId}
+```
+
+Each page is bound to its authoritative source-preflight `sourceImageId` and page `revisionId`.
+Every region includes an opaque ID, reading order, exact OCR source text, translated text, rectangular
+geometry, and a declared source-image-pixel coordinate space. OCR whitespace and line breaks are
+returned unchanged. Optional confidence and source direction are present only when Koharu supplied them.
+
+The response never exposes Koharu page/node handles or filesystem paths. Jobs created before region
+snapshots were introduced return `409 text_region_snapshot_unavailable`. A snapshot without reliable
+image dimensions returns `409 text_region_coordinate_space_unavailable` instead of coordinates that a
+client would have to guess.
+
+### Correct OCR text or region geometry
+
+Use the IDs and concurrency token returned by `text-regions`; never send Koharu node IDs:
+
+```http
+POST /api/v1/jobs/{parentJobId}/text-region-corrections
+Content-Type: application/json
+
+{
+  "pages": [{
+    "sourceImageId": "source-image-3",
+    "baseRegionSetRevisionId": "region_set_...",
+    "regions": [{
+      "regionId": "text_region_...",
+      "sourceText": "corrected OCR text",
+      "geometry": {"x": 120, "y": 240, "width": 360, "height": 96, "rotation": 0}
+    }]
+  }]
+}
+```
+
+`sourceText` and `geometry` are independently optional, but every region must include at least one.
+Coordinates use the page's declared `source_image_pixels` space and must remain inside its bounds.
+The backend rejects stale `baseRegionSetRevisionId` values with `409 stale_region_set_revision`.
+
+The response is `202 Accepted` with a queued Translation Job. The backend recreates only the selected
+pages, runs detection and OCR, safely maps the retained opaque regions, applies the corrected Koharu
+text/transform operations, then runs translate, clean, render, snapshot, and export. The request is
+retained in the Job payload as immutable audit data. A successful correction creates inactive page
+revisions during finalization, then atomically promotes them, rebuilds the complete chapter export,
+and replaces the active publication. If composition or publication fails, the prior active page
+selection remains current. The GUI does not expose revision-history management.
+
+Optional `translationTarget`, `generationOptions`, `sourceLanguage`, `targetLanguage`, and `instructions`
+overrides follow the same validation rules as selective retranslation. A mapping failure stops the Job
+with `text_region_mapping_failed`; the backend does not guess a Koharu node or apply a partial patch.
 
 ### List and activate page revisions
 
@@ -150,10 +207,12 @@ GET /api/v1/jobs/{rootJobId}/page-revisions
 
 The response contains the source preflight ID, every source page in chapter order, its immutable
 revisions, producing Job and translation settings, optional instructions, content URLs, and the
-current `activeRevisionId`. The initial successful Translation Job is active by default. Later
-selective retranslations remain inactive until explicitly selected.
+current `activeRevisionId`. The initial successful Translation Job is active by default. A successful
+selective retranslation or text-region correction becomes active automatically after the complete
+chapter export and publication are ready.
 
-Atomically activate one or more revisions:
+The activation endpoint is retained for administrative recovery and API clients that explicitly
+manage revisions; the normal GUI workflow does not call it. Atomically activate one or more revisions:
 
 ```http
 POST /api/v1/jobs/{rootJobId}/page-revisions/activate
@@ -313,7 +372,8 @@ The obsolete translation flags `referenceSetId`, `ingestReference`, and `knowled
 
 Successful managed translations publish one active revision per manga, translator, and chapter. Older
 Job artifacts remain immutable history, but their publication status becomes `superseded`. A failed
-translation never replaces the current active revision.
+translation never replaces the current active revision. Successful selective page work publishes a
+complete composite chapter rather than exposing a one-page export as the chapter's current download.
 
 ### Inspect published translation revisions
 

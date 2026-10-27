@@ -1,5 +1,12 @@
 const { collectWorkspaceManifestArtifacts } = require("./job_artifact_collection");
 
+function persistRegionSnapshotArtifact(store, jobId, result) {
+  if (!result?.regionSnapshotPath) return;
+  store.addArtifact(jobId, "text_region_snapshot", result.regionSnapshotPath, {
+    fingerprint: result.regionSnapshotFingerprint || null,
+  });
+}
+
 function persistTranslationSnapshotArtifacts(store, jobId, result) {
   if (result?.sourcePreflight?.manifestPath) {
     store.addArtifact(jobId, "source_preflight_manifest", result.sourcePreflight.manifestPath, {
@@ -26,6 +33,7 @@ function persistTranslationSnapshotArtifacts(store, jobId, result) {
       publicationStatus: result.publication?.status || null,
     });
   }
+  persistRegionSnapshotArtifact(store, jobId, result);
 }
 
 function persistLearningQualityArtifacts(store, jobId, result) {
@@ -224,4 +232,25 @@ function persistJobArtifacts(store, jobId, result) {
   persistWorkspaceManifestArtifacts(store, jobId);
 }
 
-module.exports = { persistJobArtifacts };
+function persistPromotedRevisionArtifacts(store, jobId, result) {
+  const current = result?.currentChapter;
+  if (!current?.exportArtifact?.path) return;
+  store.addArtifact(jobId, "current_chapter_export", current.exportArtifact.path, current.exportArtifact);
+  if (result.finalTranslationSnapshotPath) {
+    store.addArtifact(jobId, "current_chapter_snapshot", result.finalTranslationSnapshotPath, {
+      fingerprint: current.finalTranslationSnapshotFingerprint || null,
+      pageCount: current.pageCount,
+    });
+  }
+  if (result.regionSnapshotPath) store.addArtifact(jobId, "current_chapter_region_snapshot", result.regionSnapshotPath, {
+    fingerprint: result.regionSnapshotFingerprint || null,
+  });
+  if (result.publication?.registryPath) store.addArtifact(
+    jobId,
+    "translation_publication_registry",
+    result.publication.registryPath,
+    { revisionId: result.publication.revisionId, status: result.publication.status },
+  );
+}
+
+module.exports = { persistJobArtifacts, persistPromotedRevisionArtifacts };

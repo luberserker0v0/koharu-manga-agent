@@ -2,7 +2,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const { PostEditWorkspaceModule } = require("../../backend/src/domains/post_edit/workspace/post_edit_workspace");
+const {
+  PostEditWorkspaceModule,
+  buildPostEditDocumentFromRegionSnapshot,
+} = require("../../backend/src/domains/post_edit/workspace/post_edit_workspace");
 
 function createScene() {
   return {
@@ -37,6 +40,36 @@ function createScene() {
 }
 
 describe("post edit workspace", () => {
+  test("retains opaque correction identities from a region snapshot", () => {
+    const input = {
+      jobId: "job-001", sourcePreflightId: "preflight-001", snapshot: { pages: [{
+        internalPageId: "page-001", pageName: "001.png", sourceImageId: "source-001",
+        regionSetRevisionId: "region-set-001",
+        coordinateSpace: { kind: "source_image_pixels", width: 100, height: 200 },
+        regions: [{
+          id: "region-001", internalNodeId: "node-001", sourceText: "source",
+          translatedText: "target", geometry: { x: 1, y: 2, width: 30, height: 40 },
+        }],
+      }] },
+    };
+    const document = buildPostEditDocumentFromRegionSnapshot(input);
+
+    expect(document.pages["page-001"]).toEqual(expect.objectContaining({
+      sourceImageId: "source-001", regionSetRevisionId: "region-set-001",
+    }));
+    expect(document.pages["page-001"].nodes["node-001"].regionId).toBe("region-001");
+
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "post-edit-workspace-"));
+    const module = new PostEditWorkspaceModule({ root });
+    module.createDocumentFromRegionSnapshot(input);
+    document.pages["page-001"].sourceImageId = "tampered-source";
+    document.pages["page-001"].nodes["node-001"].regionId = "tampered-region";
+    const saved = module.save("job-001", document);
+    expect(saved.pages["page-001"].sourceImageId).toBe("source-001");
+    expect(saved.pages["page-001"].nodes["node-001"].regionId).toBe("region-001");
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
   test("creates and saves lightweight post-edit documents", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "post-edit-workspace-"));
     const module = new PostEditWorkspaceModule({ root });

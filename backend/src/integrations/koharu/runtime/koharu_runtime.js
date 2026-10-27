@@ -96,7 +96,7 @@ function pathApiFor(targetPath) {
 }
 
 class KoharuRuntimeManager {
-  constructor({ config, installRoot, fetchImpl = globalThis.fetch, spawnImpl = spawn }) {
+  constructor({ config, installRoot, baseUrl = null, fetchImpl = globalThis.fetch, spawnImpl = spawn }) {
     this.config = config || {};
     this.installRoot = installRoot;
     this.fetchImpl = fetchImpl;
@@ -106,6 +106,7 @@ class KoharuRuntimeManager {
     this.lastInstall = null;
     this.lastPrepare = null;
     this.selectedPort = Number(this.config.port || 4000);
+    this.externalBaseUrl = trimBaseUrl(baseUrl);
   }
 
   get enabled() {
@@ -129,7 +130,13 @@ class KoharuRuntimeManager {
   }
 
   get baseUrl() {
+    if (!this.enabled && this.externalBaseUrl) return this.externalBaseUrl;
     return `http://${this.host}:${this.port}`;
+  }
+
+  setExternalBaseUrl(baseUrl) {
+    if (!this.enabled) this.externalBaseUrl = trimBaseUrl(baseUrl);
+    return this.baseUrl;
   }
 
   get versionDir() {

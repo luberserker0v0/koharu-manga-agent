@@ -6,6 +6,7 @@ const { loadAoAssets } = require("../../integrations/ao/assets/ao_assets");
 const { composeTranslationMemory } = require("../../domains/translation/memory/translation_memory");
 const { handleJobRoutes } = require("../routes/jobs/job_routes");
 const { handleTranslationRoutes } = require("../routes/translation/translation_routes");
+const { handleTextRegionRoutes } = require("../routes/translation/text_region_routes");
 const { handlePostEditRoutes } = require("../routes/post_edit/post_edit_routes");
 const { handleKnowledgeRoutes } = require("../routes/knowledge/knowledge_routes");
 const { handleSystemRoutes } = require("../routes/system/system_routes");
@@ -55,6 +56,7 @@ const REQUEST_CHUNKS = [
   handleReferenceRoutes,
   handleMangaRoutes,
   handleJobRoutes,
+  handleTextRegionRoutes,
   handleTranslationRoutes,
   handlePostEditRoutes,
   handleKnowledgeRoutes,
@@ -87,6 +89,7 @@ function createApiServerContext({ host, port, serverConfig = {}, ...dependencies
     uploadService: defaultWhenUndefined(dependencies.uploadService, null),
     translatedImageService: defaultWhenUndefined(dependencies.translatedImageService, null),
     pageRevisionService: defaultWhenUndefined(dependencies.pageRevisionService, null),
+    textRegionQueryService: defaultWhenUndefined(dependencies.textRegionQueryService, null),
     allowedOrigins,
     authToken: serverConfig.authToken || null,
     maxJsonBodyBytes: Number(serverConfig.maxJsonBodyBytes || 1048576),

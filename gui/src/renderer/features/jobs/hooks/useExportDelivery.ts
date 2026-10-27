@@ -17,7 +17,9 @@ async function deliverExport(job: GuiJob): Promise<ExportDeliveryNotice | null> 
   pendingJobs.add(job.id);
   try {
     const { artifacts } = await getJobArtifacts(job.id);
-    const artifact = [...artifacts].reverse().find((entry) => entry.kind === "export");
+    const reversed = [...artifacts].reverse();
+    const artifact = reversed.find((entry) => entry.kind === "current_chapter_export")
+      || reversed.find((entry) => entry.kind === "export");
     if (!artifact) return null;
     const result = await downloadJobArtifact({ jobId: job.id, artifactId: artifact.id });
     deliveredJobs.add(job.id);

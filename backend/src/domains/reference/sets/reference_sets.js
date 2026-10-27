@@ -3,6 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { paths } = require("../../../config");
 const { DEFAULT_LANGUAGE_TAG, normalizeLanguageTag } = require("../../../language_codes");
+const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
 const { listKnowledgeSeries, syncMangaManagementBinding } = require("../../knowledge/registry/knowledge_paths");
 
 const KNOWN_IMAGE_EXTENSIONS = new Set([
@@ -342,40 +343,30 @@ function deleteReferenceExtraction(referenceSetId) {
   };
 }
 
-function normalizeScenePageNode(nodeId, node) {
-  const textNode = node.kind?.text;
-  if (!textNode || !textNode.text) return null;
-  const x = node.transform?.x || 0;
-  const y = node.transform?.y || 0;
-  const width = node.transform?.width || 0;
-  const height = node.transform?.height || 0;
+function normalizeReferenceRegion(region) {
+  if (!region.sourceText) return null;
+  const { x, y, width, height } = region.geometry;
   return {
-    nodeId,
-    text: textNode.text,
-    translation: textNode.translation || null,
-    sourceText: textNode.text,
-    translatedText: textNode.translation || null,
+    nodeId: region.internalNodeId,
+    text: region.sourceText,
+    translation: region.translatedText || null,
+    sourceText: region.sourceText,
+    translatedText: region.translatedText || null,
     bbox: { x, y, width, height },
     center: { x: x + width / 2, y: y + height / 2 },
   };
 }
 
-function normalizeScenePage(pageId, page) {
-  const texts = [];
-  for (const [nodeId, node] of Object.entries(page.nodes || {})) {
-    const normalized = normalizeScenePageNode(nodeId, node);
-    if (normalized) texts.push(normalized);
-  }
-  return { pageId, pageName: page.name, texts };
+function normalizeReferencePage(page) {
+  const texts = page.regions.flatMap((region) => normalizeReferenceRegion(region) || []);
+  return { pageId: page.internalPageId, pageName: page.pageName, texts };
 }
 
 function normalizeSceneTexts(scene, source = "self") {
-  const pages = scene.scene?.pages || {};
-  const normalizedPages = Object.entries(pages).map(([pageId, page]) => normalizeScenePage(pageId, page));
   return {
     source,
     createdAt: new Date().toISOString(),
-    pages: normalizedPages,
+    pages: collectSceneTextRegionPages(scene).map(normalizeReferencePage),
   };
 }
 

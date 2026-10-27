@@ -1,5 +1,9 @@
 import { buildApiUrl } from "../../api/client";
 import type { EditedSceneDocument, GuiJob, TranslatedImage } from "../../api/jobs";
+import type { SourcePreflightImage } from "../../types/settings";
+
+export type PostEditPreviewMode = "translated" | "source";
+export type PostEditPreviewImage = { key: string; url: string; mode: PostEditPreviewMode };
 
 export function moveId(ids: string[], draggedId: string, targetId: string) {
   const from = ids.indexOf(draggedId);
@@ -31,7 +35,36 @@ export function translatedImageForPage(images: TranslatedImage[], sourceOrder: s
 }
 
 export function translatedImageUrl(image: TranslatedImage) {
-  return /^https?:\/\//i.test(image.contentUrl) ? image.contentUrl : buildApiUrl(image.contentUrl);
+  return previewContentUrl(image.contentUrl);
+}
+
+export function sourceImageForPage(images: SourcePreflightImage[], sourceImageId?: string) {
+  if (!sourceImageId) return null;
+  return images.find((image) => image.id === sourceImageId) || null;
+}
+
+export function sourceImageUrl(image: SourcePreflightImage) {
+  return previewContentUrl(image.contentUrl);
+}
+
+export function resolvePostEditPreview(
+  mode: PostEditPreviewMode,
+  sourceImage: SourcePreflightImage | null,
+  translatedImage: TranslatedImage | null,
+  failedImageIds: Set<string>,
+): PostEditPreviewImage | null {
+  const sourceKey = sourceImage ? `source:${sourceImage.id}` : null;
+  if (mode === "source" && sourceImage && sourceKey && !failedImageIds.has(sourceKey)) {
+    return { key: sourceKey, url: sourceImageUrl(sourceImage), mode: "source" };
+  }
+  if (translatedImage && !failedImageIds.has(translatedImage.id)) {
+    return { key: translatedImage.id, url: translatedImageUrl(translatedImage), mode: "translated" };
+  }
+  return null;
+}
+
+function previewContentUrl(contentUrl: string) {
+  return /^https?:\/\//i.test(contentUrl) ? contentUrl : buildApiUrl(contentUrl);
 }
 
 export function payloadString(job: GuiJob | null, key: string) {

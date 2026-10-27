@@ -2063,6 +2063,41 @@ body.is-resizing-pane * {
   padding-bottom: 10px;
 }
 
+.post-edit-preview-pane > .post-edit-pane-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.post-edit-preview-pane > .post-edit-pane-header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.post-edit-preview-mode {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-strong);
+}
+
+.post-edit-preview-mode button {
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.post-edit-preview-mode button.active {
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 4px rgba(84, 50, 31, 0.16);
+}
+
 .post-edit-pane-header h2 {
   font-size: 15px;
 }
@@ -2168,11 +2203,12 @@ body.is-resizing-pane * {
 }
 
 .post-edit-dialogue-pane > .post-edit-node-list {
-  flex: 1;
-  min-height: 0;
+  flex: 2 1 38%;
+  min-height: 110px;
   max-height: none;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .post-edit-dialogue-pane .post-edit-node-card {
@@ -2184,12 +2220,18 @@ body.is-resizing-pane * {
 }
 
 .post-edit-editor-dock {
-  flex: 0 0 auto;
+  flex: 3 1 62%;
+  min-height: 0;
   display: grid;
+  align-content: start;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
+  padding-right: 6px;
   border-top: 1px solid var(--line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .post-edit-editor-dock label {
@@ -2200,6 +2242,34 @@ body.is-resizing-pane * {
 .post-edit-editor-dock textarea {
   width: 100%;
   resize: vertical;
+}
+
+.text-region-correction-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.text-region-correction-editor h3,
+.text-region-correction-editor p {
+  margin: 0;
+}
+
+.text-region-correction-form {
+  display: grid;
+  gap: 8px;
+}
+
+.text-region-correction-geometry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.text-region-correction-geometry input {
+  width: 100%;
 }
 
 .post-edit-empty-workspace {
@@ -2417,6 +2487,14 @@ body.is-resizing-pane * {
   .job-detail-workspace {
     height: auto;
     min-height: 0;
+    overflow: visible;
+  }
+
+  .post-edit-dialogue-pane > .post-edit-node-list {
+    max-height: 45vh;
+  }
+
+  .post-edit-editor-dock {
     overflow: visible;
   }
 

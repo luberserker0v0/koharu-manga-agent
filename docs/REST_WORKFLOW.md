@@ -173,7 +173,53 @@ Base64 JSON value is specifically required. The backend extracts ZIP pages once 
 For Translation Jobs, bind pages by `sourceImageId`; never guess from `index`, `fileName`, or ZIP
 order. `revisionId`, `revisionNumber`, and `active` identify the exact translated version.
 
-### 10. Selectively retranslate and activate pages
+### 10. Inspect OCR and translated text regions
+
+For a completed Translation Job, read the immutable text-region snapshot used by that exact Job:
+
+```http
+GET /api/v1/jobs/{jobId}/text-regions
+```
+
+Use `?sourceImageId={sourceImageId}` to request one page. Draw each region over the source or translated
+image by scaling its `source_image_pixels` coordinate space. Preserve `sourceText` verbatim when showing
+or later editing OCR content; embedded whitespace and line breaks are meaningful. Region IDs and
+`regionSetRevisionId` are opaque concurrency identities and must not be interpreted by clients.
+
+Legacy Jobs without a retained snapshot return `409 text_region_snapshot_unavailable`. Do not treat
+that response as a page with zero detected text, and do not call Koharu directly as a fallback.
+
+### 11. Correct OCR text or region geometry
+
+Submit only opaque backend IDs returned by the preceding `text-regions` response:
+
+```http
+POST /api/v1/jobs/{parentJobId}/text-region-corrections
+Content-Type: application/json
+
+{
+  "pages":[{
+    "sourceImageId":"source-image-3",
+    "baseRegionSetRevisionId":"region_set_...",
+    "regions":[{
+      "regionId":"text_region_...",
+      "sourceText":"corrected OCR text",
+      "geometry":{"x":120,"y":240,"width":360,"height":96,"rotation":0}
+    }]
+  }]
+}
+```
+
+At least one of `sourceText` or `geometry` is required per region. Preserve intentional whitespace in
+`sourceText`; coordinates are source-image pixels and must fit the declared page bounds. A stale
+`baseRegionSetRevisionId` returns `409`, so refresh `text-regions` before asking the user to reconcile.
+
+The returned Translation Job rebuilds only the selected pages, applies the corrections between OCR and
+translation, then stages new page revisions. Monitor it through the normal SSE/GET loop. On success,
+the backend promotes those pages and rebuilds the complete chapter export; on failure, the current
+chapter remains unchanged. Never call Koharu directly.
+
+### 12. Selectively retranslate pages
 
 When the user selects unsatisfactory pages, submit their source preflight image IDs to the completed
 Translation Job whose settings should be inherited:
@@ -193,13 +239,14 @@ Instructions are accepted only when the selected target can consume them. A `202
 so use the same SSE and GET reconciliation loop as a normal Translation Job. Do not automatically
 retry a failed selective Job.
 
-After success, compare the new inactive revisions with the active pages:
+After success, the selected pages are already current. Confirm the active mapping and complete chapter:
 
 ```http
 GET /api/v1/jobs/{rootJobId}/page-revisions
 ```
 
-Only after explicit user confirmation, activate the chosen pages:
+The backend keeps old revision IDs for internal recovery. Administrative API clients may explicitly
+restore an older page selection when needed:
 
 ```http
 POST /api/v1/jobs/{rootJobId}/page-revisions/activate
@@ -213,11 +260,10 @@ Content-Type: application/json
 }
 ```
 
-Activation is atomic and idempotent. Use the same endpoint with an older `revisionId` to roll back.
-The extension should persist `rootJobId` and backend revision IDs, but the backend remains the
-authoritative active-version store.
+Activation is atomic and idempotent. The normal GUI does not expose this history or require a second
+activation step. The backend remains the authoritative active-version store.
 
-### 11. Upload lifecycle
+### 13. Upload lifecycle
 
 Source preflight and Reference import release a completed upload after successfully copying its
 images into backend-owned durable storage. To abandon an upload before submitting it, delete it explicitly:
@@ -226,7 +272,7 @@ images into backend-owned durable storage. To abandon an upload before submittin
 DELETE /api/v1/uploads/{uploadId}
 ```
 
-### 12. File retention (maintenance cleanup)
+### 14. File retention (maintenance cleanup)
 
 Translated output (`outputs/translated/`), preview caches (`cache/translated-images/`), per-job
 workspaces (`workspaces/jobs/`), post-edit documents (`domains/post-edit/`), and backend logs

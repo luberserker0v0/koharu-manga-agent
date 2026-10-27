@@ -112,4 +112,26 @@ describe("TranslatedImageService", () => {
     expect(listed.images).toHaveLength(1);
     expect(listed.images[0].mediaType).toBe("image/png");
   });
+
+  test("lists the current chapter but can still resolve an original page revision", async () => {
+    const revisionPath = path.join(root, "revision.png");
+    const currentPath = path.join(root, "current.zip");
+    fs.writeFileSync(revisionPath, Buffer.from("revision"));
+    fs.writeFileSync(currentPath, buildZip([
+      { name: "page-0001.png", data: Buffer.from("one") },
+      { name: "page-0002.png", data: Buffer.from("two") },
+    ]));
+    const service = new TranslatedImageService({ root: cacheRoot });
+    const artifacts = [
+      { id: 1, kind: "export", path: revisionPath },
+      { id: 2, kind: "current_chapter_export", path: currentPath },
+    ];
+
+    const listed = await service.list({ jobId: "revision-job", artifacts });
+    expect(listed).toEqual(expect.objectContaining({ artifactId: 2, count: 2 }));
+    const revisionId = service.prepareDirectImage(artifacts[0]).images[0].id;
+    const resolved = await service.find({ jobId: "revision-job", artifacts, imageId: revisionId });
+    expect(resolved.prepared.artifactId).toBe(1);
+    expect(fs.readFileSync(resolved.image.path, "utf8")).toBe("revision");
+  });
 });

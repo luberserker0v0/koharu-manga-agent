@@ -223,17 +223,24 @@ class TranslatedImageService {
     fs.mkdirSync(this.root, { recursive: true });
   }
 
-  selectExportArtifact(artifacts) {
-    const artifact = [...(artifacts || [])].reverse().find((entry) => entry.kind === "export");
-    if (!artifact) throw apiError("Job does not have a translation export artifact.", 409);
-    return {
+  selectExportArtifacts(artifacts) {
+    const reversed = [...(artifacts || [])].reverse();
+    const current = reversed.filter((entry) => entry.kind === "current_chapter_export");
+    const revision = reversed.filter((entry) => entry.kind === "export");
+    const selected = [...current, ...revision];
+    if (selected.length === 0) throw apiError("Job does not have a translation export artifact.", 409);
+    return selected.map((artifact) => ({
       ...artifact,
       path: assertRegularFileWithinDataRoot(artifact.path),
-    };
+    }));
   }
 
-  jobCacheRoot(jobId) {
-    const key = crypto.createHash("sha256").update(String(jobId)).digest("hex").slice(0, 24);
+  selectExportArtifact(artifacts) {
+    return this.selectExportArtifacts(artifacts)[0];
+  }
+
+  jobCacheRoot(jobId, artifactId) {
+    const key = crypto.createHash("sha256").update(`${jobId}\0${artifactId}`).digest("hex").slice(0, 24);
     return path.join(this.root, key);
   }
 
@@ -341,15 +348,14 @@ class TranslatedImageService {
     return { jobId, artifactId: artifact.id, sourceFormat: "zip", cacheKey, images };
   }
 
-  async prepare({ jobId, artifacts }) {
-    const artifact = this.selectExportArtifact(artifacts);
+  async prepareArtifact(jobId, artifact) {
     const directMediaType = imageMediaType(artifact.path);
     if (directMediaType) return this.prepareDirectImage(artifact);
     if (path.extname(artifact.path).toLowerCase() !== ".zip")
       throw apiError("Translation export is not a supported image or ZIP file.", 415);
 
     const { imageEntries, stat } = this.readZipImageEntries(artifact);
-    const cacheRoot = this.jobCacheRoot(jobId);
+    const cacheRoot = this.jobCacheRoot(jobId, artifact.id);
     const cacheKey = `${artifact.id}-${stat.size}-${Math.trunc(stat.mtimeMs)}`;
     const manifestPath = path.join(cacheRoot, "manifest.json");
     const cached = this.readCachedManifest(manifestPath, cacheKey);
@@ -358,6 +364,10 @@ class TranslatedImageService {
     const manifest = await this.createZipManifest(jobId, artifact, imageEntries, stat, cacheRoot, cacheKey);
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     return manifest;
+  }
+
+  async prepare({ jobId, artifacts }) {
+    return this.prepareArtifact(jobId, this.selectExportArtifact(artifacts));
   }
 
   async list({ jobId, artifacts }) {
@@ -372,10 +382,12 @@ class TranslatedImageService {
   }
 
   async find({ jobId, artifacts, imageId: requestedId }) {
-    const prepared = await this.prepare({ jobId, artifacts });
-    const image = prepared.images.find((entry) => entry.id === requestedId);
-    if (!image) throw apiError("Translated image not found.", 404);
-    return { prepared, image };
+    for (const artifact of this.selectExportArtifacts(artifacts)) {
+      const prepared = await this.prepareArtifact(jobId, artifact);
+      const image = prepared.images.find((entry) => entry.id === requestedId);
+      if (image) return { prepared, image };
+    }
+    throw apiError("Translated image not found.", 404);
   }
 
   async encoded(options) {

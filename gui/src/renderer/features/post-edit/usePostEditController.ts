@@ -8,6 +8,7 @@ import {
   getEditedScene,
   getJobs,
   getMangaSeries,
+  getSourcePreflight,
   getTranslatedImages,
   saveEditedScene,
   type EditedSceneDocument,
@@ -21,10 +22,13 @@ import {
   payloadString,
   reorderNodes,
   reorderPages,
+  resolvePostEditPreview,
+  sourceImageForPage,
   translatedImageForPage,
-  translatedImageUrl,
+  type PostEditPreviewMode,
   updateNodeTranslation,
 } from "./postEditModel";
+import { useTextRegionCorrection } from "./useTextRegionCorrection";
 
 type Translate = ReturnType<typeof useLanguageStore.getState>["t"];
 type Manga = Awaited<ReturnType<typeof getMangaSeries>>["series"][number];
@@ -44,7 +48,14 @@ function usePostEditQueries(jobId: string | null) {
     enabled: Boolean(jobId),
     retry: 1,
   });
-  return { jobs, manga, scene, images };
+  const preflightId = scene.data?.editedScene?.sourcePreflightId || null;
+  const sourceImages = useQuery({
+    queryKey: ["source-preflight", preflightId],
+    queryFn: () => getSourcePreflight(preflightId as string),
+    enabled: Boolean(preflightId),
+    retry: false,
+  });
+  return { jobs, manga, scene, images, sourceImages };
 }
 
 function useDocumentState(t: Translate) {
@@ -96,7 +107,8 @@ function useBranchState() {
 function usePreviewState() {
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [failedImageIds, setFailedImageIds] = useState<Set<string>>(() => new Set());
-  return { dimensions, setDimensions, failedImageIds, setFailedImageIds };
+  const [mode, setMode] = useState<PostEditPreviewMode>("translated");
+  return { dimensions, setDimensions, failedImageIds, setFailedImageIds, mode, setMode };
 }
 
 function useJobSelectionEffect(jobId: string | null, jobs: { id: string }[], selectJob: (id: string | null) => void) {
@@ -129,6 +141,7 @@ function usePreviewResetEffect(jobId: string | null, preview: ReturnType<typeof 
   useEffect(() => {
     preview.setFailedImageIds(new Set());
     preview.setDimensions(null);
+    preview.setMode("translated");
   }, [jobId]);
 }
 
@@ -309,7 +322,8 @@ function deriveWorkspace(
   const images = queries.images.data?.images || [];
   const image =
     document.draft && page ? translatedImageForPage(images, document.draft.sourcePageOrder, page.pageId) : null;
-  const imageUrl = image && !preview.failedImageIds.has(image.id) ? translatedImageUrl(image) : null;
+  const sourceImage = sourceImageForPage(queries.sourceImages.data?.images || [], page?.sourceImageId);
+  const previewImage = resolvePostEditPreview(preview.mode, sourceImage, image, preview.failedImageIds);
   const baseline = queries.scene.data?.editedScene;
   const dirty = Boolean(document.draft && baseline && JSON.stringify(document.draft) !== JSON.stringify(baseline));
   const visiblePages = filterPages(document.draft, document.pageSearch);
@@ -317,7 +331,10 @@ function deriveWorkspace(
     page,
     node,
     image,
-    imageUrl,
+    imageUrl: previewImage?.url || null,
+    sourceImage,
+    previewImageKey: previewImage?.key || null,
+    effectivePreviewMode: previewImage?.mode || "translated" as const,
     images,
     dirty,
     visiblePages,
@@ -353,6 +370,32 @@ function useControllerEffects(context: {
   useBranchSeedEffect(context.job, context.branch, context.t);
 }
 
+function resolvePostEditBinding(queries: ReturnType<typeof usePostEditQueries>, document: ReturnType<typeof useDocumentState>) {
+  const manga = (queries.manga.data?.series || []).find((item) => item.mangaId === document.draft?.mangaId) || null;
+  const translator = manga?.translators.find((item) => item.translatorId === document.draft?.translatorId);
+  const chapter = translator?.chapters.find((item) => item.chapterId === document.draft?.chapterId) || null;
+  return { manga, chapter };
+}
+
+function useWorkspaceMutations(
+  document: ReturnType<typeof useDocumentState>, branch: ReturnType<typeof useBranchState>,
+  binding: ReturnType<typeof resolvePostEditBinding>, t: Translate,
+) {
+  const save = useSaveMutation(document, t);
+  const exportJob = useExportMutation(document, t);
+  const createBranchJob = useBranchMutation({ document, branch, ...binding, t });
+  return { save, exportJob, createBranchJob };
+}
+
+function useWorkspaceCorrection(
+  jobId: string | null, derived: ReturnType<typeof deriveWorkspace>,
+  document: ReturnType<typeof useDocumentState>, t: Translate,
+) {
+  return useTextRegionCorrection({
+    jobId, page: derived.page, node: derived.node, setStatus: document.setStatus, t,
+  });
+}
+
 export function usePostEditController() {
   const t = useLanguageStore((state) => state.t);
   const jobId = useUiStore((state) => state.selectedJobId);
@@ -363,22 +406,21 @@ export function usePostEditController() {
   const queries = usePostEditQueries(jobId);
   const jobs = useMemo(() => (queries.jobs.data?.jobs || []).filter(isEditableJob), [queries.jobs.data]);
   const job = jobs.find((item) => item.id === jobId) || null;
-  const manga = (queries.manga.data?.series || []).find((item) => item.mangaId === document.draft?.mangaId) || null;
-  const translator = manga?.translators.find((item) => item.translatorId === document.draft?.translatorId);
-  const chapter = translator?.chapters.find((item) => item.chapterId === document.draft?.chapterId) || null;
+  const binding = resolvePostEditBinding(queries, document);
   useControllerEffects({ jobId, jobs, selectJob, queries, document, preview, branch, job, t });
-  const save = useSaveMutation(document, t);
-  const exportJob = useExportMutation(document, t);
-  const createBranchJob = useBranchMutation({ document, branch, manga, chapter, t });
+  const { save, exportJob, createBranchJob } = useWorkspaceMutations(document, branch, binding, t);
   const actions = useDocumentActions(document, preview);
+  const derived = deriveWorkspace(document, preview, queries);
+  const correction = useWorkspaceCorrection(jobId, derived, document, t);
   const core = { t, jobId, selectJob, jobs, document, branch, preview, queries };
   return {
     ...core,
     save,
     exportJob,
     createBranchJob,
+    correction,
     actions: { ...actions, export: useExportAction(document, exportJob, t) },
-    derived: deriveWorkspace(document, preview, queries),
+    derived,
   };
 }
 

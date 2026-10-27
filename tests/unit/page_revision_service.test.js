@@ -125,6 +125,38 @@ describe("PageRevisionService", () => {
       .toEqual(before.pages.map((page) => page.activeRevisionId));
   });
 
+  test("registers text-region correction outputs as inactive selected-page revisions", async () => {
+    createSucceededJob({
+      id: "root-job",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      payload: { sourcePreflightId: "preflight-1" },
+      imageNames: ["page-1.png", "page-2.png", "page-3.png"],
+    });
+    createSucceededJob({
+      id: "correction-job",
+      createdAt: "2026-01-02T00:00:00.000Z",
+      payload: {
+        sourcePreflightId: "preflight-1",
+        sourceImageIds: ["source-2"],
+        revision: {
+          rootJobId: "root-job",
+          parentJobId: "root-job",
+          reason: "text_region_correction",
+          sourceImageIds: ["source-2"],
+        },
+      },
+      imageNames: ["page-2-corrected.png"],
+    });
+
+    const manifest = await service.list("root-job");
+
+    expect(manifest.pages.map((page) => page.revisions.length)).toEqual([1, 2, 1]);
+    expect(manifest.pages[1].revisions[1]).toEqual(expect.objectContaining({
+      active: false,
+      jobId: "correction-job",
+    }));
+  });
+
   test("does not create revisions for failed, blocked, or canceled selective Jobs", async () => {
     createSucceededJob({
       id: "root-job",

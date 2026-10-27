@@ -159,6 +159,59 @@ export type EncodedTranslatedImage = Omit<TranslatedImage, "encodedUrl" | "conte
   data: string;
 };
 
+export type TextRegionGeometry = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+};
+
+export type TextRegion = {
+  id: string;
+  readingOrder: number;
+  geometry: TextRegionGeometry;
+  sourceText: string;
+  translatedText: string;
+  ocrConfidence?: number;
+  sourceDirection?: string;
+};
+
+export type TextRegionPage = {
+  sourceImageId: string;
+  sourceOrderIndex: number;
+  sourceFileName: string;
+  pageRevisionId: string;
+  regionSetRevisionId: string;
+  coordinateSpace: {
+    kind: "source_image_pixels";
+    origin: "top_left";
+    width: number;
+    height: number;
+    rotationUnit: "degrees_clockwise";
+  };
+  regions: TextRegion[];
+};
+
+export type TextRegionSnapshot = {
+  jobId: string;
+  rootJobId: string;
+  snapshotFingerprint: string;
+  pages: TextRegionPage[];
+};
+
+export type TextRegionCorrectionRequest = {
+  pages: Array<{
+    sourceImageId: string;
+    baseRegionSetRevisionId: string;
+    regions: Array<{
+      regionId: string;
+      sourceText?: string;
+      geometry?: TextRegionGeometry;
+    }>;
+  }>;
+};
+
 export type DeepAuditReviewItem = {
   nodeId: string;
   original: string;
@@ -198,6 +251,7 @@ export type DeepAuditReviewDecision = {
 
 export type EditedSceneNode = {
   nodeId: string;
+  regionId?: string;
   originalText: string;
   originalTranslation: string;
   editedTranslation: string;
@@ -215,6 +269,9 @@ export type EditedSceneNode = {
 export type EditedScenePage = {
   pageId: string;
   pageName: string;
+  sourceImageId?: string;
+  regionSetRevisionId?: string;
+  coordinateSpace?: TextRegionPage["coordinateSpace"];
   nodeOrder: string[];
   nodes: Record<string, EditedSceneNode>;
 };
@@ -734,6 +791,21 @@ export function getJobArtifactContent(jobId: string, artifactId: number): Promis
 
 export function getTranslatedImages(jobId: string): Promise<TranslatedImageManifest> {
   return apiFetch(`/jobs/${encodeURIComponent(jobId)}/translated-images`, {
+    timeoutMs: 30000,
+  });
+}
+
+export function getTextRegions(jobId: string): Promise<TextRegionSnapshot> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/text-regions`, { timeoutMs: 30000 });
+}
+
+export function createTextRegionCorrectionJob(
+  jobId: string,
+  payload: TextRegionCorrectionRequest,
+): Promise<GuiJob> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/text-region-corrections`, {
+    method: "POST",
+    body: JSON.stringify(payload),
     timeoutMs: 30000,
   });
 }

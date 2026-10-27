@@ -1,8 +1,9 @@
 const fs = require("fs");
 const path = require("path");
-const { spawnSync } = require("child_process");
 
 const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
+const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { createZip, expandZip } = require("../../../infrastructure/archive/zip_archive");
 
 function ensureDir(targetPath) {
   fs.mkdirSync(targetPath, { recursive: true });
@@ -32,21 +33,15 @@ function buildExportPipelineSteps(engines) {
   return steps;
 }
 
-function normalizeSceneTextNode(pageName, pageId, nodeId, node = {}) {
-  const textKind = node?.kind?.text || {};
-  const transform = node?.transform || {};
-  const x = Number.isFinite(transform.x) ? transform.x : 0;
-  const y = Number.isFinite(transform.y) ? transform.y : 0;
-  const width = Number.isFinite(transform.width) ? transform.width : 0;
-  const height = Number.isFinite(transform.height) ? transform.height : 0;
-
+function postEditMatchNode(page, region) {
+  const { x, y, width, height } = region.geometry;
   return {
-    pageName,
-    pageId,
-    nodeId,
-    originalText: textKind.text || "",
+    pageName: page.pageName,
+    pageId: page.internalPageId,
+    nodeId: region.internalNodeId,
+    originalText: region.sourceText,
     anchor: {
-      pageName,
+      pageName: page.pageName,
       x,
       y,
       width,
@@ -58,17 +53,10 @@ function normalizeSceneTextNode(pageName, pageId, nodeId, node = {}) {
 }
 
 function collectSceneTextNodes(scene) {
-  const pageEntries = Object.entries(scene?.scene?.pages || {});
   const byPageName = new Map();
-
-  for (const [pageId, page] of pageEntries) {
-    const pageName = page?.name || pageId;
-    const nodes = Object.entries(page?.nodes || {})
-      .filter(([, node]) => Boolean(node?.kind?.text))
-      .map(([nodeId, node]) => normalizeSceneTextNode(pageName, pageId, nodeId, node));
-    byPageName.set(pageName, nodes);
+  for (const page of collectSceneTextRegionPages(scene)) {
+    byPageName.set(page.pageName, page.regions.map((region) => postEditMatchNode(page, region)));
   }
-
   return byPageName;
 }
 
@@ -124,42 +112,6 @@ function renamePageEntry(fileName, targetIndex) {
     return fileName.replace(/^page-\d+-/i, newPrefix);
   }
   return `${newPrefix}${fileName}`;
-}
-
-function runPowerShell(command) {
-  const result = spawnSync("powershell", ["-NoProfile", "-Command", command], {
-    encoding: "utf-8",
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "PowerShell command failed.");
-  }
-}
-
-function expandZip(zipPath, destinationPath) {
-  if (process.platform === "win32") {
-    runPowerShell(`Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${destinationPath}' -Force`);
-    return;
-  }
-  const result = spawnSync("unzip", ["-q", "-o", zipPath, "-d", destinationPath], {
-    encoding: "utf-8",
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "unzip failed.");
-  }
-}
-
-function createZip(sourcePath, destinationPath) {
-  if (process.platform === "win32") {
-    runPowerShell(`Compress-Archive -LiteralPath '${path.join(sourcePath, "*")}' -DestinationPath '${destinationPath}' -Force`);
-    return;
-  }
-  const result = spawnSync("zip", ["-q", "-r", destinationPath, "."], {
-    cwd: sourcePath,
-    encoding: "utf-8",
-  });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || "zip failed.");
-  }
 }
 
 function prepareReorderDirs(workspaceRoot, zipPath) {

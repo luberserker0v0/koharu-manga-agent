@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
-  title: Koharu Manga Agent page revision API
-  version: 0.2.0
+  title: Koharu Manga Agent translation revision API
+  version: 0.5.0
   description: >-
-    Versioned REST contract for selective page retranslation, translated-image
-    source mapping, and explicit active-revision management. Other backend
-    endpoints are documented in docs/API.md.
+    Versioned REST contract for text-region inspection and correction,
+    selective page retranslation, automatic current-chapter promotion,
+    translated-image source mapping, and administrative revision recovery. Other backend endpoints are documented in
+    docs/API.md.
 servers:
   - url: http://127.0.0.1:4001/api/v1
 security:
@@ -57,6 +58,60 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /jobs/{jobId}/text-regions:
+    get:
+      summary: Inspect the immutable text regions used by a Translation Job
+      operationId: getTextRegions
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - name: sourceImageId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        '200':
+          description: Ordered, sanitized text-region snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextRegionSnapshot'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /jobs/{jobId}/text-region-corrections:
+    post:
+      summary: Correct OCR text or geometry and promote it after successful chapter rebuild
+      operationId: createTextRegionCorrection
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextRegionCorrectionRequest'
+      responses:
+        '202':
+          description: Text-region correction Job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/Unavailable'
   /jobs/{rootJobId}/page-revisions:
     get:
       summary: List every immutable page revision and active selection
@@ -76,7 +131,7 @@ paths:
           $ref: '#/components/responses/Conflict'
   /jobs/{rootJobId}/page-revisions/activate:
     post:
-      summary: Atomically activate selected page revisions
+      summary: Administratively activate selected page revisions
       operationId: activatePageRevisions
       parameters:
         - $ref: '#/components/parameters/RootJobId'
@@ -202,8 +257,13 @@ components:
         parentJobId:
           type: string
         reason:
-          const: selective_retranslation
+          type: string
+          enum: [selective_retranslation, text_region_correction]
         sourceImageIds:
+          type: array
+          items:
+            type: string
+        baseRegionSetRevisionIds:
           type: array
           items:
             type: string
@@ -288,6 +348,181 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TranslatedImage'
+    TextRegionGeometry:
+      type: object
+      additionalProperties: false
+      required: [x, y, width, height, rotation]
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+          minimum: 0
+        height:
+          type: number
+          minimum: 0
+        rotation:
+          type: number
+    TextRegion:
+      type: object
+      additionalProperties: false
+      required: [id, readingOrder, geometry, sourceText, translatedText]
+      properties:
+        id:
+          type: string
+        readingOrder:
+          type: integer
+          minimum: 0
+        geometry:
+          $ref: '#/components/schemas/TextRegionGeometry'
+        sourceText:
+          type: string
+          description: Exact OCR content, including whitespace and line breaks.
+        translatedText:
+          type: string
+        ocrConfidence:
+          type: number
+        sourceDirection:
+          type: string
+    TextRegionPage:
+      type: object
+      additionalProperties: false
+      required:
+        - sourceImageId
+        - sourceOrderIndex
+        - sourceFileName
+        - pageRevisionId
+        - regionSetRevisionId
+        - coordinateSpace
+        - regions
+      properties:
+        sourceImageId:
+          type: string
+        sourceOrderIndex:
+          type: integer
+          minimum: 0
+        sourceFileName:
+          type: string
+        pageRevisionId:
+          type: string
+        regionSetRevisionId:
+          type: string
+        coordinateSpace:
+          type: object
+          additionalProperties: false
+          required: [kind, origin, width, height, rotationUnit]
+          properties:
+            kind:
+              const: source_image_pixels
+            origin:
+              const: top_left
+            width:
+              type: number
+              exclusiveMinimum: 0
+            height:
+              type: number
+              exclusiveMinimum: 0
+            rotationUnit:
+              const: degrees_clockwise
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TextRegion'
+    TextRegionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [jobId, rootJobId, snapshotFingerprint, pages]
+      properties:
+        jobId:
+          type: string
+        rootJobId:
+          type: string
+        snapshotFingerprint:
+          type: string
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/TextRegionPage'
+    TextRegionCorrectionGeometry:
+      type: object
+      additionalProperties: false
+      required: [x, y, width, height]
+      properties:
+        x:
+          type: number
+          minimum: 0
+        y:
+          type: number
+          minimum: 0
+        width:
+          type: number
+          exclusiveMinimum: 0
+        height:
+          type: number
+          exclusiveMinimum: 0
+        rotation:
+          type: number
+          default: 0
+    TextRegionCorrection:
+      type: object
+      additionalProperties: false
+      required: [regionId]
+      anyOf:
+        - required: [sourceText]
+        - required: [geometry]
+      properties:
+        regionId:
+          type: string
+          minLength: 1
+        sourceText:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          description: Replacement OCR text. Whitespace and line breaks are preserved exactly.
+        geometry:
+          $ref: '#/components/schemas/TextRegionCorrectionGeometry'
+    TextRegionPageCorrection:
+      type: object
+      additionalProperties: false
+      required: [sourceImageId, baseRegionSetRevisionId, regions]
+      properties:
+        sourceImageId:
+          type: string
+          minLength: 1
+        baseRegionSetRevisionId:
+          type: string
+          minLength: 1
+        regions:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TextRegionCorrection'
+    TextRegionCorrectionRequest:
+      type: object
+      additionalProperties: false
+      required: [pages]
+      properties:
+        pages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TextRegionPageCorrection'
+        translationTarget:
+          $ref: '#/components/schemas/TranslationTarget'
+        sourceLanguage:
+          type: string
+          minLength: 1
+        targetLanguage:
+          type: string
+          minLength: 1
+        instructions:
+          type: string
+          minLength: 1
+        generationOptions:
+          type: object
+          additionalProperties: true
     PageRevisionSelection:
       type: object
       additionalProperties: false

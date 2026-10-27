@@ -168,6 +168,19 @@ describe("KoharuRuntimeManager", () => {
     }));
   });
 
+  test("uses and updates the backend-configured URL in external mode", () => {
+    const manager = new KoharuRuntimeManager({
+      config: { managed: false, host: "ignored-host", port: 4000 },
+      baseUrl: "http://koharu.example:5000/",
+      installRoot: tempInstallRoot(),
+    });
+
+    expect(manager.baseUrl).toBe("http://koharu.example:5000");
+    expect(manager.setExternalBaseUrl("http://new-koharu.example:6000/")).toBe(
+      "http://new-koharu.example:6000",
+    );
+  });
+
   test("selects the next available port when the preferred port is occupied", async () => {
     const blocker = net.createServer();
     const address = await listen(blocker);

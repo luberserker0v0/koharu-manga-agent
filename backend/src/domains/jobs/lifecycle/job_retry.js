@@ -25,7 +25,7 @@ function retryBilingualEnrichment(manager, current) {
   });
 }
 
-function retrySelectiveTranslation(manager, current, jobId) {
+function retryTranslationRevision(manager, current, jobId) {
   return manager.createJob(
     "translation",
     {
@@ -234,8 +234,8 @@ function retryTranslation(manager, current, jobId) {
 
 function retrySpecializedJob(manager, current, jobId) {
   if (isBilingualRetry(current)) return retryBilingualEnrichment(manager, current);
-  if (current.type === "translation" && current.payload?.revision?.reason === "selective_retranslation") {
-    return retrySelectiveTranslation(manager, current, jobId);
+  if (current.type === "translation" && current.payload?.revision?.reason) {
+    return retryTranslationRevision(manager, current, jobId);
   }
   if (current.executionKind === "workflow" && current.type === "reference_ingestion") {
     return retryReferenceIngestion(manager, current);

@@ -81,7 +81,8 @@ export const settingsMessagesZhTW = {
   "settings.koharu.title": "Koharu 與 engines",
   "settings.koharu.description": "設定 Koharu base URL 與各 pipeline 階段的 engine ID。",
   "settings.koharu.baseUrl.label": "Koharu base URL",
-  "settings.koharu.baseUrl.help": "Koharu 後端的 HTTP 端點。",
+  "settings.koharu.baseUrl.help":
+    "此網址由 Backend 使用；Docker 連本機 Koharu 時請使用 http://host.docker.internal:4000。",
   "settings.koharu.engineHelp": (params?: Record<string, string | number>) =>
     `${params?.engine} 階段要使用的 engine ID。`,
   "settings.koharu.engineSelect.placeholder": "選擇 engine",
@@ -352,7 +353,8 @@ export const settingsMessagesEnUS = {
   "settings.koharu.title": "Koharu and engines",
   "settings.koharu.description": "Configure the Koharu base URL and the engine IDs used in the pipeline.",
   "settings.koharu.baseUrl.label": "Koharu base URL",
-  "settings.koharu.baseUrl.help": "The HTTP address of the Koharu backend.",
+  "settings.koharu.baseUrl.help":
+    "The Backend uses this URL. To reach host Koharu from Docker, use http://host.docker.internal:4000.",
   "settings.koharu.engineHelp": (params?: Record<string, string | number>) =>
     `Engine ID for the ${params?.engine} stage.`,
   "settings.koharu.engineSelect.placeholder": "Select engine",

@@ -23,6 +23,7 @@ const {
 const {
   mergeSemanticResults,
 } = require("../../../integrations/ao/contracts/semantic_result");
+const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
 
 const COMPLETENESS_REASON_TYPES = new Set([
   "translation_missing",
@@ -60,38 +61,28 @@ function qualitySemanticResult(results, hasUnresolvedQuality) {
   };
 }
 
-function collectSceneTranslation(nodeId, node, pageId, pageName) {
-  const textNode = node.kind?.text;
-  if (!textNode?.text) return null;
+function qualityTranslation(page, region) {
+  if (!region.sourceText) return null;
+  const { x, y, width, height } = region.geometry;
   return {
-    id: nodeId,
-    pageId,
-    pageName,
-    original: textNode.text,
-    translation: typeof textNode.translation === "string" ? textNode.translation : "",
-    textRole: textNode.textRole || node.textRole || null,
-    styleChannel: textNode.styleChannel || node.styleChannel || null,
-    speakerRef: textNode.speakerRef || node.speakerRef || null,
-    bbox: {
-      x: Number(node.transform?.x || 0),
-      y: Number(node.transform?.y || 0),
-      width: Number(node.transform?.width || 0),
-      height: Number(node.transform?.height || 0),
-    },
+    id: region.internalNodeId,
+    pageId: page.internalPageId,
+    pageName: page.pageName,
+    original: region.sourceText,
+    translation: region.translatedText,
+    textRole: region.textRole,
+    styleChannel: region.styleChannel,
+    speakerRef: region.speakerRef,
+    bbox: { x, y, width, height },
   };
 }
 
 function collectTranslations(scene) {
-  const pages = scene?.scene?.pages || {};
-  const translations = [];
-  const pageList = [];
-  for (const [pageId, page] of Object.entries(pages)) {
-    pageList.push({ id: pageId, name: page.name });
-    for (const [nodeId, node] of Object.entries(page.nodes || {})) {
-      const translation = collectSceneTranslation(nodeId, node, pageId, page.name);
-      if (translation) translations.push(translation);
-    }
-  }
+  const pages = collectSceneTextRegionPages(scene);
+  const translations = pages.flatMap((page) =>
+    page.regions.flatMap((region) => qualityTranslation(page, region) || []),
+  );
+  const pageList = pages.map((page) => ({ id: page.internalPageId, name: page.pageName }));
   return {
     translations,
     pages: pageList,
