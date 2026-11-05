@@ -1,0 +1,115 @@
+name: Release desktop application
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag matching gui/package.json (for example, v0.4.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Verify, package, and release
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            gui/package-lock.json
+            tests/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Install GUI dependencies
+        run: npm ci --prefix gui
+
+      - name: Install test dependencies
+        run: npm ci --prefix tests
+
+      - name: Validate release version
+        id: release
+        shell: pwsh
+        env:
+          REQUESTED_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          $version = node -p "require('./gui/package.json').version"
+          $expectedTag = "v$version"
+          if ($env:REQUESTED_TAG -ne $expectedTag) {
+            throw "Release tag $env:REQUESTED_TAG does not match gui/package.json version $version."
+          }
+          "tag=$env:REQUESTED_TAG" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Run backend tests
+        run: npm test --prefix tests -- --runInBand
+
+      - name: Type-check GUI
+        run: npm --prefix gui run typecheck
+
+      - name: Package Windows application
+        run: npm --prefix gui run package
+
+      - name: Prepare release assets
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force release | Out-Null
+          Copy-Item "gui/release/Koharu-Manga-Agent-$env:VERSION-Windows-x64.exe" release/
+          Copy-Item "gui/release/Koharu-Manga-Agent-$env:VERSION-Windows-x64.zip" release/
+          $lines = Get-ChildItem release -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            "$hash *$($_.Name)"
+          }
+          Set-Content -Path release/SHA256SUMS.txt -Value $lines -Encoding ascii
+
+      - name: Preserve packaged artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: koharu-manga-agent-${{ steps.release.outputs.version }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create or update GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          $exe = "release/Koharu-Manga-Agent-$env:VERSION-Windows-x64.exe"
+          $zip = "release/Koharu-Manga-Agent-$env:VERSION-Windows-x64.zip"
+          $checksums = "release/SHA256SUMS.txt"
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:RELEASE_TAG $exe $zip $checksums --clobber
+          } else {
+            gh release create $env:RELEASE_TAG $exe $zip $checksums `
+              --title "Koharu Manga Agent $env:RELEASE_TAG" `
+              --target $env:GITHUB_SHA `
+              --generate-notes
+          }
