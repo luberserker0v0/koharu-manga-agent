@@ -3,9 +3,9 @@ node_modules/
 package-lock.json
 !backend/package-lock.json
 !gui/package-lock.json
+!tests/package-lock.json
 bun.lock
 tests/node_modules/
-tests/package-lock.json
 
 # 執行日誌
 logs/
