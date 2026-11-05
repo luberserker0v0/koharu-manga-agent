@@ -1,9 +1,9 @@
-const fs = require("fs");
 const path = require("path");
 const { config } = require("../../../config");
-const { apiFetch, buildUrl, ENDPOINTS } = require("../client/koharu_client");
 const { preflightImagesForKoharuUpload } = require("../../../domains/reference/extraction/reference_image_conversion");
-const { resolveTranslationTarget } = require("../translation/translation_targets");
+const { resolveTranslationTarget } = require("../../../domains/manga_processing/translation_targets");
+const { sourceLanguageList } = require("../../../domains/manga_processing/source_languages");
+const { resolveKoharuOcr } = require("./ocr_language_policy");
 
 const ENGINE_ORDER = [
   { key: "detect", catalogKeys: ["detectors"], required: true },
@@ -24,37 +24,12 @@ const ENGINE_ORDER = [
   { key: "render", catalogKeys: ["renderers"], required: true },
 ];
 
-async function readResponseText(response) {
-  try {
-    return await response.text();
-  } catch {
-    return "";
-  }
-}
-
-async function readOptionalJson(response) {
-  const text = await readResponseText(response);
-  return text ? JSON.parse(text) : null;
-}
-
-async function ensureOkJson(response, label) {
-  if (!response.ok) {
-    throw new Error(`${label} failed (${response.status}): ${await readResponseText(response)}`);
-  }
-  return response.json();
-}
-
 function createProjectName(date = new Date()) {
   const timestamp = date
     .toISOString()
     .replace(/[-:T.]/g, "")
     .slice(0, 14);
   return `translate_${timestamp}`;
-}
-
-async function getScene(baseUrl) {
-  const response = await apiFetch(ENDPOINTS.SCENE, { baseUrl });
-  return response.ok ? response.json() : null;
 }
 
 function collectExistingPageNames(scene) {
@@ -66,30 +41,13 @@ function collectExistingPageNames(scene) {
   );
 }
 
-async function uploadPagesWithFromPaths(pathsToUpload, baseUrl) {
-  const response = await apiFetch(ENDPOINTS.PAGES_FROM_PATHS, {
-    method: "POST",
-    baseUrl,
-    body: { paths: pathsToUpload, replace: false },
-  });
-  if (!response.ok) return null;
-  return { method: "from-paths", data: await response.json() };
+async function uploadPagesWithFromPaths(processor, pathsToUpload, baseUrl) {
+  const data = await processor.uploadPagesFromPaths(pathsToUpload, baseUrl, { replace: false });
+  return data ? { method: "from-paths", data } : null;
 }
 
-async function uploadPagesWithMultipart(pathsToUpload, baseUrl) {
-  const form = new FormData();
-  for (const filePath of pathsToUpload) {
-    const bytes = fs.readFileSync(filePath);
-    form.append("files", new Blob([bytes]), path.basename(filePath));
-  }
-  const response = await fetch(buildUrl(ENDPOINTS.PAGES, baseUrl), {
-    method: "POST",
-    body: form,
-  });
-  if (!response.ok) {
-    throw new Error(`Upload pages failed (${response.status}): ${await readResponseText(response)}`);
-  }
-  return { method: "multipart", data: await response.json() };
+async function uploadPagesWithMultipart(processor, pathsToUpload, baseUrl) {
+  return { method: "multipart", data: await processor.uploadPagesMultipart(pathsToUpload, baseUrl) };
 }
 
 function buildSkippedUploadResult(imagePaths, preflight) {
@@ -102,13 +60,13 @@ function buildSkippedUploadResult(imagePaths, preflight) {
   };
 }
 
-async function uploadByMode(mode, pathsToUpload, baseUrl) {
+async function uploadByMode(processor, mode, pathsToUpload, baseUrl) {
   return mode === "multipart"
-    ? await uploadPagesWithMultipart(pathsToUpload, baseUrl)
+    ? await uploadPagesWithMultipart(processor, pathsToUpload, baseUrl)
     : mode === "from-paths"
-      ? await uploadPagesWithFromPaths(pathsToUpload, baseUrl)
-      : (await uploadPagesWithFromPaths(pathsToUpload, baseUrl)) ||
-        (await uploadPagesWithMultipart(pathsToUpload, baseUrl));
+      ? await uploadPagesWithFromPaths(processor, pathsToUpload, baseUrl)
+      : (await uploadPagesWithFromPaths(processor, pathsToUpload, baseUrl)) ||
+        (await uploadPagesWithMultipart(processor, pathsToUpload, baseUrl));
 }
 
 function buildUploadedResult(result, pathsToUpload, imagePaths, existingNames, preflight) {
@@ -122,25 +80,22 @@ function buildUploadedResult(result, pathsToUpload, imagePaths, existingNames, p
   };
 }
 
-async function uploadPages(imagePaths, baseUrl, { mode = config.api?.pageUploadMode || "auto" } = {}) {
-  const existingNames = collectExistingPageNames(await getScene(baseUrl));
+async function uploadPages(processor, imagePaths, baseUrl,
+  { mode = config.api?.pageUploadMode || "auto" } = {}) {
+  const existingNames = collectExistingPageNames(await processor.getScene(baseUrl));
   const pendingPaths = imagePaths.filter((filePath) => !existingNames.has(path.basename(filePath)));
   const preflight = preflightImagesForKoharuUpload(pendingPaths);
   const pathsToUpload = preflight.uploadPaths;
   if (pathsToUpload.length === 0) return buildSkippedUploadResult(imagePaths, preflight);
   if (!["auto", "multipart", "from-paths"].includes(mode))
     throw new Error(`Unsupported Koharu page upload mode: ${mode}`);
-  const result = await uploadByMode(mode, pathsToUpload, baseUrl);
+  const result = await uploadByMode(processor, mode, pathsToUpload, baseUrl);
   if (!result) throw new Error(`Koharu page upload failed in ${mode} mode.`);
   return buildUploadedResult(result, pathsToUpload, imagePaths, existingNames, preflight);
 }
 
-async function getCurrentTranslationTarget(baseUrl) {
-  const response = await apiFetch(ENDPOINTS.LLM_CURRENT, { baseUrl });
-  if (!response.ok) {
-    throw new Error(`Get current translation target failed (${response.status}): ${await readResponseText(response)}`);
-  }
-  const data = await readOptionalJson(response);
+async function getCurrentTranslationTarget(processor, baseUrl) {
+  const data = await processor.getCurrentTranslationTarget(baseUrl);
   if (!data) throw new Error("Get current translation target returned an empty response");
   return data;
 }
@@ -153,8 +108,8 @@ function matchesRequestedTarget(current, modelId, providerId, targetKind = "prov
     : target.kind === "provider" && target.providerId === providerId;
 }
 
-async function verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKind) {
-  const current = await getCurrentTranslationTarget(baseUrl);
+async function verifyEmptyTargetResponse(processor, modelId, baseUrl, providerId, targetKind) {
+  const current = await getCurrentTranslationTarget(processor, baseUrl);
   if (!matchesRequestedTarget(current, modelId, providerId, targetKind)) {
     throw new Error("Load translation target returned an empty response and current target does not match the requested target");
   }
@@ -166,24 +121,11 @@ async function verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKin
   };
 }
 
-async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provider", generationOptions = null) {
-  const response = await apiFetch(ENDPOINTS.LLM_CURRENT, {
-    method: "PUT",
-    baseUrl,
-    body: {
-      target: {
-        kind: targetKind,
-        modelId,
-        providerId: targetKind === "local" ? null : providerId,
-      },
-      ...(generationOptions ? { options: generationOptions } : {}),
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Load translation target failed (${response.status}): ${await readResponseText(response)}`);
-  }
-  const data = await readOptionalJson(response);
-  if (!data) return verifyEmptyTargetResponse(modelId, baseUrl, providerId, targetKind);
+async function loadModelTarget(processor, modelId, baseUrl, providerId,
+  targetKind = "provider", generationOptions = null) {
+  const target = { kind: targetKind, modelId, providerId: targetKind === "local" ? null : providerId };
+  const data = await processor.setTranslationTarget(target, baseUrl, generationOptions);
+  if (!data) return verifyEmptyTargetResponse(processor, modelId, baseUrl, providerId, targetKind);
   return {
     modelId,
     providerId: targetKind === "local" ? "local" : providerId,
@@ -191,12 +133,9 @@ async function loadModelTarget(modelId, baseUrl, providerId, targetKind = "provi
   };
 }
 
-async function fetchTranslationCatalog(baseUrl) {
-  return ensureOkJson(await apiFetch(ENDPOINTS.LLM_CATALOG, { baseUrl }), "Fetch translation catalog");
-}
-
-async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLanguage = null, generationOptions = null) {
-  const catalog = await fetchTranslationCatalog(baseUrl);
+async function loadTranslationTarget(processor, baseUrl, requestedTarget = null,
+  targetLanguage = null, generationOptions = null) {
+  const catalog = await processor.getTranslationCatalog(baseUrl);
   const selected = resolveTranslationTarget({
     catalog,
     requestedTarget,
@@ -206,7 +145,7 @@ async function loadTranslationTarget(baseUrl, requestedTarget = null, targetLang
   const effectiveOptions = selected.kind === "machine_translation" || generationOptions?.temperature == null
     ? null : { temperature: generationOptions.temperature };
   const loaded = await loadModelTarget(
-    selected.modelId, baseUrl, selected.providerId, selected.targetKind, effectiveOptions,
+    processor, selected.modelId, baseUrl, selected.providerId, selected.targetKind, effectiveOptions,
   );
   return {
     ...selected,
@@ -224,25 +163,17 @@ function providerPatch(provider, proxy) {
   };
 }
 
-async function ensureTranslationProviderProxy(koharuBaseUrl, proxy) {
+async function ensureTranslationProviderProxy(processor, koharuBaseUrl, proxy) {
   if (!proxy?.providerId || !proxy?.baseUrl) return null;
-  const current = await ensureOkJson(await apiFetch(ENDPOINTS.CONFIG, { baseUrl: koharuBaseUrl }), "Read Koharu config");
+  const current = await processor.getConfig(koharuBaseUrl);
   const providers = Array.isArray(current.providers) ? current.providers : [];
   const target = providers.find((provider) => provider?.id === proxy.providerId);
   if (!target) throw new Error(`Koharu provider is unavailable: ${proxy.providerId}.`);
   if ((target.base_url || target.baseUrl) === proxy.baseUrl) {
     return { changed: false, providerId: proxy.providerId, baseUrl: proxy.baseUrl };
   }
-  const response = await apiFetch(ENDPOINTS.CONFIG, {
-    method: "PATCH", baseUrl: koharuBaseUrl,
-    body: { providers: providers.map((provider) => providerPatch(provider, proxy)) },
-  });
-  if (!response.ok) throw new Error(`Configure Koharu provider proxy failed (${response.status}).`);
+  await processor.patchConfig({ providers: providers.map((provider) => providerPatch(provider, proxy)) }, koharuBaseUrl);
   return { changed: true, providerId: proxy.providerId, baseUrl: proxy.baseUrl };
-}
-
-async function fetchEnginesCatalog(baseUrl) {
-  return ensureOkJson(await apiFetch(ENDPOINTS.ENGINES, { baseUrl }), "Fetch engines");
 }
 
 function pickEngineFromCatalog(engineKey, catalog, excludedIds = new Set()) {
@@ -268,11 +199,20 @@ function catalogHasEngine(engineKey, engineId, catalog) {
   );
 }
 
-async function resolveEngines(baseUrl, configuredEngines = null) {
-  const resolved = configuredEngines && typeof configuredEngines === "object" ? { ...configuredEngines } : {};
-  const catalog = await fetchEnginesCatalog(baseUrl);
-  const usedEngineIds = new Set();
+function resolveConfiguredOcr(catalog, configuredEngines, sourceLanguage) {
+  const configured = configuredEngines && typeof configuredEngines === "object" ? configuredEngines : {};
+  const selected = resolveKoharuOcr({
+    catalog,
+    configuredEngine: configured.ocr || null,
+    sourceLanguage,
+  });
+  return { engines: { ...configured, ocr: selected.engineId },
+    ocrLanguageResolution: selected.resolution };
+}
 
+function resolveCatalogEngines(catalog, initialEngines) {
+  const resolved = { ...initialEngines };
+  const usedEngineIds = new Set();
   for (const definition of ENGINE_ORDER) {
     const configured = resolved[definition.key];
     if (configured && !catalogHasEngine(definition.key, configured, catalog)) {
@@ -298,61 +238,67 @@ async function resolveEngines(baseUrl, configuredEngines = null) {
   return resolved;
 }
 
+async function resolveEnginePlan(processor, baseUrl, configuredEngines = null, sourceLanguage = null) {
+  const catalog = await processor.getEngines(baseUrl);
+  const initial = resolveConfiguredOcr(catalog, configuredEngines, sourceLanguage);
+  const resolved = resolveCatalogEngines(catalog, initial.engines);
+  return { engines: resolved, ocrLanguageResolution: initial.ocrLanguageResolution };
+}
+
+async function resolveEngines(processor, baseUrl, configuredEngines = null, sourceLanguage = null) {
+  const plan = await resolveEnginePlan(processor, baseUrl, configuredEngines, sourceLanguage);
+  return plan.engines;
+}
+
 function buildPipelineSteps(engines) {
   const steps = ENGINE_ORDER.map((entry) => engines[entry.key]).filter(Boolean);
   if (steps.length === 0) throw new Error("No pipeline steps resolved from engine configuration");
   return steps;
 }
 
-async function startPipeline(steps, targetLanguage, baseUrl, systemPrompt = null) {
-  const data = await ensureOkJson(
-    await apiFetch(ENDPOINTS.PIPELINES, {
-      method: "POST",
-      baseUrl,
-      body: {
-        steps,
-        targetLanguage,
-        ...(systemPrompt ? { systemPrompt } : {}),
-      },
-    }),
-    "Start pipeline",
-  );
-  const operationId = data.operationId || data.id;
+async function startPipeline(
+  processor, steps, targetLanguage, baseUrl, systemPrompt = null, sourceLanguage = null,
+) {
+  const sourceLanguages = sourceLanguageList(sourceLanguage);
+  const operationId = await processor.startPipeline({
+    steps, targetLanguage, systemPrompt, sourceLanguages, baseUrl,
+  });
   if (!operationId) throw new Error("Start pipeline response did not include operationId");
-  return { operationId, raw: data };
+  return { operationId };
 }
 
-async function createAndOpenProject(baseUrl) {
+async function createAndOpenProject(processor, baseUrl) {
   const projectName = createProjectName();
-  const created = await ensureOkJson(await apiFetch(ENDPOINTS.PROJECTS, {
-    method: "POST", baseUrl, body: { name: projectName },
-  }), "Create project");
+  const created = await processor.createProject(projectName, baseUrl);
   const projectId = created.id || created.project?.id || projectName;
-  await ensureOkJson(await apiFetch(ENDPOINTS.PROJECTS_CURRENT, {
-    method: "PUT", baseUrl, body: { id: projectId },
-  }), "Open project");
+  await processor.openProject(projectId, baseUrl);
   return { projectName, projectId };
 }
 
-async function prepareProject(options) {
-  const translationProxy = await ensureTranslationProviderProxy(options.baseUrl, options.translationProxy);
+async function prepareProject(processor, options) {
+  const translationProxy = await ensureTranslationProviderProxy(processor, options.baseUrl, options.translationProxy);
   const translationTarget = await loadTranslationTarget(
-    options.baseUrl,
+    processor, options.baseUrl,
     options.translationTarget || null,
     options.targetLanguage || null,
     options.generationOptions || null,
   );
-  const { projectName } = await createAndOpenProject(options.baseUrl);
-  const upload = await uploadPages(options.sourceImagePaths, options.baseUrl);
-  const engines = await resolveEngines(options.baseUrl, options.engines);
-  return { projectName, upload, engines, translationTarget, translationProxy };
+  const enginePlan = await resolveEnginePlan(
+    processor, options.baseUrl, options.engines, options.sourceLanguage,
+  );
+  const { projectName } = await createAndOpenProject(processor, options.baseUrl);
+  const upload = await uploadPages(processor, options.sourceImagePaths, options.baseUrl);
+  return { projectName, upload, engines: enginePlan.engines,
+    ocrLanguageResolution: enginePlan.ocrLanguageResolution, translationTarget, translationProxy };
 }
 
-async function orchestrate(options) {
-  const prepared = await prepareProject(options);
+async function orchestrate(processor, options) {
+  const prepared = await prepareProject(processor, options);
   const { engines } = prepared;
   const steps = buildPipelineSteps(engines);
-  const pipeline = await startPipeline(steps, options.targetLanguage, options.baseUrl, options.systemPrompt);
+  const pipeline = await startPipeline(
+    processor, steps, options.targetLanguage, options.baseUrl, options.systemPrompt, options.sourceLanguage,
+  );
   return {
     ...prepared,
     operationId: pipeline.operationId,
@@ -361,15 +307,21 @@ async function orchestrate(options) {
   };
 }
 
+function createProjectOrchestrator(processor) {
+  return {
+    ensureTranslationProviderProxy: (...args) => ensureTranslationProviderProxy(processor, ...args),
+    loadTranslationTarget: (...args) => loadTranslationTarget(processor, ...args),
+    orchestrate: (options) => orchestrate(processor, options),
+    prepareProject: (options) => prepareProject(processor, options),
+    resolveEngines: (...args) => resolveEngines(processor, ...args),
+    startPipeline: (...args) => startPipeline(processor, ...args),
+    uploadPages: (...args) => uploadPages(processor, ...args),
+  };
+}
+
 module.exports = {
   ENGINE_ORDER,
   buildPipelineSteps,
   createProjectName,
-  ensureTranslationProviderProxy,
-  loadTranslationTarget,
-  orchestrate,
-  prepareProject,
-  resolveEngines,
-  startPipeline,
-  uploadPages,
+  createProjectOrchestrator,
 };

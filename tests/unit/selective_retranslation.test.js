@@ -42,7 +42,7 @@ describe("selective retranslation Job creation", () => {
     };
     const engine = {
       sourcePreflightModule,
-      projectLifecycle: { client },
+      mangaProcessor: client,
       runTranslationJob: jest.fn(),
     };
     manager = new JobManager({
@@ -56,7 +56,7 @@ describe("selective retranslation Job creation", () => {
         workflow: { qualityCheck: { enabled: true } },
       },
       aoClient: { checkAvailability: jest.fn().mockResolvedValue({ available: true }) },
-      koharuRuntimeManager: {
+      mangaProcessingRuntime: {
         ensureRunning: jest.fn().mockResolvedValue({ status: "running", baseUrl: "http://127.0.0.1:4000" }),
       },
     });
@@ -108,11 +108,21 @@ describe("selective retranslation Job creation", () => {
       sourceImageIds: ["source-3", "source-7"],
       instructions: "Keep Koharu untranslated.",
       translationTarget: { providerId: "openai", modelId: "gpt-5" },
+      sourceLanguage: "ja",
     }));
     expect(created.payload).not.toHaveProperty("outputDir");
     expect(sourcePreflightModule.resolveSourceSelection)
       .toHaveBeenCalledWith("preflight-1", ["source-7", "source-3"]);
     expect(client.getTranslationCatalog).toHaveBeenCalledTimes(1);
+  });
+
+  test("accepts an ordered source-language override", async () => {
+    const created = await manager.createSelectiveRetranslationJob("root-job", {
+      sourceImageIds: ["source-3"],
+      sourceLanguage: ["en", "ja-JP", "en"],
+    });
+
+    expect(created.payload.sourceLanguage).toEqual(["en", "ja-JP"]);
   });
 
   test("rejects duplicate IDs before creating a Job", async () => {
@@ -139,15 +149,17 @@ describe("selective retranslation Job creation", () => {
       sourceImageId: "source-3", baseRegionSetRevisionId: "region-set-1",
       regions: [{ regionId: "region-1", sourceText: "corrected OCR" }],
     }] };
+    const correctionBootstrapEngines = { detect: "original-detect", ocr: "manga-ocr" };
     manager.textRegionCorrectionService = { prepare: jest.fn().mockReturnValue({
       reason: "text_region_correction",
       sourceImageIds: ["source-3"],
       revision: { baseRegionSetRevisionIds: ["region-set-1"] },
-      payload: { regionCorrections },
+      payload: { regionCorrections, correctionBootstrapEngines },
     }) };
 
     const created = await manager.createTextRegionCorrectionJob("root-job", {
       pages: regionCorrections.pages,
+      sourceLanguage: ["en", "ja"],
     });
 
     expect(created).toEqual(expect.objectContaining({
@@ -155,7 +167,9 @@ describe("selective retranslation Job creation", () => {
       revision: expect.objectContaining({ reason: "text_region_correction" }),
     }));
     expect(created.payload.regionCorrections).toEqual(regionCorrections);
+    expect(created.payload.correctionBootstrapEngines).toEqual(correctionBootstrapEngines);
     expect(created.payload.sourceImageIds).toEqual(["source-3"]);
+    expect(created.payload.sourceLanguage).toEqual(["en", "ja"]);
 
     store.updateJob({ id: created.id, status: "failed", stage: "failed" });
     const retried = manager.retryJob(created.id);
@@ -169,5 +183,6 @@ describe("selective retranslation Job creation", () => {
       }),
     }));
     expect(retried.payload.regionCorrections).toEqual(regionCorrections);
+    expect(retried.payload.correctionBootstrapEngines).toEqual(correctionBootstrapEngines);
   });
 });

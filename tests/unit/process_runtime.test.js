@@ -34,7 +34,7 @@ describe("process-trigger runtime", () => {
     const knowledge = { run: jest.fn().mockResolvedValue({ translationPairs: 1 }) };
     const exporter = { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\out.zip", size: 123 }) };
     const lifecycle = {
-      client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
+      getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
       closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
     };
 
@@ -44,7 +44,7 @@ describe("process-trigger runtime", () => {
       qualityModule: quality,
       knowledgeModule: knowledge,
       exportModule: exporter,
-      projectLifecycle: lifecycle,
+      mangaProcessor: lifecycle,
       translationMemoryComposer: () => ({
         translationMode: "reference_style",
         policy: { useReferenceMemory: true, useLocalMemory: false, runQuality: true, commitKnowledge: false },
@@ -117,8 +117,8 @@ describe("process-trigger runtime", () => {
       },
       knowledgeModule: { run: jest.fn().mockResolvedValue({ translationPairs: 1 }) },
       exportModule: { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\out.zip", size: 123 }) },
-      projectLifecycle: {
-        client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
+      mangaProcessor: {
+        getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
         closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
       },
     });
@@ -185,8 +185,8 @@ describe("process-trigger runtime", () => {
       qualityModule: quality,
       knowledgeModule: { run: jest.fn() },
       exportModule: { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\mt.zip", size: 123 }) },
-      projectLifecycle: {
-        client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
+      mangaProcessor: {
+        getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
         closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
       },
       translationMemoryComposer,
@@ -259,7 +259,7 @@ describe("process-trigger runtime", () => {
       qualityModule: { run: jest.fn() },
       knowledgeModule: { run: jest.fn() },
       exportModule: { run: jest.fn() },
-      projectLifecycle: { closeCurrentProject: jest.fn() },
+      mangaProcessor: { closeCurrentProject: jest.fn() },
     });
 
     const result = await engine.runReferenceExtractionJob(

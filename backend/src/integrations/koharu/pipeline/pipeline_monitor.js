@@ -1,5 +1,4 @@
 const { config, runtime } = require("../../../config");
-const { ENDPOINTS, buildUrl } = require("../client/koharu_client");
 
 const COMPLETED_PIPELINE_STATUSES = new Set(["completed", "completed_with_errors"]);
 const FAILED_PIPELINE_STATUSES = new Set(["failed", "canceled", "cancelled", "stopped"]);
@@ -496,15 +495,7 @@ class PipelineMonitorModule {
   }
 
   async fetchSseResponse(baseUrl, controller) {
-    const response = await fetch(buildUrl(ENDPOINTS.EVENTS, baseUrl), {
-      method: "GET",
-      headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
-      signal: controller.signal,
-    });
-    if (!response.ok || !response.body) {
-      throw new Error(`SSE listen failed (${response.status})`);
-    }
-    return response;
+    return this.client.openEventStream(baseUrl, controller.signal);
   }
 
   async handleSseLine({ rawLine, state, operationId, baseUrl, totalPagesHint, pipelinePlan, onProgress, onActivity }) {

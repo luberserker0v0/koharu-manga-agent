@@ -65,10 +65,9 @@ async function createBackend({ modules }) {
   const sourcePreflightModule = new SourcePreflightModule({
     root: fs.mkdtempSync(path.join(os.tmpdir(), "manga-e2e-preflight-")),
   });
-  const projectLifecycle = modules.projectLifecycle || {};
-  if (!projectLifecycle.client) {
-    projectLifecycle.client = {
-      getScene: jest.fn().mockResolvedValue({
+  const mangaProcessor = modules.mangaProcessor || {};
+  if (!mangaProcessor.getScene) {
+    mangaProcessor.getScene = jest.fn().mockResolvedValue({
         scene: {
           pages: {
             page_1: {
@@ -79,13 +78,12 @@ async function createBackend({ modules }) {
             },
           },
         },
-      }),
-    };
+      });
   }
   const engine = new WorkflowEngine({
     sourcePreflightModule,
     ...modules,
-    projectLifecycle,
+    mangaProcessor,
     translationMemoryComposer: modules.translationMemoryComposer || ((payload) => ({
       schemaVersion: 1,
       translationMode: payload.translationMode,
@@ -185,7 +183,7 @@ describe("backend job flow e2e", () => {
       }),
     };
     const knowledgeModule = { run: jest.fn().mockResolvedValue({ translationPairs: 10 }) };
-    const projectLifecycle = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
+    const mangaProcessor = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
 
     ({ api, baseUrl } = await createBackend({
       modules: {
@@ -212,7 +210,7 @@ describe("backend job flow e2e", () => {
             format: "rendered",
           }),
         },
-        projectLifecycle,
+        mangaProcessor,
       },
     }));
 
@@ -237,7 +235,7 @@ describe("backend job flow e2e", () => {
     );
     expect(qualityModule.run).toHaveBeenCalledTimes(1);
     expect(knowledgeModule.run).not.toHaveBeenCalled();
-    expect(projectLifecycle.closeCurrentProject).toHaveBeenCalledTimes(1);
+    expect(mangaProcessor.closeCurrentProject).toHaveBeenCalledTimes(1);
   });
 
   test("job can skip quality and run knowledge when requested", async () => {
@@ -279,7 +277,7 @@ describe("backend job flow e2e", () => {
             format: "rendered",
           }),
         },
-        projectLifecycle: {
+        mangaProcessor: {
           closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
         },
       },
@@ -385,7 +383,7 @@ describe("backend job flow e2e", () => {
             format: "rendered",
           }),
         },
-        projectLifecycle: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
+        mangaProcessor: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
       },
     }));
 
@@ -444,7 +442,7 @@ describe("backend job flow e2e", () => {
         qualityModule: { run: jest.fn() },
         knowledgeModule: { run: jest.fn().mockRejectedValue(new Error("AO quota exhausted")) },
         exportModule,
-        projectLifecycle: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
+        mangaProcessor: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
       },
     }));
 
@@ -486,7 +484,7 @@ describe("backend job flow e2e", () => {
   });
 
   test("export failure marks job failed and does not close project", async () => {
-    const projectLifecycle = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
+    const mangaProcessor = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
 
     ({ api, baseUrl } = await createBackend({
       modules: {
@@ -519,7 +517,7 @@ describe("backend job flow e2e", () => {
         exportModule: {
           run: jest.fn().mockRejectedValue(new Error("Export failed (500): mocked export error")),
         },
-        projectLifecycle,
+        mangaProcessor,
       },
     }));
 
@@ -535,7 +533,7 @@ describe("backend job flow e2e", () => {
     expect(job.status).toBe("failed");
     expect(job.error).toContain("mocked export error");
     expect(job.artifacts).toEqual([]);
-    expect(projectLifecycle.closeCurrentProject).not.toHaveBeenCalled();
+    expect(mangaProcessor.closeCurrentProject).not.toHaveBeenCalled();
   });
 
   test("quality failure stops export and does not close project", async () => {
@@ -546,7 +544,7 @@ describe("backend job flow e2e", () => {
         format: "rendered",
       }),
     };
-    const projectLifecycle = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
+    const mangaProcessor = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
 
     ({ api, baseUrl } = await createBackend({
       modules: {
@@ -569,7 +567,7 @@ describe("backend job flow e2e", () => {
         },
         knowledgeModule: { run: jest.fn().mockResolvedValue({ translationPairs: 0 }) },
         exportModule,
-        projectLifecycle,
+        mangaProcessor,
       },
     }));
 
@@ -585,12 +583,12 @@ describe("backend job flow e2e", () => {
     expect(job.status).toBe("failed");
     expect(job.error).toContain("mocked validation failure");
     expect(exportModule.run).not.toHaveBeenCalled();
-    expect(projectLifecycle.closeCurrentProject).not.toHaveBeenCalled();
+    expect(mangaProcessor.closeCurrentProject).not.toHaveBeenCalled();
   });
 
   test("unresolved translation completeness exports with warnings", async () => {
     const exportModule = { run: jest.fn().mockResolvedValue({ path: "C:\\translated\\incomplete.zip", size: 1, format: "rendered" }) };
-    const projectLifecycle = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
+    const mangaProcessor = { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) };
     ({ api, baseUrl } = await createBackend({
       modules: {
         projectSetup: { run: jest.fn().mockResolvedValue({
@@ -618,7 +616,7 @@ describe("backend job flow e2e", () => {
         }) },
         knowledgeModule: { run: jest.fn() },
         exportModule,
-        projectLifecycle,
+        mangaProcessor,
       },
     }));
 
@@ -640,7 +638,7 @@ describe("backend job flow e2e", () => {
 
     expect(job.status).toBe("succeeded");
     expect(exportModule.run).toHaveBeenCalled();
-    expect(projectLifecycle.closeCurrentProject).toHaveBeenCalled();
+    expect(mangaProcessor.closeCurrentProject).toHaveBeenCalled();
   });
 
   test("cancel request turns a running job into canceled", async () => {
@@ -665,7 +663,7 @@ describe("backend job flow e2e", () => {
         qualityModule: { run: jest.fn() },
         knowledgeModule: { run: jest.fn() },
         exportModule: { run: jest.fn() },
-        projectLifecycle: { closeCurrentProject: jest.fn() },
+        mangaProcessor: { closeCurrentProject: jest.fn() },
       },
     }));
 
@@ -727,7 +725,7 @@ describe("backend job flow e2e", () => {
             format: "rendered",
           }),
         },
-        projectLifecycle: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
+        mangaProcessor: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
       },
     }));
 
@@ -804,7 +802,7 @@ describe("backend job flow e2e", () => {
             format: "rendered",
           }),
         },
-        projectLifecycle: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
+        mangaProcessor: { closeCurrentProject: jest.fn().mockResolvedValue({ success: true }) },
       },
     }));
 

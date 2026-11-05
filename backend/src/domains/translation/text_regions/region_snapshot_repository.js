@@ -2,7 +2,7 @@ const crypto = require("crypto");
 const path = require("path");
 
 const { readJson, writeJsonAtomic } = require("../../../infrastructure/filesystem/json_file");
-const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { collectSceneTextRegionPages } = require("../../manga_processing/scene_text_regions");
 
 function digest(prefix, value) {
   const hash = crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 24);

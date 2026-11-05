@@ -62,6 +62,7 @@ function qualityRepairPayload(source, reusable) {
       engines: source.result.engines || {},
       steps: source.result.steps || [],
       pipelineProfile: source.result.pipelineProfile || null,
+      ocrLanguageResolution: source.result.ocrLanguageResolution || null,
       translationMemorySnapshotPath: source.result.translationMemorySnapshotPath,
       resumeAtStage: "quality_context",
       qualityCheckpointPaths: reusable.qualityCheckpointPaths,
@@ -76,7 +77,7 @@ function createTranslationQualityRepairJob(manager, sourceTranslationJobId) {
     throw new Error("Quality repair requires a completed translation job.");
   }
   if (!source.result?.projectName || !source.result?.translationMemorySnapshotPath) {
-    throw new Error("Quality repair requires the original Koharu project and Translation Memory snapshot.");
+    throw new Error("Quality repair requires the original manga processor project and Translation Memory snapshot.");
   }
   const previousRepairs = manager.store.listChildJobs(source.id)
     .filter((job) => job.type === "translation_quality_repair");
@@ -96,7 +97,7 @@ async function listQualityRepairProjects(client, baseUrl) {
     return await client.listProjects(baseUrl);
   } catch (cause) {
     const error = new Error(
-      `Koharu is unavailable at ${baseUrl}. Start Koharu before revalidating translation quality.`,
+      `Manga processor is unavailable at ${baseUrl}. Start it before revalidating translation quality.`,
     );
     error.statusCode = 503;
     error.cause = cause;
@@ -104,14 +105,14 @@ async function listQualityRepairProjects(client, baseUrl) {
   }
 }
 
-async function resolveQualityRepairBaseUrl(manager, source, client) {
+async function resolveQualityRepairBaseUrl(manager, source, processor) {
   let baseUrl = source.payload?.baseUrl || manager.resolvedConfig?.api?.baseUrl || "http://127.0.0.1:4000";
-  if (!source.payload?.baseUrl && manager.koharuRuntimeManager) {
-    const status = await manager.koharuRuntimeManager.ensureRunning();
+  if (!source.payload?.baseUrl && manager.mangaProcessingRuntime) {
+    const status = await manager.mangaProcessingRuntime.ensureRunning();
     if (status?.baseUrl) {
       baseUrl = status.baseUrl;
       manager.resolvedConfig.api = { ...(manager.resolvedConfig.api || {}), baseUrl };
-      if (client) client.defaultBaseUrl = baseUrl;
+      processor?.setDefaultBaseUrl?.(baseUrl);
     }
   }
   return baseUrl;
@@ -124,16 +125,16 @@ async function preflightTranslationQualityRepair(manager, sourceTranslationJobId
     error.statusCode = 409;
     throw error;
   }
-  const client = manager.engine?.projectLifecycle?.client;
-  const baseUrl = await resolveQualityRepairBaseUrl(manager, source, client);
-  if (!client || typeof client.listProjects !== "function") {
-    const error = new Error("Koharu project access is not configured.");
+  const processor = manager.engine?.mangaProcessor;
+  const baseUrl = await resolveQualityRepairBaseUrl(manager, source, processor);
+  if (!processor || typeof processor.listProjects !== "function") {
+    const error = new Error("Manga processor project access is not configured.");
     error.statusCode = 503;
     throw error;
   }
-  const projects = await listQualityRepairProjects(client, baseUrl);
+  const projects = await listQualityRepairProjects(processor, baseUrl);
   if (!projects.some((project) => project.name === source.result?.projectName)) {
-    const error = new Error(`Koharu project is unavailable: ${source.result?.projectName || "unknown"}.`);
+    const error = new Error(`Manga processor project is unavailable: ${source.result?.projectName || "unknown"}.`);
     error.statusCode = 409;
     throw error;
   }

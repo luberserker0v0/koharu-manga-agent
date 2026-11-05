@@ -26,15 +26,15 @@ const {
 } = require("./lifecycle/job_completion");
 const { getJobReadiness, getJobRuntimeStatus } = require("./runtime/job_runtime_status");
 const {
-  assertKoharuAvailableForJobType: assertKoharuAvailable,
-  ensureKoharuReadyForJob: ensureKoharuReady,
-  inspectKoharuReadiness: inspectKoharu,
-  usesConfiguredKoharu,
-} = require("./runtime/koharu_readiness");
+  assertMangaProcessorAvailableForJobType: assertMangaProcessorAvailable,
+  ensureMangaProcessorReadyForJob: ensureMangaProcessorReady,
+  inspectMangaProcessorReadiness,
+  usesConfiguredMangaProcessor,
+} = require("./runtime/manga_processing_readiness");
 const {
-  acquireKoharuReviewLease: acquireReviewLease,
+  acquireMangaProcessorReviewLease: acquireReviewLease,
   drainQueue,
-  releaseKoharuReviewLease: releaseReviewLease,
+  releaseMangaProcessorReviewLease: releaseReviewLease,
   scheduleQueueDrain,
 } = require("./queue/job_queue");
 const {
@@ -93,7 +93,7 @@ class JobManager {
     engine,
     runtimeConfig,
     resolvedConfig,
-    koharuRuntimeManager = null,
+    mangaProcessingRuntime = null,
     aoClient = null,
     pageRevisionService = null,
     translationRevisionPromotionService = null,
@@ -103,7 +103,7 @@ class JobManager {
     this.engine = engine;
     this.runtimeConfig = runtimeConfig;
     this.resolvedConfig = resolvedConfig;
-    this.koharuRuntimeManager = koharuRuntimeManager;
+    this.mangaProcessingRuntime = mangaProcessingRuntime;
     this.aoClient = aoClient;
     this.pageRevisionService = pageRevisionService;
     this.translationRevisionPromotionService = translationRevisionPromotionService;
@@ -114,7 +114,7 @@ class JobManager {
     this.pendingQueue = [];
     this.queueDrainScheduled = false;
     this.queueRunning = false;
-    this.koharuReviewLease = null;
+    this.mangaProcessorReviewLease = null;
     this.recoverInterruptedJobs();
   }
 
@@ -142,32 +142,32 @@ class JobManager {
     return drainQueue(this);
   }
 
-  acquireKoharuReviewLease(input) {
+  acquireMangaProcessorReviewLease(input) {
     return acquireReviewLease(this, input);
   }
 
-  releaseKoharuReviewLease(sessionId) {
+  releaseMangaProcessorReviewLease(sessionId) {
     return releaseReviewLease(this, sessionId);
   }
 
-  getKoharuReviewLease() {
-    return this.koharuReviewLease;
+  getMangaProcessorReviewLease() {
+    return this.mangaProcessorReviewLease;
   }
 
-  usesConfiguredKoharu(job) {
-    return usesConfiguredKoharu(job);
+  usesConfiguredMangaProcessor(job) {
+    return usesConfiguredMangaProcessor(job);
   }
 
-  async ensureKoharuReadyForJob(job, hooks = null) {
-    return ensureKoharuReady(this, job, hooks);
+  async ensureMangaProcessorReadyForJob(job, hooks = null) {
+    return ensureMangaProcessorReady(this, job, hooks);
   }
 
-  async inspectKoharuReadiness() {
-    return inspectKoharu(this);
+  async inspectMangaProcessorReadiness() {
+    return inspectMangaProcessorReadiness(this);
   }
 
-  async assertKoharuAvailableForJobType(type, payload = {}) {
-    return assertKoharuAvailable(this, type, payload);
+  async assertMangaProcessorAvailableForJobType(type, payload = {}) {
+    return assertMangaProcessorAvailable(this, type, payload);
   }
 
   resolveDependencyState(job) {
@@ -204,6 +204,10 @@ class JobManager {
 
   async createTextRegionCorrectionJob(sourceJobId, request = {}) {
     return createTextRegionCorrection(this, sourceJobId, request);
+  }
+
+  createOcrTextReviewJob(payload) {
+    return this.createJob("ocr_text_review", payload);
   }
 
   async assertAgentAvailableForTranslation(payload) {

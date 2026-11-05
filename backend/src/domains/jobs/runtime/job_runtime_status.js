@@ -7,10 +7,10 @@ function runtimeBackendStatus(manager) {
   };
 }
 
-function runtimeKoharuStatus(manager, koharuStatus) {
+function runtimeMangaProcessorStatus(manager, processorStatus) {
   return {
-    ...koharuStatus,
-    baseUrl: koharuStatus.baseUrl || manager.resolvedConfig.api?.baseUrl || null,
+    ...processorStatus,
+    baseUrl: processorStatus.baseUrl || manager.resolvedConfig.api?.baseUrl || null,
   };
 }
 
@@ -32,13 +32,15 @@ function runtimeQualityStatus(manager) {
   };
 }
 
-async function inspectKoharuRuntimeStatus(manager) {
-  if (manager.koharuRuntimeManager) return manager.koharuRuntimeManager.inspect();
+async function inspectMangaProcessingRuntime(manager) {
+  if (manager.mangaProcessingRuntime) return manager.mangaProcessingRuntime.inspect();
   return {
     status: manager.resolvedConfig.api?.baseUrl ? "configured" : "unconfigured",
     mode: "external",
     baseUrl: manager.resolvedConfig.api?.baseUrl || null,
-    version: manager.resolvedConfig.koharuRuntime?.version || null,
+    providerId: null,
+    providerName: null,
+    version: null,
     installed: false,
     managedPid: null,
     lastError: null,
@@ -57,11 +59,11 @@ async function resolveAgentRuntimeStatus(manager) {
 }
 
 async function getJobRuntimeStatus(manager) {
-  const koharuStatus = await inspectKoharuRuntimeStatus(manager);
+  const processorStatus = await inspectMangaProcessingRuntime(manager);
   const agent = await resolveAgentRuntimeStatus(manager);
   return {
     backend: runtimeBackendStatus(manager),
-    koharu: runtimeKoharuStatus(manager, koharuStatus),
+    mangaProcessor: runtimeMangaProcessorStatus(manager, processorStatus),
     agent: runtimeAgentStatus(manager, agent),
     quality: runtimeQualityStatus(manager),
     translation: { defaultTarget: manager.resolvedConfig.translation?.defaultTarget || null },
@@ -69,24 +71,26 @@ async function getJobRuntimeStatus(manager) {
 }
 
 function readinessIssue(service, runtimeService) {
-  const koharu = service === "koharu";
+  const mangaProcessor = service === "manga_processor";
   return {
     service,
-    code: koharu ? "koharu_unavailable" : "ao_unavailable",
+    code: mangaProcessor ? "manga_processor_unavailable" : "ao_unavailable",
     message: runtimeService.lastError ||
-      `${koharu ? "Koharu is not reachable" : "AO is not ready"} at ${runtimeService.baseUrl || "the configured endpoint"}.`,
+      `${mangaProcessor ? "Manga processor is not reachable" : "AO is not ready"} at ${runtimeService.baseUrl || "the configured endpoint"}.`,
   };
 }
 
-function readinessServices(runtime, koharuReady, agentReady) {
+function readinessServices(runtime, processorReady, agentReady) {
   return {
     backend: { required: true, ready: true, status: runtime.backend.status },
-    koharu: {
+    mangaProcessor: {
       required: true,
-      ready: koharuReady,
-      status: runtime.koharu.status,
-      mode: runtime.koharu.mode,
-      baseUrl: runtime.koharu.baseUrl,
+      ready: processorReady,
+      status: runtime.mangaProcessor.status,
+      mode: runtime.mangaProcessor.mode,
+      baseUrl: runtime.mangaProcessor.baseUrl,
+      providerId: runtime.mangaProcessor.providerId || null,
+      providerName: runtime.mangaProcessor.providerName || null,
     },
     ao: {
       required: false,
@@ -99,16 +103,16 @@ function readinessServices(runtime, koharuReady, agentReady) {
 
 async function getJobReadiness(manager) {
   const runtime = await getJobRuntimeStatus(manager);
-  const koharuReady = runtime.koharu.status === "running";
+  const processorReady = runtime.mangaProcessor.status === "running";
   const agentReady = runtime.agent.status === "ready";
   return {
-    ok: koharuReady,
-    status: !koharuReady ? "blocked" : agentReady ? "ready" : "degraded",
+    ok: processorReady,
+    status: !processorReady ? "blocked" : agentReady ? "ready" : "degraded",
     checkedAt: new Date().toISOString(),
     deploymentMode: runtime.backend.deploymentMode,
-    services: readinessServices(runtime, koharuReady, agentReady),
-    capabilities: { koharuJobs: koharuReady, aoJobs: agentReady },
-    blockers: koharuReady ? [] : [readinessIssue("koharu", runtime.koharu)],
+    services: readinessServices(runtime, processorReady, agentReady),
+    capabilities: { mangaProcessingJobs: processorReady, aoJobs: agentReady },
+    blockers: processorReady ? [] : [readinessIssue("manga_processor", runtime.mangaProcessor)],
     warnings: agentReady ? [] : [readinessIssue("ao", runtime.agent)],
   };
 }

@@ -18,7 +18,7 @@ import { ChapterSelector, CREATE_NEW_CHAPTER_VALUE, resolveSelectedChapter } fro
 import { resolveSelectedTranslatorProfile } from "../../../components/TranslatorProfileSelector";
 import { CREATE_NEW_TRANSLATOR_VALUE } from "../../../components/TranslatorSelector";
 import { ReferenceGlossaryStrategySelector } from "../../../components/ReferenceGlossaryStrategySelector";
-import { getBackendConfig, getKoharuTranslationCatalog } from "../../../api/runtime";
+import { getBackendConfig, getMangaProcessorTranslationCatalog } from "../../../api/runtime";
 import { pickDirectory, readSettings, uploadImageFolder, validatePaths, writeSettings } from "../../../services/desktop_api";
 import { type TranslationDraft, type TranslationMode, useJobsPageStore } from "../../../stores/jobs_store";
 import { useLanguageStore } from "../../../stores/language_store";
@@ -579,7 +579,7 @@ function useSettingsSnapshotEffect(setSettings: (value: GuiSettings) => void) {
 }
 
 function useDefaultTargetEffect(
-  catalog: Awaited<ReturnType<typeof getKoharuTranslationCatalog>> | undefined,
+  catalog: Awaited<ReturnType<typeof getMangaProcessorTranslationCatalog>> | undefined,
   config: Awaited<ReturnType<typeof getBackendConfig>> | undefined,
   setDraft: SetTranslationDraft,
 ) {
@@ -707,7 +707,7 @@ function resolveComposerSelection(draft: TranslationDraft, series: MangaSeriesSu
 
 function resolveTranslationTarget(
   draft: TranslationDraft,
-  catalog: Awaited<ReturnType<typeof getKoharuTranslationCatalog>> | undefined,
+  catalog: Awaited<ReturnType<typeof getMangaProcessorTranslationCatalog>> | undefined,
 ) {
   const translationModeDefinition = getTranslationModeDefinition(draft.translationMode);
   const translationProviders = catalog?.providers || [];
@@ -906,8 +906,8 @@ function useComposerMutations(context: MutationContext, creatingProfile: boolean
 function useComposerQueries() {
   const backendConfigQuery = useQuery({ queryKey: ["backend-config"], queryFn: getBackendConfig, retry: false });
   const translationCatalogQuery = useQuery({
-    queryKey: ["koharu-translation-catalog"],
-    queryFn: getKoharuTranslationCatalog,
+    queryKey: ["manga-processor-translation-catalog"],
+    queryFn: getMangaProcessorTranslationCatalog,
     retry: false,
   });
   const mangaSeriesQuery = useQuery({

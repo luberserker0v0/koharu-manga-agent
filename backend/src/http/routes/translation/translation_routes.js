@@ -3,7 +3,8 @@ const { config } = require("../../../config");
 const {
   isMachineTranslationTarget,
   validateTranslationTargetShape,
-} = require("../../../integrations/koharu/translation/translation_targets");
+} = require("../../../domains/manga_processing/translation_targets");
+const { primarySourceLanguage } = require("../../../domains/manga_processing/source_languages");
 const { assertTranslationMemoryReady } = require("../../../domains/translation/memory/translation_memory");
 const { buildLearningEvidenceSnapshot } = require("../../../domains/knowledge/learning/learning_evidence");
 const { badRequest, conflict, notFound, readJsonBody, sendJson } = require("../../server/http_helpers");
@@ -88,7 +89,7 @@ async function createTranslationJob(ctx) {
     return;
   }
   await ctx.jobManager.assertAgentAvailableForTranslation?.(body);
-  await ctx.jobManager.assertKoharuAvailableForJobType?.("translation", body);
+  await ctx.jobManager.assertMangaProcessorAvailableForJobType?.("translation", body);
   sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationJob(body)));
 }
 
@@ -193,7 +194,7 @@ async function handleTranslationFollowups(ctx) {
   const retryMatch = ctx.url.pathname.match(/^\/jobs\/([^/]+)\/knowledge-retry$/);
   if (auditMatch) {
     const body = await readJsonBody(ctx.req);
-    await ctx.jobManager.assertKoharuAvailableForJobType?.("translation_deep_audit_apply", body);
+    await ctx.jobManager.assertMangaProcessorAvailableForJobType?.("translation_deep_audit_apply", body);
     sendJson(ctx.res, 202, publicJob(ctx.jobManager.createTranslationDeepAuditApplyJob(auditMatch[1], body.decisions)));
     return true;
   }
@@ -224,7 +225,7 @@ function composeTranslationMemoryInspection(ctx, body, postEdit) {
     chapterTitle: body.chapterTitle || null,
     sourceChapterId: body.sourceChapterId || null,
     glossaryMode: body.glossaryMode || "canonical",
-    sourceLanguage: body.sourceLanguage || null,
+    sourceLanguage: primarySourceLanguage(body.sourceLanguage),
     targetLanguage: body.targetLanguage || config.defaults.targetLanguage,
   });
 }
@@ -283,7 +284,7 @@ function buildPreviewMemory(ctx, body) {
     chapterTitle: body.chapterTitle || null,
     sourceChapterId: body.sourceChapterId || null,
     glossaryMode: body.glossaryMode || "canonical",
-    sourceLanguage: body.sourceLanguage || null,
+    sourceLanguage: primarySourceLanguage(body.sourceLanguage),
     targetLanguage: body.targetLanguage || config.defaults.targetLanguage,
   });
 }
@@ -300,7 +301,7 @@ async function runTranslationPreviewQuality(ctx, body, translations, memory) {
     jobId: body.jobId || `translation_preview_${Date.now()}`,
     translations,
     translationMemory: memory,
-    sourceLanguage: body.sourceLanguage || memory.languages?.sourceLanguage || null,
+    sourceLanguage: primarySourceLanguage(body.sourceLanguage) || memory.languages?.sourceLanguage || null,
     targetLanguage: body.targetLanguage || config.defaults.targetLanguage,
   });
 }

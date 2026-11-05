@@ -258,6 +258,7 @@ describe("backend api", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         translationMode: "quick",
+        sourceLanguage: ["en", "ja"],
         targetLanguage: "zh-TW",
         mangaId: "phantom_fantasy",
         mangaLabel: "Phantom Fantasy",
@@ -281,13 +282,14 @@ describe("backend api", () => {
     expect(stored.payload.mangaLabel).toBe("Phantom Fantasy");
     expect(stored.payload.translatorId).toBe("translator_api");
     expect(stored.payload.chapterId).toBe("ch_001");
+    expect(stored.payload.sourceLanguage).toEqual(["en", "ja"]);
     expect(stored.payload.translationTarget).toEqual({ providerId: "openai-compatible", modelId: "default-model" });
     expect(stored.payload.outputDir).toBeUndefined();
   });
 
-  test("translation jobs without a baseUrl override ensure managed Koharu first", async () => {
+  test("translation jobs without a baseUrl override ensure the configured manga processor first", async () => {
     const store = new JobStore(createTempDbPath());
-    const koharuRuntimeManager = {
+    const mangaProcessingRuntime = {
       ensureRunning: jest.fn().mockResolvedValue({ status: "running", baseUrl: "http://127.0.0.1:4000" }),
       inspect: jest.fn().mockResolvedValue({ status: "running", baseUrl: "http://127.0.0.1:4000" }),
     };
@@ -302,7 +304,7 @@ describe("backend api", () => {
       engine,
       runtimeConfig: { host: "127.0.0.1", port: 0 },
       resolvedConfig: { api: { baseUrl: "http://127.0.0.1:4000" }, workflow: { qualityCheck: { enabled: true } } },
-      koharuRuntimeManager,
+      mangaProcessingRuntime,
     });
     api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
     await api.listen();
@@ -323,13 +325,13 @@ describe("backend api", () => {
     const job = await waitForJobTerminal(baseUrl, created.id);
 
     expect(job.status).toBe("succeeded");
-    expect(koharuRuntimeManager.ensureRunning).toHaveBeenCalledTimes(1);
+    expect(mangaProcessingRuntime.ensureRunning).toHaveBeenCalledTimes(1);
     expect(engine.runTranslationJob).toHaveBeenCalledTimes(1);
   });
 
-  test("translation jobs with a baseUrl override do not start managed Koharu", async () => {
+  test("translation jobs with a baseUrl override do not start the managed processor", async () => {
     const store = new JobStore(createTempDbPath());
-    const koharuRuntimeManager = {
+    const mangaProcessingRuntime = {
       ensureRunning: jest.fn(),
       inspect: jest.fn().mockResolvedValue({ status: "installed", baseUrl: "http://127.0.0.1:4000" }),
     };
@@ -344,7 +346,7 @@ describe("backend api", () => {
       engine,
       runtimeConfig: { host: "127.0.0.1", port: 0 },
       resolvedConfig: { api: { baseUrl: "http://127.0.0.1:4000" }, workflow: { qualityCheck: { enabled: true } } },
-      koharuRuntimeManager,
+      mangaProcessingRuntime,
     });
     api = createApiServer({ jobManager, host: "127.0.0.1", port: 0 });
     await api.listen();
@@ -366,7 +368,7 @@ describe("backend api", () => {
     const job = await waitForJobTerminal(baseUrl, created.id);
 
     expect(job.status).toBe("succeeded");
-    expect(koharuRuntimeManager.ensureRunning).not.toHaveBeenCalled();
+    expect(mangaProcessingRuntime.ensureRunning).not.toHaveBeenCalled();
     expect(engine.runTranslationJob).toHaveBeenCalledTimes(1);
   });
 
@@ -1042,7 +1044,7 @@ describe("backend api", () => {
     expect(runtimeRes.status).toBe(200);
     const runtimePayload = await runtimeRes.json();
     expect(runtimePayload.backend.status).toBe("ready");
-    expect(runtimePayload.koharu.baseUrl).toBe("http://127.0.0.1:9999");
+    expect(runtimePayload.mangaProcessor.baseUrl).toBe("http://127.0.0.1:9999");
     expect(runtimePayload.agent.baseUrl).toBe("http://127.0.0.1:32768");
     expect(runtimePayload.agent.agentName).toBe("quality-optimizer");
     expect(runtimePayload.translation.defaultTarget).toEqual({

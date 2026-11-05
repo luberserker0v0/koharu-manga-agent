@@ -213,6 +213,8 @@ class KoharuRuntimeManager {
 
   buildInspectResult(installed, status, mode) {
     return {
+      providerId: "koharu",
+      providerName: "Koharu",
       status,
       mode,
       baseUrl: this.baseUrl,

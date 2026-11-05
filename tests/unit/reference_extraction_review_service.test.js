@@ -74,7 +74,7 @@ describe("ReferenceExtractionReviewService", () => {
   test("owns Koharu until editing finishes and returns complete review documents", async () => {
     let lease = null;
     const jobManager = {
-      acquireKoharuReviewLease: jest.fn((value) => {
+      acquireMangaProcessorReviewLease: jest.fn((value) => {
         if (lease) {
           const error = new Error("busy");
           error.statusCode = 409;
@@ -82,7 +82,7 @@ describe("ReferenceExtractionReviewService", () => {
         }
         lease = value;
       }),
-      releaseKoharuReviewLease: jest.fn((sessionId) => {
+      releaseMangaProcessorReviewLease: jest.fn((sessionId) => {
         if (lease?.sessionId === sessionId) lease = null;
       }),
     };
@@ -111,7 +111,7 @@ describe("ReferenceExtractionReviewService", () => {
     expect(synced.pages[0].texts[0].nodeId).toBe("n1");
     const finished = await service.finish(referenceSetId, started.sessionId);
     expect(finished.status).toBe("awaiting_order_review");
-    expect(jobManager.releaseKoharuReviewLease).toHaveBeenCalledWith(started.sessionId);
+    expect(jobManager.releaseMangaProcessorReviewLease).toHaveBeenCalledWith(started.sessionId);
 
     const ordered = service.saveOrder(referenceSetId, [{ pageId: "p1", nodeIds: ["n1"] }]);
     expect(ordered.orderDraft).toEqual([{ pageId: "p1", nodeIds: ["n1"] }]);

@@ -1,12 +1,15 @@
 # Agent Integration Design
 
 ## Goal
-This document defines the official AO-only integration contract between the backend
-and the LLM runtime.
+This document defines the official AO integration contract between the backend and the Agent runtime.
 
-AO is the only LLM execution boundary. The backend never touches the AO project
+AO is the only Agent execution boundary. The backend never touches the AO project
 workspace on disk and never uses `agent_sdk`, provider registries, or SDK-loaded
 runtime adapters.
+
+Tool-free, single-request OCR region review is not an Agent task. It uses the dedicated
+`LMStudioVisionClient`, a strict two-field output contract, and no generic prompt proxy. See
+`docs/API.md` for the text-region review API.
 
 ## Design Principles
 - backend owns workflow control flow
@@ -117,7 +120,7 @@ backend API. `backend/ao/opencode/opencode.json` is user-owned AO workspace cont
 uploads it but must not generate or overwrite it.
 
 ## Acceptance Criteria
-- AO is the only LLM boundary
+- AO is the only Agent boundary
 - no `agent_sdk` compatibility layer remains in runtime code
 - backend can initialize, poll, message, and clean up AO conversations
 - quality can apply AO-proposed fixes back to Koharu

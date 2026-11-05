@@ -102,8 +102,8 @@ class UploadService {
   }
 
   create({ kind = "source" } = {}) {
-    if (!["source", "reference"].includes(kind))
-      throw apiError("Upload kind must be source or reference.", 400);
+    if (!["source", "reference", "ocr_review"].includes(kind))
+      throw apiError("Upload kind must be source, reference, or ocr_review.", 400);
     const uploadId = crypto.randomUUID();
     const root = this.sessionRoot(uploadId);
     fs.mkdirSync(path.join(root, "files"), { recursive: true });

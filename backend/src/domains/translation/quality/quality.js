@@ -23,7 +23,7 @@ const {
 const {
   mergeSemanticResults,
 } = require("../../../integrations/ao/contracts/semantic_result");
-const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { collectSceneTextRegionPages } = require("../../manga_processing/scene_text_regions");
 
 const COMPLETENESS_REASON_TYPES = new Set([
   "translation_missing",
@@ -134,22 +134,12 @@ function applyProposalsToTranslations(translations, proposedTranslations) {
   });
 }
 
-function buildQualityPatchOps(translationsByNodeId, proposedTranslations) {
+function buildQualityTranslationUpdates(translationsByNodeId, proposedTranslations) {
   return (proposedTranslations || []).flatMap((proposal) => {
     const current = translationsByNodeId.get(proposal.nodeId);
     if (!current || current.translation === proposal.revisedTranslation)
       return [];
-    return [
-      {
-        updateNode: {
-          page: current.pageId,
-          id: current.id,
-          patch: {
-            data: { text: { translation: proposal.revisedTranslation } },
-          },
-        },
-      },
-    ];
+    return [{ pageId: current.pageId, nodeId: current.id, translation: proposal.revisedTranslation }];
   });
 }
 
@@ -619,8 +609,8 @@ function persistQualityFinalReport(context, finalReport) {
 }
 
 class QualityModule {
-  constructor(client, aoTaskRunner) {
-    this.client = client;
+  constructor(processor, aoTaskRunner) {
+    this.processor = processor;
     this.aoTaskRunner = aoTaskRunner;
   }
 
@@ -892,7 +882,7 @@ class QualityModule {
   async createQualityRunContext(params) {
     const context = { ...params };
     context.initial = collectTranslations(
-      await this.client.getScene(context.baseUrl),
+      await this.processor.getScene(context.baseUrl),
     );
     context.execution = await this.execute({
       translations: context.initial.translations,
@@ -913,22 +903,22 @@ class QualityModule {
   }
 
   async applyQualityProposals(context) {
-    const ops = buildQualityPatchOps(
+    const updates = buildQualityTranslationUpdates(
       new Map(context.initial.translations.map((entry) => [entry.id, entry])),
       context.proposals,
     );
     context.onProgress?.("quality.apply_started", {
       revisionCount: context.proposals.length,
-      operationCount: ops.length,
+      operationCount: updates.length,
     });
-    if (ops.length > 0)
-      await this.client.applyHistoryBatch({
-        ops,
+    if (updates.length > 0)
+      await this.processor.applyTranslationUpdates({
+        updates,
         label: `quality_optimize_${context.jobId || Date.now()}`,
         baseUrl: context.baseUrl,
       });
     context.finalData = collectTranslations(
-      await this.client.getScene(context.baseUrl),
+      await this.processor.getScene(context.baseUrl),
     );
     context.finalData.translations = applyQualitySemanticAnnotations(
       context.finalData.translations,
@@ -1024,23 +1014,23 @@ class QualityModule {
       isCanceled: context.isCanceled,
     });
     const secondProposals = secondRound.report.proposedTranslations;
-    const secondOps = buildQualityPatchOps(
+    const secondUpdates = buildQualityTranslationUpdates(
       new Map(context.finalData.translations.map((entry) => [entry.id, entry])),
       secondProposals,
     );
-    await this.applySecondRoundPatches(context, secondOps);
+    await this.applySecondRoundPatches(context, secondUpdates);
     context.proposals = [...context.proposals, ...secondProposals];
     context.secondProposals = secondProposals;
   }
 
-  async applySecondRoundPatches(context, secondOps) {
-    if (secondOps.length === 0) return;
-    await this.client.applyHistoryBatch({
-      ops: secondOps,
+  async applySecondRoundPatches(context, secondUpdates) {
+    if (secondUpdates.length === 0) return;
+    await this.processor.applyTranslationUpdates({
+      updates: secondUpdates,
       label: `quality_repair_2_${context.jobId || Date.now()}`,
       baseUrl: context.baseUrl,
     });
-    const refreshed = collectTranslations(await this.client.getScene(context.baseUrl));
+    const refreshed = collectTranslations(await this.processor.getScene(context.baseUrl));
     context.finalData.translations = applyQualitySemanticAnnotations(
       refreshed.translations,
       context.execution.projection,
@@ -1350,7 +1340,7 @@ module.exports = {
   applyCompletenessGate,
   assessTranslationCompleteness,
   assembleQualityReport,
-  buildQualityPatchOps,
+  buildQualityTranslationUpdates,
   collectTranslations,
   normalizePreviewTranslations,
   selectVerificationTranslations,

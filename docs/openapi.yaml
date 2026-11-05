@@ -1,9 +1,9 @@
 openapi: 3.1.0
 info:
   title: Koharu Manga Agent translation revision API
-  version: 0.5.0
+  version: 0.8.0
   description: >-
-    Versioned REST contract for text-region inspection and correction,
+    Versioned REST contract for text-region inspection and create/update/delete correction,
     selective page retranslation, automatic current-chapter promotion,
     translated-image source mapping, and administrative revision recovery. Other backend endpoints are documented in
     docs/API.md.
@@ -85,7 +85,7 @@ paths:
           $ref: '#/components/responses/Unavailable'
   /jobs/{jobId}/text-region-corrections:
     post:
-      summary: Correct OCR text or geometry and promote it after successful chapter rebuild
+      summary: Create, update, or delete OCR regions and promote them after successful chapter rebuild
       operationId: createTextRegionCorrection
       parameters:
         - $ref: '#/components/parameters/JobId'
@@ -95,6 +95,101 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/TextRegionCorrectionRequest'
+      responses:
+        '202':
+          description: Text-region correction Job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /jobs/{jobId}/text-region-reviews:
+    post:
+      summary: Review one OCR page with the configured LM Studio vision model
+      operationId: reviewTextRegions
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextRegionReviewRequest'
+      responses:
+        '200':
+          description: Validated full-page OCR review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TextRegionReviewResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '502':
+          description: LM Studio failed or returned invalid structured output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /jobs/ocr-text-review:
+    post:
+      summary: Queue independent OCR text correction for uploaded region crops
+      operationId: createOcrTextReviewJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OcrTextReviewJobRequest'
+      responses:
+        '202':
+          description: OCR text-review Job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '413':
+          description: Crop or text batch exceeds a configured limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+  /jobs/{jobId}/text-region-reviews/apply:
+    post:
+      summary: Convert a reviewed full-page region list into a correction Job
+      operationId: applyTextRegionReview
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TextRegionReviewApplyRequest'
       responses:
         '202':
           description: Text-region correction Job queued
@@ -225,6 +320,20 @@ components:
         modelId:
           type: string
           minLength: 1
+    SourceLanguageSelection:
+      description: >-
+        One BCP 47 source-language tag or an ordered, unique list. The first item is primary.
+        Omission, null, or an empty array selects automatic OCR policy.
+      oneOf:
+        - type: string
+          minLength: 1
+        - type: array
+          minItems: 0
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        - type: 'null'
     SelectiveRetranslationRequest:
       type: object
       additionalProperties: false
@@ -240,8 +349,7 @@ components:
         translationTarget:
           $ref: '#/components/schemas/TranslationTarget'
         sourceLanguage:
-          type: string
-          minLength: 1
+          $ref: '#/components/schemas/SourceLanguageSelection'
         targetLanguage:
           type: string
           minLength: 1
@@ -274,7 +382,8 @@ components:
         id:
           type: string
         type:
-          const: translation
+          type: string
+          enum: [translation, ocr_text_review]
         status:
           type: string
           enum: [queued, waiting_dependency, running, succeeded, failed, canceled, blocked]
@@ -483,10 +592,72 @@ components:
           description: Replacement OCR text. Whitespace and line breaks are preserved exactly.
         geometry:
           $ref: '#/components/schemas/TextRegionCorrectionGeometry'
+      description: Legacy update-only shape. New clients should use explicit operations.
+    TextRegionUpdateOperation:
+      type: object
+      additionalProperties: false
+      required: [type, regionId]
+      anyOf:
+        - required: [sourceText]
+        - required: [geometry]
+      properties:
+        type:
+          const: update
+        regionId:
+          type: string
+          minLength: 1
+        sourceText:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        geometry:
+          $ref: '#/components/schemas/TextRegionCorrectionGeometry'
+    TextRegionCreateOperation:
+      type: object
+      additionalProperties: false
+      required: [type, clientOperationId, sourceText, geometry]
+      properties:
+        type:
+          const: create
+        clientOperationId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Client correlation key; never used as a backend or upstream processor region ID.
+        sourceText:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        geometry:
+          $ref: '#/components/schemas/TextRegionCorrectionGeometry'
+    TextRegionDeleteOperation:
+      type: object
+      additionalProperties: false
+      required: [type, regionId]
+      properties:
+        type:
+          const: delete
+        regionId:
+          type: string
+          minLength: 1
+    TextRegionOperation:
+      oneOf:
+        - $ref: '#/components/schemas/TextRegionUpdateOperation'
+        - $ref: '#/components/schemas/TextRegionCreateOperation'
+        - $ref: '#/components/schemas/TextRegionDeleteOperation'
+      discriminator:
+        propertyName: type
     TextRegionPageCorrection:
       type: object
       additionalProperties: false
-      required: [sourceImageId, baseRegionSetRevisionId, regions]
+      required: [sourceImageId, baseRegionSetRevisionId]
+      oneOf:
+        - required: [regions]
+          not:
+            required: [operations]
+        - required: [operations]
+          not:
+            required: [regions]
       properties:
         sourceImageId:
           type: string
@@ -499,6 +670,12 @@ components:
           minItems: 1
           items:
             $ref: '#/components/schemas/TextRegionCorrection'
+          description: Legacy update-only form.
+        operations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TextRegionOperation'
     TextRegionCorrectionRequest:
       type: object
       additionalProperties: false
@@ -512,8 +689,7 @@ components:
         translationTarget:
           $ref: '#/components/schemas/TranslationTarget'
         sourceLanguage:
-          type: string
-          minLength: 1
+          $ref: '#/components/schemas/SourceLanguageSelection'
         targetLanguage:
           type: string
           minLength: 1
@@ -523,6 +699,115 @@ components:
         generationOptions:
           type: object
           additionalProperties: true
+    TextRegionReviewRegion:
+      type: object
+      additionalProperties: false
+      required: [box, text]
+      properties:
+        box:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: Authoritative original-image coordinates in x, y, width, height order. Vision review apply requests must return these unchanged.
+          items:
+            type: number
+        text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+    OcrTextReviewItemRequest:
+      type: object
+      additionalProperties: false
+      required: [clientItemId, fileName, ocrText]
+      properties:
+        clientItemId:
+          type: string
+          minLength: 1
+          maxLength: 180
+        fileName:
+          type: string
+          minLength: 1
+          maxLength: 180
+          description: Exact filename previously uploaded through an ocr_review upload session.
+        ocrText:
+          type: string
+          maxLength: 10000
+        contextBefore:
+          type: string
+          maxLength: 2000
+        contextAfter:
+          type: string
+          maxLength: 2000
+    OcrTextReviewJobRequest:
+      type: object
+      additionalProperties: false
+      required: [uploadId, items]
+      properties:
+        uploadId:
+          type: string
+          minLength: 1
+        sourceLanguages:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          description: Ordered language hints; the first entry has highest priority.
+          items:
+            type: string
+            minLength: 1
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/OcrTextReviewItemRequest'
+    TextRegionReviewResult:
+      type: object
+      additionalProperties: false
+      required: [count, regions]
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: Backend-normalized regions.length.
+        regions:
+          type: array
+          maxItems: 1000
+          description: One text suggestion per existing OCR region, in authoritative reading order. Boxes are never generated by the model.
+          items:
+            $ref: '#/components/schemas/TextRegionReviewRegion'
+    TextRegionReviewRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceImageId, baseRegionSetRevisionId]
+      properties:
+        sourceImageId:
+          type: string
+          minLength: 1
+        baseRegionSetRevisionId:
+          type: string
+          minLength: 1
+    TextRegionReviewApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [sourceImageId, baseRegionSetRevisionId, count, regions]
+      properties:
+        sourceImageId:
+          type: string
+          minLength: 1
+        baseRegionSetRevisionId:
+          type: string
+          minLength: 1
+        count:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        regions:
+          type: array
+          maxItems: 1000
+          description: Must contain exactly the existing regions in order with unchanged boxes; only text may differ.
+          items:
+            $ref: '#/components/schemas/TextRegionReviewRegion'
     PageRevisionSelection:
       type: object
       additionalProperties: false
@@ -554,7 +839,7 @@ components:
             - $ref: '#/components/schemas/TranslationTarget'
             - type: 'null'
         sourceLanguage:
-          type: [string, 'null']
+          $ref: '#/components/schemas/SourceLanguageSelection'
         targetLanguage:
           type: [string, 'null']
         instructions:

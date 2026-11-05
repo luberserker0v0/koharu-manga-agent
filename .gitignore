@@ -1,6 +1,7 @@
 # 依賴管理
 node_modules/
 package-lock.json
+!backend/package-lock.json
 !gui/package-lock.json
 bun.lock
 tests/node_modules/

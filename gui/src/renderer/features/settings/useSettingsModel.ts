@@ -1,14 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 import {
-  getAOProviderCatalog, getBackendConfig, getKoharuEngineCatalog, getKoharuRuntimePaths,
-  getKoharuTranslationCatalog, getRuntimeStatus, prepareKoharuRuntime, resetBackendConfig,
-  startKoharuRuntime, stopKoharuRuntime, testAOConnection, updateBackendConfig,
+  getAOProviderCatalog, getBackendConfig, getMangaProcessorEngineCatalog, getMangaProcessorRuntimePaths,
+  getMangaProcessorTranslationCatalog, getRuntimeStatus, prepareMangaProcessorRuntime, resetBackendConfig,
+  startMangaProcessorRuntime, stopMangaProcessorRuntime, testAOConnection, updateBackendConfig,
   type AOModelOption, type BackendConfig, type PipelineEngineKey,
 } from "../../api/runtime";
 import {
-  getDesktopInfo, installAndStartKoharuHost, openDesktopPath, pickDirectory, pickFile,
-  readSettings, startKoharuHost, stopKoharuHost, validatePaths, writeSettings,
+  getDesktopInfo, installAndStartMangaProcessorHost, openDesktopPath, pickDirectory, pickFile,
+  readSettings, startMangaProcessorHost, stopMangaProcessorHost, validatePaths, writeSettings,
 } from "../../services/desktop_api";
 import { useLanguageStore } from "../../stores/language_store";
 import type { DesktopInfo, GuiSettings, PathValidationSummary } from "../../types/settings";
@@ -71,10 +71,12 @@ function useSettingsState(t: Translate) {
 function useSettingsQueries() {
   const runtimeQuery = useQuery({ queryKey: ["runtime-status"], queryFn: getRuntimeStatus, retry: false });
   const configQuery = useQuery({ queryKey: ["backend-config"], queryFn: getBackendConfig, retry: false });
-  const catalogQuery = useQuery({ queryKey: ["koharu-engine-catalog"], queryFn: getKoharuEngineCatalog, retry: false });
-  const translationCatalogQuery = useQuery({ queryKey: ["koharu-translation-catalog"],
-    queryFn: getKoharuTranslationCatalog, retry: false });
-  const pathsQuery = useQuery({ queryKey: ["koharu-runtime-paths"], queryFn: getKoharuRuntimePaths, retry: false });
+  const catalogQuery = useQuery({ queryKey: ["manga-processor-engine-catalog"],
+    queryFn: getMangaProcessorEngineCatalog, retry: false });
+  const translationCatalogQuery = useQuery({ queryKey: ["manga-processor-translation-catalog"],
+    queryFn: getMangaProcessorTranslationCatalog, retry: false });
+  const pathsQuery = useQuery({ queryKey: ["manga-processor-runtime-paths"],
+    queryFn: getMangaProcessorRuntimePaths, retry: false });
   return { runtimeQuery, configQuery, catalogQuery, translationCatalogQuery, pathsQuery };
 }
 
@@ -304,7 +306,7 @@ function useDesktopActions(state: SettingsState, updates: ReturnType<typeof crea
 }
 
 async function installConfiguredKoharu(state: SettingsState, t: Translate) {
-  const processState = await installAndStartKoharuHost();
+  const processState = await installAndStartMangaProcessorHost();
   if (!processState.executablePath) throw new Error(t("app.koharuRecovery.downloadMissingPath"));
   const saved = await writeSettings({ koharuExecutablePath: processState.executablePath, koharuAutoStart: true });
   state.setSettings((current) => current ? { ...current, koharuExecutablePath: processState.executablePath || "",
@@ -314,7 +316,7 @@ async function installConfiguredKoharu(state: SettingsState, t: Translate) {
 }
 
 async function stopConfiguredKoharu() {
-  const results = await Promise.allSettled([stopKoharuHost(), stopKoharuRuntime()]);
+  const results = await Promise.allSettled([stopMangaProcessorHost(), stopMangaProcessorRuntime()]);
   if (results.some((result) => result.status === "fulfilled")) return results;
   const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
   throw rejected?.reason instanceof Error ? rejected.reason : new Error(String(rejected?.reason || ""));
@@ -329,10 +331,10 @@ function useKoharuActions(state: SettingsState, refresh: () => Promise<void>, t:
     finally { state.setKoharuAction(null); }
   };
   const startConfigured = () => state.settings?.koharuExecutablePath.trim()
-    ? startKoharuHost(state.settings.koharuExecutablePath) : startKoharuRuntime();
+    ? startMangaProcessorHost(state.settings.koharuExecutablePath) : startMangaProcessorRuntime();
   return { runKoharuAction, startConfigured,
     installConfigured: () => installConfiguredKoharu(state, t), stopConfigured: stopConfiguredKoharu,
-    prepareConfigured: prepareKoharuRuntime };
+    prepareConfigured: prepareMangaProcessorRuntime };
 }
 
 function useAoActions(state: SettingsState, queryClient: ReturnType<typeof useQueryClient>, t: Translate) {

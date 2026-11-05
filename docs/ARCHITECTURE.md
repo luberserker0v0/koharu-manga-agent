@@ -28,6 +28,8 @@ Current endpoints:
 - `GET /jobs/:rootJobId/page-revisions`
 - `POST /jobs/:rootJobId/page-revisions/activate`
 - `GET /jobs/:jobId/translated-images`
+- `POST /jobs/:jobId/text-region-reviews`
+- `POST /jobs/:jobId/text-region-reviews/apply`
 - `POST /jobs/reference-extraction`
 - `POST /jobs/reference-ingestion`
 - `GET /jobs/:jobId`
@@ -89,7 +91,7 @@ the backend, and the pipeline monitor stops the matching Koharu operation throug
 the backend does not report an unconfirmed remote stop as `canceled`.
 
 ### AO HTTP Boundary
-AO is the only LLM execution boundary. The backend does not load `agent_sdk`, provider registries,
+AO is the only Agent execution boundary. The backend does not load `agent_sdk`, provider registries,
 generic provider adapters, or compatibility layers.
 
 For every AO task, the backend:
@@ -104,17 +106,54 @@ For every AO task, the backend:
 The backend owns retries, timeouts, IDs, schema validation, persistence, export, and close sequencing.
 AO supplies semantic values and evidence only. See `docs/AGENT_INTEGRATION.md`.
 
-### Koharu Client
-`backend/src/integrations/koharu/client/koharu_client.js` is the formal low-level Koharu wrapper.
+### Bounded Vision Inference
+OCR region review is a tool-free, single-request inference and does not create an AO conversation.
+`TextRegionReviewService` loads the backend-owned source image and immutable region snapshot, while
+`LMStudioVisionClient` sends them to the configured vision-capable LM Studio model with structured
+output enabled. Existing OCR boxes are immutable inference context: the model returns only `count` and
+an ordered `texts` array. The backend reattaches the authoritative boxes and converts changed strings
+into text-only region updates. Box creation, deletion, movement, and resizing remain explicit manual
+correction operations.
 
-It owns:
-- Koharu HTTP request helpers
-- provider-neutral translation catalog and target selection
-- pipeline start
-- operation polling
-- scene access
-- export
-- current-project close
+This is a domain-specific inference port, not a generic provider registry or arbitrary prompt proxy.
+Review never mutates a Job. Applying an inspected result creates an ordinary correction Job and
+therefore reuses revision concurrency, Koharu scene mutation, rendering, export, and publication.
+
+### Manga Processing Ports And Koharu Adapter
+`backend/src/domains/manga_processing/manga_processing_ports.js` defines the capability contracts used
+by workflows. Domain code depends on these project, catalog, pipeline, scene, export, and configuration
+ports rather than reaching through a Koharu lifecycle object.
+
+The scene port returns the backend-owned scene envelope consumed by
+`backend/src/domains/manga_processing/scene_text_regions.js`. Koharu already matches that envelope; a
+replacement adapter must normalize its scene into this contract. Translation-target selection and
+pipeline metrics also live under `domains/` and are not Koharu adapter policy.
+
+`backend/src/integrations/koharu/koharu_manga_processing_adapter.js` is the concrete implementation. It
+owns Koharu-specific scene commands, including the conversion of neutral translation updates and text
+region create/update/delete requests into Koharu history operations.
+
+`backend/src/domains/manga_processing/manga_processing_runtime_port.js` defines the process/runtime
+lifecycle contract. Job readiness, queue reservations, runtime status, and REST endpoints depend on
+this port through `mangaProcessingRuntime`; they do not depend on `KoharuRuntimeManager`. Public
+runtime routes use `/runtime/manga-processor/*`, response envelopes use `mangaProcessor`, and status
+payloads expose `providerId`/`providerName` for the current concrete implementation.
+
+`backend/src/integrations/koharu/client/koharu_client.js` is transport-only. It is the sole ordinary
+Koharu HTTP/SSE caller and owns URL construction, serialization, multipart upload, response handling,
+and upstream error conversion. Its HTTP helpers are not exported. `KoharuRuntimeManager` is the
+concrete runtime-port implementation; it may probe reachability and manage the Koharu process, but it
+does not execute manga workflows.
+
+The Electron main process follows the same boundary. `manga_processor_host_contract.ts` defines the
+host lifecycle shape, `manga_processor_host.ts` is the composition point, and
+`koharu_host_process.ts` is the current Windows implementation. Renderer IPC, desktop status, and
+backend runtime calls use manga-processor names; Koharu-specific executable settings remain concrete
+implementation configuration.
+
+There is deliberately no generic provider registry or compatibility dispatcher. Replacing Koharu
+means implementing the two explicit ports and changing the composition roots; domain workflows and
+the public manga-processor API stay unchanged.
 
 Workflow mode and translation target are separate contracts. `quick`, `reference_style`,
 `local_style`, and `learning_style` may use local/hosted LLMs or Machine Translation. Machine
@@ -126,7 +165,7 @@ backend.
 
 ### Core Workflow Modules
 - `backend/src/integrations/koharu/pipeline/project_setup.js`
-  - owns Koharu project creation, page upload, and pipeline planning
+  - owns project setup metadata and delegates manga processing through the injected port
 - `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
   - replaces `pipeline-runner`
   - owns late-attach recovery and fast-finish handling
@@ -138,8 +177,8 @@ backend.
   - uses AO HTTP tasks for semantic enrichment of backend-owned learning evidence
 - `backend/src/domains/translation/execution/export.js`
   - owns export behavior
-- `backend/src/integrations/koharu/pipeline/project_lifecycle.js`
-  - owns close behavior
+- `backend/src/integrations/koharu/koharu_manga_processing_adapter.js`
+  - implements the manga processing ports with Koharu HTTP and history operations
 
 Current implementation note:
 - the target architecture treats `quality` as read-only validation
@@ -163,6 +202,13 @@ Current implementation note:
 These now form the AO-only integration layer. The backend no longer keeps a
 generic provider registry, SDK-loaded runtime adapter, or `agent_sdk`
 compatibility abstraction.
+
+### Vision Inference Modules
+- `backend/src/integrations/lmstudio/lmstudio_vision_client.js`
+- `backend/src/domains/translation/text_regions/text_region_review_service.js`
+- `backend/src/domains/translation/text_regions/text_region_review_contract.js`
+
+These modules own only bounded OCR review. They do not expose arbitrary messages or tools.
 
 ## Runtime Policy
 - backend configuration lives in the OS user config directory, or at `MANGA_TRANSLATION_CONFIG_PATH`

@@ -90,6 +90,8 @@ function createApiServerContext({ host, port, serverConfig = {}, ...dependencies
     translatedImageService: defaultWhenUndefined(dependencies.translatedImageService, null),
     pageRevisionService: defaultWhenUndefined(dependencies.pageRevisionService, null),
     textRegionQueryService: defaultWhenUndefined(dependencies.textRegionQueryService, null),
+    textRegionReviewService: defaultWhenUndefined(dependencies.textRegionReviewService, null),
+    ocrTextReviewService: defaultWhenUndefined(dependencies.ocrTextReviewService, null),
     allowedOrigins,
     authToken: serverConfig.authToken || null,
     maxJsonBodyBytes: Number(serverConfig.maxJsonBodyBytes || 1048576),

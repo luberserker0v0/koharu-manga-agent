@@ -1,7 +1,7 @@
 const {
   METRICS_BASIS,
   PipelineMetricsCollector,
-} = require("../../backend/src/integrations/koharu/pipeline/pipeline_metrics");
+} = require("../../backend/src/domains/translation/pipeline/pipeline_metrics");
 
 describe("pipeline metrics collector", () => {
   test("attributes backend-observed gaps to the last reported page and engine", () => {

@@ -16,7 +16,9 @@ AO runtime instructions belong under `backend/ao/`:
 
 ## Current Runtime Architecture
 - The backend is the workflow and persistence owner.
-- AO HTTP API is the only LLM execution boundary.
+- AO HTTP API is the only Agent execution boundary.
+- Bounded, tool-free OCR region review may call the configured LM Studio HTTP API directly through
+  `LMStudioVisionClient`; it must not create an AO conversation or expose a generic prompt proxy.
 - Koharu HTTP API is used for manga image processing, OCR, scene editing, translation, and export operations.
 - The GUI communicates with the local backend and does not call AO or Koharu directly unless an explicitly documented Electron integration requires it.
 - Do not restore `agent_sdk`, provider registries, generic provider adapters, or their compatibility layers.
@@ -76,7 +78,8 @@ See `docs/REFERENCE_OBSERVATION_ARCHITECTURE.md` for the current contract.
 
 ## Data Ownership And Validation
 - The backend owns JSON schemas, IDs, revisions, merge rules, confidence updates, and persistence.
-- AO supplies semantic values and evidence; it does not own storage layout or arbitrary key names.
+- AO and bounded inference services supply semantic values and evidence; they do not own storage
+  layout, IDs, revisions, merge policy, or arbitrary key names.
 - Prefer strict line protocols for AO output where a generated JSON structure would be fragile.
 - Validate enums, node IDs, evidence references, coverage, ordering, duplicates, and confidence before committing results.
 - Manual and locked knowledge always has priority over inferred evidence.

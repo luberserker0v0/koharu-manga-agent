@@ -81,4 +81,20 @@ describe("region snapshot repository", () => {
       ["source-image-2", "002.png"],
     ]);
   });
+
+  test("numbers text regions from zero even when non-text scene nodes come first", () => {
+    const input = scene();
+    input.scene.pages.koharu_page_1.nodes = {
+      image_node: { kind: { image: { source: "page.png" } } },
+      shape_node: { kind: { shape: { type: "rectangle" } } },
+      ...input.scene.pages.koharu_page_1.nodes,
+    };
+    const snapshot = buildRegionSnapshot({
+      jobId: "translation-job-1", rootJobId: "translation-job-1", sourcePreflightId: "preflight-1",
+      sourceImages: [{ id: "source-image-1", orderIndex: 0, fileName: "page.png" }],
+      scene: input,
+    });
+
+    expect(snapshot.pages[0].regions.map((region) => region.readingOrder)).toEqual([0]);
+  });
 });

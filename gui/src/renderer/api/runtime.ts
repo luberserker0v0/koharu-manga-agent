@@ -7,12 +7,14 @@ export type BackendReadiness = {
   deploymentMode: string;
   services: {
     backend: { required: true; ready: boolean; status: string };
-    koharu: {
+    mangaProcessor: {
       required: true;
       ready: boolean;
       status: string;
       mode: string;
       baseUrl: string | null;
+      providerId: string | null;
+      providerName: string | null;
     };
     ao: {
       required: false;
@@ -21,7 +23,7 @@ export type BackendReadiness = {
       baseUrl: string | null;
     };
   };
-  capabilities: { koharuJobs: boolean; aoJobs: boolean };
+  capabilities: { mangaProcessingJobs: boolean; aoJobs: boolean };
   blockers: Array<{ service: string; code: string; message: string }>;
   warnings: Array<{ service: string; code: string; message: string }>;
 };
@@ -33,7 +35,7 @@ export type RuntimeStatus = {
     port: number;
     deploymentMode: string;
   };
-  koharu: {
+  mangaProcessor: {
     status: string;
     mode: string;
     baseUrl: string | null;
@@ -46,6 +48,8 @@ export type RuntimeStatus = {
     executablePath?: string | null;
     installRoot?: string | null;
     supported?: boolean;
+    providerId?: string | null;
+    providerName?: string | null;
   };
   agent: {
     status: string;
@@ -139,7 +143,7 @@ export type BackendConfig = {
   };
 };
 
-export type KoharuEngineOption = {
+export type MangaProcessorEngineOption = {
   id: string;
   name?: string;
   produces?: string[];
@@ -160,18 +164,18 @@ export type AOProviderCatalog = {
   defaults: Record<string, string>;
 };
 
-export type KoharuEngineCatalog = {
-  detectors?: KoharuEngineOption[];
-  fontDetectors?: KoharuEngineOption[];
-  segmenters?: KoharuEngineOption[];
-  bubbleSegmenters?: KoharuEngineOption[];
-  ocr?: KoharuEngineOption[];
-  translators?: KoharuEngineOption[];
-  inpainters?: KoharuEngineOption[];
-  renderers?: KoharuEngineOption[];
+export type MangaProcessorEngineCatalog = {
+  detectors?: MangaProcessorEngineOption[];
+  fontDetectors?: MangaProcessorEngineOption[];
+  segmenters?: MangaProcessorEngineOption[];
+  bubbleSegmenters?: MangaProcessorEngineOption[];
+  ocr?: MangaProcessorEngineOption[];
+  translators?: MangaProcessorEngineOption[];
+  inpainters?: MangaProcessorEngineOption[];
+  renderers?: MangaProcessorEngineOption[];
 };
 
-export type KoharuTranslationModel = {
+export type MangaProcessorTranslationModel = {
   modelId: string;
   name: string;
   languages: string[];
@@ -179,24 +183,24 @@ export type KoharuTranslationModel = {
   providerId: string;
 };
 
-export type KoharuTranslationProvider = {
+export type MangaProcessorTranslationProvider = {
   providerId: string;
   name: string;
   kind: "local_llm" | "hosted_llm" | "machine_translation";
   status: string;
   hasCredential: boolean | null;
   requiresCredential?: boolean;
-  models: KoharuTranslationModel[];
+  models: MangaProcessorTranslationModel[];
   error?: string | null;
 };
 
-export type KoharuTranslationCatalog = {
+export type MangaProcessorTranslationCatalog = {
   baseUrl: string;
   defaultTarget: TranslationTarget | null;
-  providers: KoharuTranslationProvider[];
+  providers: MangaProcessorTranslationProvider[];
 };
 
-export type KoharuRuntimePaths = {
+export type MangaProcessorRuntimePaths = {
   dataRoot: string | null;
   projectsRoot: string | null;
   modelsRoot: string | null;
@@ -281,47 +285,47 @@ export function getAOProviderCatalog(baseUrl: string, apiKey: string | null): Pr
   });
 }
 
-export function getKoharuEngineCatalog(): Promise<{
-  engines: KoharuEngineCatalog;
+export function getMangaProcessorEngineCatalog(): Promise<{
+  engines: MangaProcessorEngineCatalog;
 }> {
-  return apiFetch("/runtime/koharu/engines", { timeoutMs: 30000 });
+  return apiFetch("/runtime/manga-processor/engines", { timeoutMs: 30000 });
 }
 
-export function getKoharuTranslationCatalog(): Promise<KoharuTranslationCatalog> {
-  return apiFetch("/runtime/koharu/translation-providers", {
+export function getMangaProcessorTranslationCatalog(): Promise<MangaProcessorTranslationCatalog> {
+  return apiFetch("/runtime/manga-processor/translation-providers", {
     timeoutMs: 30000,
   });
 }
 
-export function getKoharuRuntimePaths(): Promise<{
+export function getMangaProcessorRuntimePaths(): Promise<{
   backend: BackendStoragePaths;
-  koharu: KoharuRuntimePaths;
+  mangaProcessor: MangaProcessorRuntimePaths;
 }> {
-  return apiFetch("/runtime/koharu/paths", { timeoutMs: 30000 });
+  return apiFetch("/runtime/manga-processor/paths", { timeoutMs: 30000 });
 }
 
-export function startKoharuRuntime(): Promise<{
-  koharu: RuntimeStatus["koharu"];
+export function startMangaProcessorRuntime(): Promise<{
+  mangaProcessor: RuntimeStatus["mangaProcessor"];
 }> {
-  return apiFetch("/runtime/koharu/start", {
+  return apiFetch("/runtime/manga-processor/start", {
     method: "POST",
     timeoutMs: 60000,
   });
 }
 
-export function prepareKoharuRuntime(): Promise<{
-  koharu: RuntimeStatus["koharu"];
+export function prepareMangaProcessorRuntime(): Promise<{
+  mangaProcessor: RuntimeStatus["mangaProcessor"];
 }> {
-  return apiFetch("/runtime/koharu/prepare", {
+  return apiFetch("/runtime/manga-processor/prepare", {
     method: "POST",
     timeoutMs: 600000,
   });
 }
 
-export function stopKoharuRuntime(): Promise<{
-  koharu: RuntimeStatus["koharu"];
+export function stopMangaProcessorRuntime(): Promise<{
+  mangaProcessor: RuntimeStatus["mangaProcessor"];
 }> {
-  return apiFetch("/runtime/koharu/stop", { method: "POST", timeoutMs: 30000 });
+  return apiFetch("/runtime/manga-processor/stop", { method: "POST", timeoutMs: 30000 });
 }
 
 export type MaintenanceCleanupTarget = "logs" | "translated" | "workspaces" | "postedit";

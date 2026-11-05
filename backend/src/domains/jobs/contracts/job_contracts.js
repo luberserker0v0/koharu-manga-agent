@@ -13,6 +13,7 @@ const ATOMIC_JOB_TYPES = Object.freeze([
   "translation_deep_audit",
   "translation_deep_audit_apply",
   "translation_quality_repair",
+  "ocr_text_review",
 ]);
 
 const WORKFLOW_JOB_TYPES = Object.freeze(["reference_ingestion", "reference_bilingual_enrichment"]);

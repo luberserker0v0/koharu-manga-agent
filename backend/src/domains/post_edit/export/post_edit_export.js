@@ -1,8 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
-const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { collectSceneTextRegionPages } = require("../../manga_processing/scene_text_regions");
 const { createZip, expandZip } = require("../../../infrastructure/archive/zip_archive");
 
 function ensureDir(targetPath) {
@@ -86,24 +85,16 @@ function matchPostEditDocumentToScene(postEditDocument, scene) {
   const byPageName = collectSceneTextNodes(scene); const matches = []; const unresolved = []; for (const pageId of postEditDocument.pageOrder || []) { const page = postEditDocument.pages?.[pageId]; if (!page) { continue; } const candidates = [...(byPageName.get(page.pageName) || [])]; if (candidates.length === 0) { for (const nodeId of page.nodeOrder || []) { unresolved.push({ pageName: page.pageName, nodeId, reason: "No rebuilt scene page matched the stored pageName.", }); } continue; } const used = new Set(); for (const nodeId of page.nodeOrder || []) { const node = page.nodes?.[nodeId]; if (!node) { continue; } const ranked = candidates .filter((candidate) => !used.has(candidate.nodeId)) .map((candidate) => ({ candidate, score: geometryDistance(node.anchor, candidate.anchor) + textMismatchPenalty(node.originalText, candidate.originalText), })) .sort((left, right) => left.score - right.score); const best = ranked[0]; if (!best || best.score >= 10000) { unresolved.push({ pageName: page.pageName, nodeId, reason: "No safe rebuilt scene node matched the stored anchor/text.", }); continue; } used.add(best.candidate.nodeId); matches.push({ documentPageId: pageId, documentNodeId: nodeId, pageName: page.pageName, rebuiltPageId: best.candidate.pageId, rebuiltNodeId: best.candidate.nodeId, editedTranslation: node.editedTranslation || "", }); } } return { matches, unresolved, };
 }
 
-function buildTranslationPatchOps(matches) {
-  const ops = [];
+function buildTranslationUpdates(matches) {
+  const updates = [];
   for (const match of matches) {
-    ops.push({
-      updateNode: {
-        page: match.rebuiltPageId,
-        id: match.rebuiltNodeId,
-        patch: {
-          data: {
-            text: {
-              translation: match.editedTranslation || "",
-            },
-          },
-        },
-      },
+    updates.push({
+      pageId: match.rebuiltPageId,
+      nodeId: match.rebuiltNodeId,
+      translation: match.editedTranslation || "",
     });
   }
-  return ops;
+  return updates;
 }
 
 function renamePageEntry(fileName, targetIndex) {
@@ -169,10 +160,8 @@ function createRebuiltProjectName(date = new Date()) {
 module.exports = {
   buildBootstrapPipelineSteps,
   buildExportPipelineSteps,
-  buildTranslationPatchOps,
+  buildTranslationUpdates,
   createRebuiltProjectName,
   matchPostEditDocumentToScene,
   reorderRenderedZip,
-  uploadPages: projectOrchestrator.uploadPages,
-  startPipeline: projectOrchestrator.startPipeline,
 };

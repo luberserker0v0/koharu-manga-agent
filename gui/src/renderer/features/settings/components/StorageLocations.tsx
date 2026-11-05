@@ -1,4 +1,4 @@
-import type { BackendStoragePaths, KoharuRuntimePaths } from "../../../api/runtime";
+import type { BackendStoragePaths, MangaProcessorRuntimePaths } from "../../../api/runtime";
 import type { DesktopInfo, GuiSettings } from "../../../types/settings";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -6,7 +6,7 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 type StorageLocationsProps = {
   backend?: BackendStoragePaths;
   desktopInfo: DesktopInfo | null;
-  koharu?: KoharuRuntimePaths;
+  koharu?: MangaProcessorRuntimePaths;
   onOpen: (targetPath: string) => Promise<void>;
   settings: GuiSettings;
   t: Translate;
@@ -84,7 +84,7 @@ function backendLocationGroup(t: Translate, backend: BackendStoragePaths | undef
   };
 }
 
-function koharuLocationGroup(t: Translate, koharu: KoharuRuntimePaths | undefined): LocationGroup {
+function koharuLocationGroup(t: Translate, koharu: MangaProcessorRuntimePaths | undefined): LocationGroup {
   return {
     id: "koharu",
     mark: "K",

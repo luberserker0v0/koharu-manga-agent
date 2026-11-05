@@ -6,7 +6,7 @@ import { SettingsStore } from "../services/settings_store";
 import { shellPaths } from "../services/shell_paths";
 import { IPC_CHANNELS } from "./channels";
 import { closeKoharuEditorWindow, openKoharuEditorWindow } from "../windows/koharu_editor_window";
-import { koharuHostProcessService } from "../services/koharu_host_process";
+import { mangaProcessorHostService } from "../services/manga_processor_host";
 import { uploadImageFolder } from "../services/image_folder_upload";
 import type { ImageFolderUploadRequest } from "../../shared/image_upload";
 import { downloadJobArtifact } from "../services/artifact_download";
@@ -86,7 +86,7 @@ function registerDesktopHandlers(settingsStore: SettingsStore) {
     shellPaths,
     settingsFilePath: settingsStore.getFilePath(),
     backendProcess: backendProcessService.getState(),
-    koharuProcess: await koharuHostProcessService.inspect(),
+    mangaProcessorProcess: await mangaProcessorHostService.inspect(),
   }));
 }
 
@@ -127,13 +127,13 @@ function registerPickDirectoryHandler() {
   });
 }
 
-function registerKoharuHostHandlers() {
-  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STATUS, () => koharuHostProcessService.inspect());
-  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_INSTALL_START, () => koharuHostProcessService.installAndStart());
-  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_START, (_event, executablePath: string) =>
-    koharuHostProcessService.start(executablePath),
+function registerMangaProcessorHostHandlers() {
+  ipcMain.handle(IPC_CHANNELS.MANGA_PROCESSOR_HOST_STATUS, () => mangaProcessorHostService.inspect());
+  ipcMain.handle(IPC_CHANNELS.MANGA_PROCESSOR_HOST_INSTALL_START, () => mangaProcessorHostService.installAndStart());
+  ipcMain.handle(IPC_CHANNELS.MANGA_PROCESSOR_HOST_START, (_event, executablePath: string) =>
+    mangaProcessorHostService.start(executablePath),
   );
-  ipcMain.handle(IPC_CHANNELS.KOHARU_HOST_STOP, () => koharuHostProcessService.stopManaged());
+  ipcMain.handle(IPC_CHANNELS.MANGA_PROCESSOR_HOST_STOP, () => mangaProcessorHostService.stopManaged());
 }
 
 function registerPickDirectoriesHandler() {
@@ -229,7 +229,7 @@ export function registerIpcHandlers(settingsStore: SettingsStore): void {
   registerOpenPathHandler();
   registerPickFileHandler();
   registerPickDirectoryHandler();
-  registerKoharuHostHandlers();
+  registerMangaProcessorHostHandlers();
   registerPickDirectoriesHandler();
   registerConfirmDialogHandler();
   registerEditorHandlers();

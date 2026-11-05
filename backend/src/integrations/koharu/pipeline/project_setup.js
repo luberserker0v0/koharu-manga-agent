@@ -1,5 +1,4 @@
 const crypto = require("crypto");
-const projectOrchestrator = require("./project_orchestrator");
 const { config } = require("../../../config");
 const { resolvePipelineProfile } = require("../../../domains/translation/pipeline/pipeline_profiles");
 
@@ -43,7 +42,7 @@ function projectSetupContext(options) {
       systemPrompt: options.systemPrompt || null,
       translationTarget: options.translationTarget || config.translation?.defaultTarget || null,
       generationOptions,
-      engines: profile.engines,
+      engines: { ...profile.engines, ...(options.engines || {}) },
     },
   };
 }
@@ -53,6 +52,7 @@ function setupState(result, context, execution) {
     projectName: result.projectName,
     operationId: execution.operationId,
     engines: result.engines,
+    ocrLanguageResolution: result.ocrLanguageResolution,
     steps: execution.steps,
     pipelineProfile: context.profile,
     translationTarget: result.translationTarget,
@@ -64,7 +64,9 @@ function setupState(result, context, execution) {
 }
 
 class ProjectSetupModule {
-  constructor({ lmStudioClient = null } = {}) {
+  constructor({ mangaProcessor, lmStudioClient = null } = {}) {
+    if (!mangaProcessor) throw new Error("Manga processor is required.");
+    this.mangaProcessor = mangaProcessor;
     this.lmStudioClient = lmStudioClient;
   }
 
@@ -90,7 +92,7 @@ class ProjectSetupModule {
 
   async run(options) {
     const context = projectSetupContext(options);
-    const result = await projectOrchestrator.orchestrate(context.request);
+    const result = await this.mangaProcessor.orchestrateProject(context.request);
     return this.refreshRuntimeMetadata(
       setupState(result, context, { operationId: result.operationId, steps: result.steps }),
       context.lmStudioBaseUrl,
@@ -99,7 +101,7 @@ class ProjectSetupModule {
 
   async prepare(options) {
     const context = projectSetupContext(options);
-    const result = await projectOrchestrator.prepareProject(context.request);
+    const result = await this.mangaProcessor.prepareProject(context.request);
     return this.refreshRuntimeMetadata(
       setupState(result, context, { operationId: null, steps: [] }),
       context.lmStudioBaseUrl,

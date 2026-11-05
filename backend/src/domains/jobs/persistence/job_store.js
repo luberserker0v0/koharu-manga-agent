@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { DatabaseSync } = require("node:sqlite");
+const { primarySourceLanguage } = require("../../manga_processing/source_languages");
 
 function jobCreationValues(input, now) {
   const params = {
@@ -64,6 +65,7 @@ class JobStore {
   initialize() {
     this.createSchema();
     this.migrateJobColumns();
+    this.migratePageRevisionColumns();
     this.createIndexes();
   }
 
@@ -84,7 +86,7 @@ class JobStore {
       "CREATE TABLE IF NOT EXISTS knowledge_revisions (id TEXT PRIMARY KEY, manga_id TEXT NOT NULL, translator_id TEXT, chapter_id TEXT NOT NULL, sequence_number INTEGER, workflow_id TEXT NOT NULL, reference_set_id TEXT, reference_kind TEXT NOT NULL, status TEXT NOT NULL, before_snapshot_path TEXT NOT NULL, after_snapshot_path TEXT NOT NULL, analysis_artifact_path TEXT, payload_json TEXT NOT NULL, supersedes_revision_id TEXT, created_at TEXT NOT NULL, stale_at TEXT);",
     );
     this.db.exec(
-      "CREATE TABLE IF NOT EXISTS translation_page_revisions (revision_id TEXT PRIMARY KEY, root_job_id TEXT NOT NULL, parent_job_id TEXT, job_id TEXT NOT NULL, source_preflight_id TEXT NOT NULL, source_image_id TEXT NOT NULL, source_order_index INTEGER NOT NULL, job_image_id TEXT NOT NULL, job_image_index INTEGER NOT NULL, file_name TEXT NOT NULL, media_type TEXT NOT NULL, size INTEGER NOT NULL, revision_number INTEGER NOT NULL, translation_target_json TEXT, source_language TEXT, target_language TEXT, instructions TEXT, created_at TEXT NOT NULL, UNIQUE(root_job_id, source_image_id, revision_number), UNIQUE(job_id, source_image_id));",
+      "CREATE TABLE IF NOT EXISTS translation_page_revisions (revision_id TEXT PRIMARY KEY, root_job_id TEXT NOT NULL, parent_job_id TEXT, job_id TEXT NOT NULL, source_preflight_id TEXT NOT NULL, source_image_id TEXT NOT NULL, source_order_index INTEGER NOT NULL, job_image_id TEXT NOT NULL, job_image_index INTEGER NOT NULL, file_name TEXT NOT NULL, media_type TEXT NOT NULL, size INTEGER NOT NULL, revision_number INTEGER NOT NULL, translation_target_json TEXT, source_language TEXT, source_language_json TEXT, target_language TEXT, instructions TEXT, created_at TEXT NOT NULL, UNIQUE(root_job_id, source_image_id, revision_number), UNIQUE(job_id, source_image_id));",
     );
     this.db.exec(
       "CREATE TABLE IF NOT EXISTS translation_page_active_revisions (root_job_id TEXT NOT NULL, source_image_id TEXT NOT NULL, revision_id TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(root_job_id, source_image_id));",
@@ -110,6 +112,13 @@ class JobStore {
       if (!jobColumns.some((column) => column.name === columnName)) {
         this.db.exec(sql);
       }
+    }
+  }
+
+  migratePageRevisionColumns() {
+    const columns = this.db.prepare("PRAGMA table_info(translation_page_revisions)").all();
+    if (!columns.some((column) => column.name === "source_language_json")) {
+      this.db.exec("ALTER TABLE translation_page_revisions ADD COLUMN source_language_json TEXT");
     }
   }
 
@@ -253,7 +262,7 @@ class JobStore {
   upsertTranslationPageRevision(revision) {
     this.db
       .prepare(
-        "INSERT INTO translation_page_revisions (revision_id, root_job_id, parent_job_id, job_id, source_preflight_id, source_image_id, source_order_index, job_image_id, job_image_index, file_name, media_type, size, revision_number, translation_target_json, source_language, target_language, instructions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(revision_id) DO NOTHING",
+        "INSERT INTO translation_page_revisions (revision_id, root_job_id, parent_job_id, job_id, source_preflight_id, source_image_id, source_order_index, job_image_id, job_image_index, file_name, media_type, size, revision_number, translation_target_json, source_language, source_language_json, target_language, instructions, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(revision_id) DO NOTHING",
       )
       .run(
         revision.revisionId,
@@ -270,7 +279,8 @@ class JobStore {
         revision.size,
         revision.revisionNumber,
         revision.translationTarget == null ? null : JSON.stringify(revision.translationTarget),
-        revision.sourceLanguage || null,
+        primarySourceLanguage(revision.sourceLanguage),
+        revision.sourceLanguage == null ? null : JSON.stringify(revision.sourceLanguage),
         revision.targetLanguage || null,
         revision.instructions || null,
         revision.createdAt || new Date().toISOString(),
@@ -294,7 +304,7 @@ class JobStore {
       size: row.size,
       revisionNumber: row.revision_number,
       translationTarget: row.translation_target_json ? JSON.parse(row.translation_target_json) : null,
-      sourceLanguage: row.source_language,
+      sourceLanguage: row.source_language_json ? JSON.parse(row.source_language_json) : row.source_language,
       targetLanguage: row.target_language,
       instructions: row.instructions,
       createdAt: row.created_at,
@@ -344,7 +354,23 @@ class JobStore {
       }));
   }
 
-  activateTranslationPageRevisions(rootJobId, selections) {
+  assertActiveTranslationPageRevisions(rootJobId, expectedSelections) {
+    if (!expectedSelections?.length) return;
+    const lookup = this.db.prepare(
+      "SELECT revision_id FROM translation_page_active_revisions WHERE root_job_id = ? AND source_image_id = ?",
+    );
+    for (const expected of expectedSelections) {
+      const row = lookup.get(rootJobId, expected.sourceImageId);
+      if (row?.revision_id === expected.revisionId) continue;
+      const error = new Error(`The active text-region snapshot for ${expected.sourceImageId} has changed.`);
+      error.statusCode = 409;
+      error.code = "stale_region_set_revision";
+      error.details = { sourceImageId: expected.sourceImageId };
+      throw error;
+    }
+  }
+
+  activateTranslationPageRevisions(rootJobId, selections, expectedSelections = []) {
     const validated = this.validatePageRevisionSelections(rootJobId, selections);
     const update = this.db.prepare(
       "INSERT INTO translation_page_active_revisions (root_job_id, source_image_id, revision_id, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(root_job_id, source_image_id) DO UPDATE SET revision_id = excluded.revision_id, updated_at = excluded.updated_at",
@@ -352,6 +378,7 @@ class JobStore {
     const now = new Date().toISOString();
     try {
       this.db.exec("BEGIN");
+      this.assertActiveTranslationPageRevisions(rootJobId, expectedSelections);
       for (const selection of validated) {
         update.run(rootJobId, selection.sourceImageId, selection.revisionId, now);
       }

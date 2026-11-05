@@ -29,10 +29,12 @@ export type DesktopInfo = {
     status: string;
     note: string;
   };
-  koharuProcess: KoharuHostProcessState;
+  mangaProcessorProcess: MangaProcessorHostState;
 };
 
-export type KoharuHostProcessState = {
+export type MangaProcessorHostState = {
+  providerId: string;
+  providerName: string;
   mode: "external" | "managed";
   status: "checking" | "downloading" | "running" | "stopped" | "unavailable" | "failed";
   baseUrl: string;

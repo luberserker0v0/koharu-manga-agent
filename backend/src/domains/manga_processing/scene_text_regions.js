@@ -39,9 +39,12 @@ function normalizeTextRegion(page, nodeId, node, readingOrder) {
 }
 
 function normalizeScenePage(pageId, page, pageOrder) {
-  const regions = Object.entries(page?.nodes || {}).flatMap(([nodeId, node], index) => {
-    const region = normalizeTextRegion(page, nodeId, node, index);
-    return region ? [region] : [];
+  let readingOrder = 0;
+  const regions = Object.entries(page?.nodes || {}).flatMap(([nodeId, node]) => {
+    const region = normalizeTextRegion(page, nodeId, node, readingOrder);
+    if (!region) return [];
+    readingOrder += 1;
+    return [region];
   });
   return {
     internalPageId: String(pageId),

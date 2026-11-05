@@ -203,6 +203,8 @@ function buildTranslationResumePayload(jobId, input) {
     engines: input.setup?.engines || input.previousResume?.engines || {},
     steps: input.setup?.steps || input.previousResume?.steps || [],
     pipelineProfile: input.setup?.pipelineProfile || input.previousResume?.pipelineProfile || null,
+    ocrLanguageResolution: input.setup?.ocrLanguageResolution ||
+      input.previousResume?.ocrLanguageResolution || null,
     translationMemorySnapshotPath: input.memoryPath,
     resumeAtStage: qualityCanBeReused ? "learning_evidence" : "quality_context",
     qualityReportPath: qualityCanBeReused ? input.quality.reportPath : null,

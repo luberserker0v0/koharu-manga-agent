@@ -8,5 +8,8 @@
   "scripts": {
     "prestart": "node scripts/ensure_koharu_runtime.js",
     "start": "node server.js"
+  },
+  "dependencies": {
+    "sharp": "0.35.5"
   }
 }

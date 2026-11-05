@@ -136,16 +136,16 @@ describe("pipeline monitor progress inference", () => {
   });
 
   test("stops the Koharu operation when backend cancellation is requested", async () => {
-    const originalFetch = global.fetch;
     let notifyFetchStarted;
     const fetchStarted = new Promise((resolve) => { notifyFetchStarted = resolve; });
-    global.fetch = jest.fn((_url, options) => new Promise((_resolve, reject) => {
+    const openEventStream = jest.fn((_baseUrl, signal) => new Promise((_resolve, reject) => {
       notifyFetchStarted();
-      options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+      signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
     }));
     const stopOperation = jest.fn().mockResolvedValue({ success: true });
     const monitor = new PipelineMonitorModule({
       stopOperation,
+      openEventStream,
       listOperations: jest.fn().mockResolvedValue([{ id: "op-stop", status: "running" }]),
       getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
     });
@@ -157,13 +157,9 @@ describe("pipeline monitor progress inference", () => {
     });
     await fetchStarted;
     canceled = true;
-    try {
-      await expect(running).rejects.toMatchObject({ code: "job_canceled" });
-      expect(stopOperation).toHaveBeenCalledTimes(1);
-      expect(stopOperation).toHaveBeenCalledWith("op-stop", "http://127.0.0.1:4000");
-    } finally {
-      global.fetch = originalFetch;
-    }
+    await expect(running).rejects.toMatchObject({ code: "job_canceled" });
+    expect(stopOperation).toHaveBeenCalledTimes(1);
+    expect(stopOperation).toHaveBeenCalledWith("op-stop", "http://127.0.0.1:4000");
   });
 
   test("reports a failed job when Koharu does not acknowledge cancellation", async () => {

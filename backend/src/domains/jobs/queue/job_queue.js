@@ -1,4 +1,4 @@
-const { KOHARU_JOB_TYPES } = require("../runtime/koharu_job_types");
+const { MANGA_PROCESSING_JOB_TYPES } = require("../runtime/manga_processing_job_types");
 
 function scheduleQueueDrain(manager) {
   if (manager.queueDrainScheduled) return;
@@ -20,16 +20,16 @@ function updateWaitingDependency(manager, job, reason) {
   manager.publish(job.id, "job.waiting_dependency", { reason });
 }
 
-function updateWaitingKoharuReview(manager, job) {
-  const reason = `Waiting for Extraction review ${manager.koharuReviewLease.referenceSetId} to finish.`;
+function updateWaitingProcessorReview(manager, job) {
+  const reason = `Waiting for Extraction review ${manager.mangaProcessorReviewLease.referenceSetId} to finish.`;
   if (job.status === "waiting_dependency" && job.blockedReason === reason) return;
   manager.store.updateJob({
     id: job.id,
     status: "waiting_dependency",
-    stage: "waiting_koharu_review",
+    stage: "waiting_manga_processor_review",
     blockedReason: reason,
   });
-  manager.publish(job.id, "job.waiting_koharu_review", { reason });
+  manager.publish(job.id, "job.waiting_manga_processor_review", { reason });
 }
 
 function handlePendingQueueEntry(manager, index) {
@@ -48,8 +48,8 @@ function handlePendingQueueEntry(manager, index) {
     updateWaitingDependency(manager, job, dependencyState.reason);
     return "waiting";
   }
-  if (manager.koharuReviewLease && KOHARU_JOB_TYPES.has(job.type)) {
-    updateWaitingKoharuReview(manager, job);
+  if (manager.mangaProcessorReviewLease && MANGA_PROCESSING_JOB_TYPES.has(job.type)) {
+    updateWaitingProcessorReview(manager, job);
     return "waiting";
   }
   return "runnable";
@@ -79,34 +79,36 @@ async function drainQueue(manager) {
     }
   } finally {
     manager.queueRunning = false;
-    if (manager.pendingQueue.length > 0 && !manager.koharuReviewLease) manager.scheduleQueueDrain();
+    if (manager.pendingQueue.length > 0 && !manager.mangaProcessorReviewLease) manager.scheduleQueueDrain();
   }
 }
 
-function acquireKoharuReviewLease(manager, { sessionId, referenceSetId }) {
-  if (manager.koharuReviewLease) {
-    const error = new Error(`Koharu is already reserved by Extraction review ${manager.koharuReviewLease.referenceSetId}.`);
+function acquireMangaProcessorReviewLease(manager, { sessionId, referenceSetId }) {
+  if (manager.mangaProcessorReviewLease) {
+    const error = new Error(
+      `Manga processor is already reserved by Extraction review ${manager.mangaProcessorReviewLease.referenceSetId}.`,
+    );
     error.statusCode = 409;
     throw error;
   }
   const activeJob = [...manager.activeJobs]
     .map((jobId) => manager.store.getJob(jobId))
-    .find((job) => job && KOHARU_JOB_TYPES.has(job.type));
+    .find((job) => job && MANGA_PROCESSING_JOB_TYPES.has(job.type));
   if (activeJob) {
-    const error = new Error(`Koharu job ${activeJob.id} is still running.`);
+    const error = new Error(`Manga processing job ${activeJob.id} is still running.`);
     error.statusCode = 409;
     throw error;
   }
-  manager.koharuReviewLease = { sessionId, referenceSetId, acquiredAt: new Date().toISOString() };
-  return manager.koharuReviewLease;
+  manager.mangaProcessorReviewLease = { sessionId, referenceSetId, acquiredAt: new Date().toISOString() };
+  return manager.mangaProcessorReviewLease;
 }
 
-function releaseKoharuReviewLease(manager, sessionId) {
-  if (!manager.koharuReviewLease || manager.koharuReviewLease.sessionId !== sessionId) return false;
-  manager.koharuReviewLease = null;
+function releaseMangaProcessorReviewLease(manager, sessionId) {
+  if (!manager.mangaProcessorReviewLease || manager.mangaProcessorReviewLease.sessionId !== sessionId) return false;
+  manager.mangaProcessorReviewLease = null;
   for (const jobId of manager.pendingQueue) {
     const job = manager.store.getJob(jobId);
-    if (job?.stage !== "waiting_koharu_review") continue;
+    if (job?.stage !== "waiting_manga_processor_review") continue;
     manager.store.updateJob({ id: job.id, status: "queued", stage: "queued", blockedReason: null });
   }
   manager.scheduleQueueDrain();
@@ -114,8 +116,8 @@ function releaseKoharuReviewLease(manager, sessionId) {
 }
 
 module.exports = {
-  acquireKoharuReviewLease,
+  acquireMangaProcessorReviewLease,
   drainQueue,
-  releaseKoharuReviewLease,
+  releaseMangaProcessorReviewLease,
   scheduleQueueDrain,
 };

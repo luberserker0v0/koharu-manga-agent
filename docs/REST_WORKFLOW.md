@@ -12,15 +12,15 @@ The examples use `http://127.0.0.1:4001/api/v1`. Add `Authorization: Bearer <tok
 ## Ready Check
 
 1. Call `GET /health` to confirm that the HTTP process is alive.
-2. Call `GET /api/v1/ready`. HTTP `503` or `capabilities.koharuJobs === false` means Koharu-backed job creation is blocked.
+2. Call `GET /api/v1/ready`. HTTP `503` or `capabilities.mangaProcessingJobs === false` means manga-processing job creation is blocked.
 3. Call `GET /api/v1/runtime/status` when the UI needs complete dependency diagnostics.
 4. Require `agent.status === "ready"` for `reference_style`, `local_style` with Quality enabled, and `learning_style`. Machine Translation in a Reference/Local workflow uses AO for post-edit. Quick mode does not use AO.
-5. Call `GET /api/v1/runtime/koharu/translation-providers` to populate the translation provider/model selector and verify readiness and target-language support.
+5. Call `GET /api/v1/runtime/manga-processor/translation-providers` to populate the translation provider/model selector and verify readiness and target-language support.
 
 `/health` reports only backend liveness. `/ready` reports the minimum Koharu-backed capability;
 AO remains an independently reported optional capability because its requirement depends on the selected mode.
-The backend also enforces this gate: a Koharu-backed create/retry/resume request returns an actionable
-`503 koharu_unavailable` response before creating another job.
+The backend also enforces this gate: a manga-processing create/retry/resume request returns an actionable
+`503 manga_processor_unavailable` response before creating another job.
 
 ## Complete Request Sequence
 
@@ -89,6 +89,7 @@ Content-Type: application/json
     "providerId":"deepl",
     "modelId":"mt"
   },
+  "sourceLanguage":["en","ja"],
   "targetLanguage":"zh-TW",
   "qualityCheck":false,
   "exportFormat":"rendered",
@@ -108,6 +109,9 @@ The response is `202 Accepted` with the queued Job. Keep its `id`. A `202` respo
 `translationMode` selects workflow behavior. `translationTarget` independently selects the Koharu
 provider and model. Omit `translationTarget` to use the backend default. Do not send provider credentials
 from a browser extension; credentials remain owned by the host Koharu service.
+`sourceLanguage` may be one BCP 47 string or an ordered array. Index `0` is the primary language;
+later entries are secondary languages. Omit it or send an empty array for automatic OCR selection.
+The backend selects the OCR engine, so clients must not send Koharu-specific OCR engine IDs.
 
 Reference-backed modes have additional prerequisites:
 
@@ -137,7 +141,7 @@ Terminal lifecycle states are:
 - `canceled`
 - `blocked`
 
-Do not treat `waiting_dependency`, `waiting_prerequisite`, or `waiting_koharu_review` as failures.
+Do not treat `waiting_dependency`, `waiting_prerequisite`, or `waiting_manga_processor_review` as failures.
 
 ### 7. Read the authoritative result
 
@@ -187,9 +191,38 @@ or later editing OCR content; embedded whitespace and line breaks are meaningful
 `regionSetRevisionId` are opaque concurrency identities and must not be interpreted by clients.
 
 Legacy Jobs without a retained snapshot return `409 text_region_snapshot_unavailable`. Do not treat
-that response as a page with zero detected text, and do not call Koharu directly as a fallback.
+that response as a page with zero detected text, and do not call the manga processor directly as a fallback.
 
-### 11. Correct OCR text or region geometry
+#### Optional AI OCR text review
+
+For each existing region, crop the original source image in the client. Create an upload with
+`kind: "ocr_review"`, upload every crop as raw bytes through the normal upload endpoint, and complete
+the session. Then submit one batch:
+
+```http
+POST /api/v1/jobs/ocr-text-review
+Content-Type: application/json
+
+{
+  "uploadId":"...",
+  "sourceLanguages":["en","ja"],
+  "items":[{
+    "clientItemId":"text_region_existing",
+    "fileName":"ocr_001.png",
+    "ocrText":"inter galac tic"
+  }]
+}
+```
+
+This returns `202`; subscribe to `/jobs/{jobId}/stream?eventMode=message` and reconcile through normal
+Job GET. The browser extension sends only one crop, its matching OCR text, and a fixed correction
+prompt per internal model request. It omits the optional neighboring-context compatibility fields so
+untrusted OCR from another region cannot contaminate the result. Requests never contain coordinates. Preserve `clientItemId` locally to map
+suggestions back to authoritative regions, let the user inspect them, and only then submit text-only
+updates to `text-region-corrections`. Cancellation uses the normal Job cancellation endpoint. Per-item
+failures are returned explicitly and are never retried automatically.
+
+### 11. Create, update, or delete OCR text regions
 
 Submit only opaque backend IDs returned by the preceding `text-regions` response:
 
@@ -201,23 +234,30 @@ Content-Type: application/json
   "pages":[{
     "sourceImageId":"source-image-3",
     "baseRegionSetRevisionId":"region_set_...",
-    "regions":[{
-      "regionId":"text_region_...",
-      "sourceText":"corrected OCR text",
-      "geometry":{"x":120,"y":240,"width":360,"height":96,"rotation":0}
-    }]
+    "operations":[
+      {"type":"update","regionId":"text_region_existing","sourceText":"corrected OCR text"},
+      {"type":"create","clientOperationId":"create-1","sourceText":"missing OCR text",
+       "geometry":{"x":120,"y":240,"width":360,"height":96,"rotation":0}},
+      {"type":"delete","regionId":"text_region_false_positive"}
+    ]
   }]
 }
 ```
 
-At least one of `sourceText` or `geometry` is required per region. Preserve intentional whitespace in
-`sourceText`; coordinates are source-image pixels and must fit the declared page bounds. A stale
-`baseRegionSetRevisionId` returns `409`, so refresh `text-regions` before asking the user to reconcile.
+`update` requires text and/or geometry, `create` requires text plus bounded geometry, and `delete`
+requires an existing opaque region ID. Preserve intentional whitespace in `sourceText`; coordinates
+are source-image pixels and must fit the declared page bounds. A stale `baseRegionSetRevisionId`
+returns `409`, so refresh `text-regions` before asking the user to reconcile. Keep edits as local drafts
+until submission because the server validates the entire multi-page batch before queuing it.
 
-The returned Translation Job rebuilds only the selected pages, applies the corrections between OCR and
+Legacy update-only clients may keep using `regions`. New clients should use `operations`; never send
+both on the same page. After success, read `result.textRegionOperations.created` to resolve each
+`clientOperationId` to its backend-owned `regionId`, then refresh the authoritative snapshot.
+
+The returned Translation Job rebuilds only the selected pages, applies all operations between OCR and
 translation, then stages new page revisions. Monitor it through the normal SSE/GET loop. On success,
 the backend promotes those pages and rebuilds the complete chapter export; on failure, the current
-chapter remains unchanged. Never call Koharu directly.
+chapter remains unchanged. Never call the manga processor directly.
 
 ### 12. Selectively retranslate pages
 
@@ -235,6 +275,10 @@ Content-Type: application/json
 ```
 
 The optional `translationTarget`, `sourceLanguage`, and `targetLanguage` fields override the parent.
+`sourceLanguage` accepts a BCP 47 string or an ordered array such as `["en", "ja"]`; the first item
+is primary. The backend uses the complete list to select OCR, while TM, Observation, and Quality use
+the primary language. Koharu does not currently receive OCR language hints, so Job diagnostics expose
+the selected engine and report that hints were not applied.
 Instructions are accepted only when the selected target can consume them. A `202` response is queued,
 so use the same SSE and GET reconciliation loop as a normal Translation Job. Do not automatically
 retry a failed selective Job.

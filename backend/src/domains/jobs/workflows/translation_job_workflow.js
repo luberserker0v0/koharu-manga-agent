@@ -2,7 +2,8 @@ const { resolveTranslationModePolicy } = require("../../translation/modes/transl
 const {
   isMachineTranslationTarget,
   resolveTranslationTarget,
-} = require("../../../integrations/koharu/translation/translation_targets");
+} = require("../../manga_processing/translation_targets");
+const { normalizeSourceLanguage } = require("../../manga_processing/source_languages");
 
 function createTranslationJob(manager, payload) {
   const translationTarget = payload?.translationTarget || manager.resolvedConfig.translation?.defaultTarget || null;
@@ -21,6 +22,7 @@ function createTranslationJob(manager, payload) {
   }
   return manager.createJob("translation", {
     ...payload,
+    sourceLanguage: normalizeSourceLanguage(payload?.sourceLanguage),
     ...(translationTarget ? { translationTarget } : {}),
   });
 }
@@ -111,6 +113,7 @@ function buildTranslationRevisionBasePayload(sourceJob, sourceContext, options) 
   const sourceImageIds = sourceSelection.images.map((image) => image.id);
   const inheritedPayload = { ...sourceJob.payload };
   delete inheritedPayload.regionCorrections;
+  delete inheritedPayload.correctionBootstrapEngines;
   const payload = {
     ...inheritedPayload,
     sourcePreflightId,
@@ -132,7 +135,7 @@ function buildTranslationRevisionBasePayload(sourceJob, sourceContext, options) 
 }
 
 function validateRetranslationRequestFields(payload, request) {
-  for (const field of ["targetLanguage", "sourceLanguage"]) {
+  for (const field of ["targetLanguage"]) {
     if (Object.prototype.hasOwnProperty.call(request, field) && request[field] == null) {
       const error = new Error(`${field} must be a non-empty BCP 47 language tag.`);
       error.statusCode = 400;
@@ -155,7 +158,7 @@ function applyTranslationRevisionRequestFields(manager, payload, request) {
     if (Object.prototype.hasOwnProperty.call(request, field)) payload[field] = request[field];
   }
   validateRetranslationRequestFields(payload, request);
-  payload.sourceLanguage = normalizeLanguage(payload.sourceLanguage, "sourceLanguage");
+  payload.sourceLanguage = normalizeSourceLanguage(payload.sourceLanguage);
   payload.targetLanguage = normalizeLanguage(
     payload.targetLanguage || manager.resolvedConfig.defaults?.targetLanguage,
     "targetLanguage",
@@ -192,14 +195,14 @@ function assertRetranslationInstructionsSupported(payload, resolvedTarget) {
 
 async function resolveTranslationRevisionTarget(manager, payload) {
   const translationTarget = payload.translationTarget || manager.resolvedConfig.translation?.defaultTarget || null;
-  const client = manager.engine?.projectLifecycle?.client;
-  if (!client?.getTranslationCatalog) {
+  const processor = manager.engine?.mangaProcessor;
+  if (!processor?.getTranslationCatalog) {
     const error = new Error("Koharu translation-provider validation is unavailable.");
     error.statusCode = 503;
     error.code = "translation_provider_catalog_unavailable";
     throw error;
   }
-  const catalog = await getTranslationRevisionCatalog(manager, client, payload);
+  const catalog = await getTranslationRevisionCatalog(manager, processor, payload);
   const resolvedTarget = resolveTranslationTarget({
     catalog,
     requestedTarget: translationTarget,
@@ -238,7 +241,7 @@ async function createTranslationRevisionJob(manager, sourceJobId, request, optio
   const payload = buildTranslationRevisionPayload(manager, sourceJob, request, sourceContext, prepared);
   await resolveTranslationRevisionTarget(manager, payload);
   await assertAgentAvailableForTranslation(manager, payload);
-  await manager.assertKoharuAvailableForJobType("translation", payload);
+  await manager.assertMangaProcessorAvailableForJobType("translation", payload);
   return manager.createJob("translation", payload, { parentJobId: sourceJob.id });
 }
 

@@ -15,7 +15,7 @@ is `docs/openapi.yaml`.
 
 ### Browser upload sessions
 
-Create a source-chapter or Reference upload session:
+Create a source-chapter, Reference, or OCR-review upload session:
 
 ```http
 POST /api/v1/uploads
@@ -51,6 +51,8 @@ Content-Type: application/json
 ```
 
 Reference uploads use `kind: "reference"` and the same `uploadId` field with `POST /api/v1/references/import`.
+OCR crop uploads use `kind: "ocr_review"`; they are consumed only by the asynchronous OCR text-review
+Job described below.
 Source preflight and Reference import copy accepted images into backend-owned durable storage, then
 release the consumed upload session. `DELETE` is only needed to abandon a session before submission.
 
@@ -105,7 +107,7 @@ Content-Type: application/json
     "modelId": "gpt-5"
   },
   "targetLanguage": "zh-TW",
-  "sourceLanguage": "ja",
+  "sourceLanguage": ["ja", "en"],
   "instructions": "Keep the character name Koharu untranslated."
 }
 ```
@@ -115,7 +117,10 @@ preflight used by the root Translation Job, and its backend-owned normalized ima
 available. The backend restores chapter order even if the request sends IDs in another order.
 
 The four other fields are optional overrides. Omitted settings inherit from the selected parent Job.
-Provider, model, target-language support, and BCP 47 language tags are validated before persistence.
+`sourceLanguage` accepts one BCP 47 tag or an ordered array. The first item is primary for Translation
+Memory, Observation, and Quality; the complete ordered list selects a compatible OCR engine. Omission,
+`null`, and an empty array use automatic OCR policy. Provider, model, target-language support, and BCP
+47 language tags are validated before persistence.
 `instructions` is supported for LLM targets and is preserved with revision metadata. Machine
 Translation providers reject it with `422 unsupported_retranslation_instructions`; the backend never
 pretends that an unsupported instruction was applied.
@@ -153,16 +158,135 @@ GET /api/v1/jobs/{jobId}/text-regions?sourceImageId={sourceImageId}
 Each page is bound to its authoritative source-preflight `sourceImageId` and page `revisionId`.
 Every region includes an opaque ID, reading order, exact OCR source text, translated text, rectangular
 geometry, and a declared source-image-pixel coordinate space. OCR whitespace and line breaks are
-returned unchanged. Optional confidence and source direction are present only when Koharu supplied them.
+returned unchanged. Optional confidence and source direction are present only when the manga processor supplied them.
 
-The response never exposes Koharu page/node handles or filesystem paths. Jobs created before region
+The response never exposes upstream processor page/node handles or filesystem paths. Jobs created before region
 snapshots were introduced return `409 text_region_snapshot_unavailable`. A snapshot without reliable
 image dimensions returns `409 text_region_coordinate_space_unavailable` instead of coordinates that a
 client would have to guess.
 
-### Correct OCR text or region geometry
+### Review OCR text regions with a vision model
 
-Use the IDs and concurrency token returned by `text-regions`; never send Koharu node IDs:
+The recommended browser workflow crops each existing OCR region locally, uploads those crops as raw
+bytes, and creates one asynchronous Job for the batch. This ensures every LM Studio inference sees
+exactly one crop and its current OCR text; neither the API nor the model receives OCR coordinates.
+
+```http
+POST /api/v1/uploads
+Content-Type: application/json
+
+{"kind":"ocr_review"}
+
+PUT /api/v1/uploads/{uploadId}/files/ocr_001.png
+Content-Type: image/png
+
+<raw crop bytes>
+```
+
+Complete the upload, then queue the review:
+
+```http
+POST /api/v1/jobs/ocr-text-review
+Content-Type: application/json
+
+{
+  "uploadId": "...",
+  "sourceLanguages": ["en", "ja"],
+  "items": [{
+    "clientItemId": "region-1",
+    "fileName": "ocr_001.png",
+    "ocrText": "inter galac tic"
+  }]
+}
+```
+
+The response is `202 Accepted` with an `ocr_text_review` Job. Use the standard Job GET, SSE, events,
+and cancellation APIs. Progress events use `ocr_text_review.progress` and contain `completed`, `total`,
+`progress`, `clientItemId`, and the per-item status. The terminal result maps every suggestion back
+through the caller-owned opaque `clientItemId`; the model never generates this ID. Individual failures
+are preserved as result items and are not retried automatically. The caller reviews the suggestions
+before applying them through the text-region correction workflow.
+
+`contextBefore` and `contextAfter` remain optional compatibility fields. Clients performing isolated
+OCR correction should omit them: adjacent OCR is untrusted input and can cause a vision model to echo
+another region into `correctedText`. The browser extension sends only one crop and its matching
+`ocrText` per item.
+
+Each internal vision request uses one image crop, the corresponding `ocrText`, optional neighboring
+text as context, and a bounded correction prompt. The model returns only corrected source text; the
+backend wraps it as `{"correctedText":"..."}`. It cannot add, delete, move, resize, merge, or split
+OCR regions.
+OCR correction uses LM Studio's native `POST /api/v1/chat` image input and passes the configured native
+`reasoning` value (normally `off`). It does not send the ineffective OpenAI-compatible
+`reasoning_effort` field. The backend wraps the native assistant message as `correctedText` itself, so
+the model spends its output budget on transcription instead of reasoning plus JSON-schema generation.
+
+The older synchronous full-page endpoint remains available for existing GUI clients:
+
+Request a tool-free LM Studio vision review for one retained source page:
+
+```http
+POST /api/v1/jobs/{jobId}/text-region-reviews
+Content-Type: application/json
+
+{
+  "sourceImageId": "source-image-3",
+  "baseRegionSetRevisionId": "region_set_..."
+}
+```
+
+The backend loads the authoritative image and text-region snapshot; callers never send filesystem
+paths or duplicate OCR input. The configured `translation.defaultTarget.modelId` must identify a
+vision-capable model in `translation.lmStudio.baseUrl`. This bounded inference calls LM Studio
+directly and does not create an AO conversation. It uses temperature `0` independently of the
+translation generation temperature so repeated structured OCR reviews remain stable. Retained WebP
+sources are converted to PNG in memory before inference for LM Studio compatibility. The model sees
+the existing boxes as fixed visual context and returns only OCR text in the same order. LM Studio
+structured output constrains the model to two fields internally:
+
+```json
+{
+  "count": 2,
+  "texts": ["corrected OCR text", "second corrected OCR text"]
+}
+```
+
+The model cannot add, delete, move, resize, merge, or split OCR regions. The public response remains
+`{ count, regions[] }`, but every returned `box` is copied from the authoritative snapshot; only
+`regions[].text` comes from the model. A page without existing OCR regions returns an empty read-only
+result without invoking LM Studio. Add or adjust boxes through the explicit manual correction API.
+The review prompt explicitly requires visual glyph inspection followed by conservative semantic
+correction using neighboring regions, reading order, dialogue flow, grammar, and sentence meaning.
+It repairs layout-only word fragmentation while forbidding translation, paraphrasing, and invented
+dialogue.
+
+Review is read-only. After inspecting or editing the result, apply it with the same concurrency token:
+
+```http
+POST /api/v1/jobs/{jobId}/text-region-reviews/apply
+Content-Type: application/json
+
+{
+  "sourceImageId": "source-image-3",
+  "baseRegionSetRevisionId": "region_set_...",
+  "count": 2,
+  "regions": [
+    {"box": [120, 240, 360, 96], "text": "corrected OCR text"},
+    {"box": [620, 410, 180, 72], "text": "second corrected OCR text"}
+  ]
+}
+```
+
+The backend requires exactly one item per existing region and requires every box to remain identical
+to the immutable snapshot. It converts changed strings into text-only update operations and queues the
+existing text-region correction Job. Attempts to add, delete, move, or resize regions return
+`422 text_region_review_shape_mismatch`. A stale region-set revision returns `409`; an unchanged review
+returns `409 text_region_review_no_changes`. The model never generates internal IDs, geometry,
+revision metadata, or Koharu operations.
+
+### Create, update, or delete OCR text regions
+
+Use the IDs and concurrency token returned by `text-regions`; never send upstream processor node IDs:
 
 ```http
 POST /api/v1/jobs/{parentJobId}/text-region-corrections
@@ -172,30 +296,59 @@ Content-Type: application/json
   "pages": [{
     "sourceImageId": "source-image-3",
     "baseRegionSetRevisionId": "region_set_...",
-    "regions": [{
-      "regionId": "text_region_...",
-      "sourceText": "corrected OCR text",
-      "geometry": {"x": 120, "y": 240, "width": 360, "height": 96, "rotation": 0}
-    }]
+    "operations": [
+      {"type": "update", "regionId": "text_region_existing", "sourceText": "corrected OCR text"},
+      {"type": "create", "clientOperationId": "create-1", "sourceText": "missing OCR text",
+       "geometry": {"x": 120, "y": 240, "width": 360, "height": 96, "rotation": 0}},
+      {"type": "delete", "regionId": "text_region_false_positive"}
+    ]
   }]
 }
 ```
 
-`sourceText` and `geometry` are independently optional, but every region must include at least one.
+`update` requires `sourceText` and/or `geometry`. `create` requires a unique `clientOperationId`, non-empty
+`sourceText`, and bounded geometry. `delete` accepts only an existing opaque `regionId`. A page may
+contain any mixture of the three operations, but conflicting operations for one existing region and
+duplicate create IDs are rejected before a Job is queued. Existing clients may continue sending the
+legacy `regions` array; the backend normalizes each entry to an `update` operation and does not maintain
+a second execution path.
+
 Coordinates use the page's declared `source_image_pixels` space and must remain inside its bounds.
+Created regions are appended in request order, producing deterministic reading order. The backend owns
+both the internal processor node ID and the resulting opaque region ID; `clientOperationId` is only a
+correlation key. The successful Job's `result.textRegionOperations.created` maps it to the new
+`regionId`.
+
 The backend rejects stale `baseRegionSetRevisionId` values with `409 stale_region_set_revision`.
+After the bootstrap detection/OCR pass, corrected pages are reconciled from the immutable source
+text-region snapshot plus the submitted operations. Fresh OCR boxes are not treated as authoritative:
+unchanged boxes retain their prior text and geometry, updates replace only their declared fields,
+deletions stay deleted, and newly detected false positives are discarded before translation/rendering.
+It validates the token both when accepting the request and before promotion. Final activation uses a
+compare-and-swap over the complete active chapter, so a concurrent revision change cannot publish a
+ZIP that disagrees with active page selections.
 
 The response is `202 Accepted` with a queued Translation Job. The backend recreates only the selected
-pages, runs detection and OCR, safely maps the retained opaque regions, applies the corrected Koharu
-text/transform operations, then runs translate, clean, render, snapshot, and export. The request is
+pages, runs detection and OCR, safely maps retained opaque regions, applies one atomic scene mutation
+containing add/update/remove operations through the manga-processing port, then runs translate, clean,
+render, snapshot, and export. The request is
 retained in the Job payload as immutable audit data. A successful correction creates inactive page
 revisions during finalization, then atomically promotes them, rebuilds the complete chapter export,
 and replaces the active publication. If composition or publication fails, the prior active page
 selection remains current. The GUI does not expose revision-history management.
 
+To keep opaque-region mapping stable, text-region correction Jobs inherit the nearest non-correction
+ancestor Job's actual detect, font-detect, segmentation, bubble-segmentation, and OCR engines from
+`result.engines`. A chain of correction Jobs therefore cannot perpetuate an accidental engine change.
+This also preserves the effective engine for legacy Jobs that predate `ocrLanguageResolution`; an omitted
+`sourceLanguage` must not silently switch `manga-ocr` to a newer automatic default during correction.
+If an inherited engine is no longer available, setup fails explicitly instead of substituting another
+engine.
+
 Optional `translationTarget`, `generationOptions`, `sourceLanguage`, `targetLanguage`, and `instructions`
 overrides follow the same validation rules as selective retranslation. A mapping failure stops the Job
-with `text_region_mapping_failed`; the backend does not guess a Koharu node or apply a partial patch.
+with `text_region_mapping_failed`; a created node missing from the final scene fails with
+`created_text_region_unavailable`. The backend does not guess an upstream node or apply a partial patch.
 
 ### List and activate page revisions
 
@@ -238,7 +391,9 @@ page returns `409 page_revision_mismatch`. Selecting an older revision performs 
 deleting newer history.
 
 ### Base Convention
-- Host: `127.0.0.1`
+- Local/native host: `127.0.0.1`
+- Docker publishing: `0.0.0.0`; local clients may still use `127.0.0.1`, while remote clients use
+  the Docker host's IP or DNS name
 - Default port: `4001`
 - Content type: `application/json`
 - Job event stream uses `text/event-stream`
@@ -287,8 +442,9 @@ Request body:
     "providerId": "deepl",
     "modelId": "mt"
   },
+  "sourceLanguage": ["en", "ja"],
   "targetLanguage": "zh-TW",
-  "baseUrl": "http://127.0.0.1:9999",
+  "baseUrl": "http://127.0.0.1:4000",
   "qualityCheck": true,
   "exportFormat": "rendered",
   "mangaId": "phantom_fantasy",
@@ -316,6 +472,29 @@ and uses `lama-manga` for `clean`; the other translation modes map to `quality` 
 `flux2-klein`. `pipeline.modeProfiles` changes the mapping and
 `pipeline.profiles.<id>.engines` edits a profile. An explicitly configured engine that is absent
 from the live Koharu catalog fails before project execution instead of falling back silently.
+`sourceLanguage` accepts either one BCP 47 tag or an ordered array. The first language remains the
+authoritative source language for Translation Memory, Observation, and Quality. The complete list is
+used by the manga-processing adapter to select OCR. Koharu 0.61.2 does not expose OCR language hints,
+so the backend records `hintsSupported: false` and `hintsApplied: false`; it never claims that a hint
+was applied. An English or mixed-language request will not silently select Japanese-only `manga-ocr`.
+If no compatible OCR engine is available, Job setup stops with
+`unsupported_ocr_language_combination` before manga-processor project creation or pipeline execution.
+The `ocr.language_resolution` Job event and `result.ocrLanguageResolution` use the same diagnostic
+shape:
+
+```json
+{
+  "requestedSourceLanguages": ["en", "ja"],
+  "effectiveSourceLanguages": ["en", "ja"],
+  "primarySourceLanguage": "en",
+  "engineId": "paddle-ocr-vl-1.5",
+  "selectionSource": "language_policy",
+  "hintsSupported": false,
+  "hintsApplied": false,
+  "appliedLanguageHints": [],
+  "warnings": ["Koharu does not expose OCR language hints; languages were used for engine selection only."]
+}
+```
 Translation jobs also require `mangaId`, `translatorId`, and `chapterId`. These fields identify the
 single output publication; chapter numbers do not need to be contiguous.
 The backend generates the export directory beneath its configured `paths.translated` root using the
@@ -331,17 +510,17 @@ The Reference prompt is not sent to DeepL, Google Cloud Translation, or Caiyun b
 do not consume LLM instructions. Translation jobs never execute
 Reference Ingestion. Reference modes consume only completed Reference assets.
 
-### List Koharu translation providers
+### List manga processor translation providers
 
 ```http
-GET /runtime/koharu/translation-providers
+GET /runtime/manga-processor/translation-providers
 ```
 
 The response contains a sanitized provider catalog with `providerId`, provider `kind`, readiness,
 credential presence, models, and supported languages. It never contains credential values. Known
 machine-translation providers are DeepL, Google Cloud Translation, and Caiyun. A provider whose status
 is not `ready`, an unknown model, or an unsupported target language is rejected before the backend
-creates a Koharu project or uploads source pages.
+creates an upstream processor project or uploads source pages. Koharu is the current adapter.
 
 For Reference-backed modes, `referenceTranslatorId` identifies the read-only translator
 Reference that supplies canonical terminology and style evidence. `translatorId` identifies the
@@ -426,7 +605,7 @@ Request body:
 ```json
 {
   "referenceSetId": "ref_001",
-  "baseUrl": "http://127.0.0.1:9999",
+  "baseUrl": "http://127.0.0.1:4000",
   "targetLanguage": "zh-TW"
 }
 ```
@@ -665,8 +844,8 @@ GET /ready
 ```
 
 This endpoint is public like `/health`, and is also available as `GET /api/v1/ready`. It returns
-HTTP `200` when Koharu-backed jobs can run and HTTP `503` when Koharu is unavailable. AO is an
-optional dependency at this level because some translation modes do not use it; when Koharu is
+HTTP `200` when manga-processing jobs can run and HTTP `503` when the configured processor is
+unavailable. AO is an optional dependency at this level because some translation modes do not use it; when the processor is
 ready but AO is unavailable, the response is HTTP `200` with `status: "degraded"`.
 
 In native mode, backend startup and Koharu-backed requests may call the managed runtime's
@@ -682,32 +861,34 @@ must start it with `--host 0.0.0.0 --port 4000 --headless` before submitting Koh
   "deploymentMode": "docker",
   "services": {
     "backend": { "required": true, "ready": true, "status": "ready" },
-    "koharu": {
+    "mangaProcessor": {
       "required": true,
       "ready": false,
       "status": "unavailable",
       "mode": "external",
-      "baseUrl": "http://host.docker.internal:4000"
+      "baseUrl": "http://host.docker.internal:4000",
+      "providerId": "koharu",
+      "providerName": "Koharu"
     },
     "ao": { "required": false, "ready": true, "status": "ready", "baseUrl": "http://host.docker.internal:32768" }
   },
-  "capabilities": { "koharuJobs": false, "aoJobs": true },
+  "capabilities": { "mangaProcessingJobs": false, "aoJobs": true },
   "blockers": [
-    { "service": "koharu", "code": "koharu_unavailable", "message": "Koharu is not reachable." }
+    { "service": "manga_processor", "code": "manga_processor_unavailable", "message": "Manga processor is not reachable." }
   ],
   "warnings": []
 }
 ```
 
-Creation, retry, and resume requests for Koharu-backed jobs fail before mutating job storage when
-Koharu cannot be started or reached:
+Creation, retry, and resume requests for manga-processing jobs fail before mutating job storage when
+the configured processor cannot be started or reached:
 
 ```json
 {
   "error": "External Koharu service is unavailable at http://host.docker.internal:4000.",
-  "code": "koharu_unavailable",
+  "code": "manga_processor_unavailable",
   "details": {
-    "service": "koharu",
+    "service": "manga_processor",
     "jobType": "translation",
     "status": "unavailable",
     "mode": "external",
@@ -724,11 +905,26 @@ GET /runtime/status
 
 Returns:
 - backend status
-- Koharu configured base URL
-- Koharu ownership mode (`managed` for native runtime or `external` for Docker)
+- manga processor provider identity and configured base URL
+- manga processor ownership mode (`managed` for native runtime or `external` for Docker)
 - AO configured base URL and agent selection
 - quality runtime summary
 - translation runtime summary
+
+Runtime lifecycle and catalog endpoints are provider-neutral:
+
+```http
+GET  /runtime/manga-processor/engines
+GET  /runtime/manga-processor/translation-providers
+GET  /runtime/manga-processor/paths
+POST /runtime/manga-processor/install
+POST /runtime/manga-processor/start
+POST /runtime/manga-processor/prepare
+POST /runtime/manga-processor/stop
+```
+
+Lifecycle responses use the `mangaProcessor` envelope. The concrete provider is identified by
+`providerId` and `providerName`; the current implementation reports `koharu` and `Koharu`.
 
 ### Read manga glossary
 ```http
@@ -762,7 +958,7 @@ The backend initializes AO in this order:
 ## Upstream Koharu API
 
 ### Base Convention
-- Base URL default: `http://127.0.0.1:9999/api/v1`
+- Base URL default: `http://127.0.0.1:4000/api/v1`
 - Default content type: `application/json`
 
 ### Projects
@@ -841,7 +1037,8 @@ Known upstream event types:
 - `backend/src/domains/translation/quality/quality.js`
 - `backend/src/domains/knowledge/learning/knowledge.js`
 - `backend/src/domains/translation/execution/export.js`
-- `backend/src/integrations/koharu/pipeline/project_lifecycle.js`
+- `backend/src/domains/manga_processing/manga_processing_ports.js`
+- `backend/src/integrations/koharu/koharu_manga_processing_adapter.js`
 - `backend/src/domains/reference/sets/reference_sets.js`
 - `backend/src/integrations/koharu/client/koharu_client.js`
 

@@ -6,6 +6,9 @@ const { createZipBuffer } = require("../../backend/src/integrations/ao/assets/ao
 const { JobStore } = require("../../backend/src/domains/jobs/persistence/job_store");
 const { TranslatedImageService } = require("../../backend/src/domains/translation/exports/translated_image_service");
 const { PageRevisionService } = require("../../backend/src/domains/translation/revisions/page_revision_service");
+const { RegionSnapshotRepository } = require(
+  "../../backend/src/domains/translation/text_regions/region_snapshot_repository",
+);
 const {
   TranslationRevisionPromotionService,
 } = require("../../backend/src/domains/translation/revisions/translation_revision_promotion");
@@ -30,7 +33,8 @@ function regionSnapshot(jobId, pages) {
 
 function regionPage(sourceImageId, order, pageName, text) {
   return { sourceImageId, sourceOrderIndex: order, sourceFileName: pageName,
-    internalPageId: `${sourceImageId}-page`, pageName, regions: [{ internalNodeId: `${sourceImageId}-node`,
+    internalPageId: `${sourceImageId}-page`, pageName, regionSetRevisionId: `region-set-${text}`,
+    regions: [{ id: `region-${text}`, internalNodeId: `${sourceImageId}-node`,
       sourceText: text, translatedText: `${text}-translated`, geometry: { x: 1, y: 2, width: 3, height: 4 } }] };
 }
 
@@ -57,11 +61,12 @@ describe("TranslationRevisionPromotionService", () => {
       fileName: `${number}.png`, orderedName: `${number}.png` }));
     const translatedImageService = new TranslatedImageService({ root: path.join(root, "cache") });
     const sourcePreflightModule = { get: jest.fn().mockReturnValue({ images: sourceImages }) };
+    const regionSnapshotRepository = new RegionSnapshotRepository();
     pageRevisionService = new PageRevisionService({ store, translatedImageService, sourcePreflightModule });
     publicationService = new TranslationPublicationService({ resolveBaseDir: () => path.join(root, "publication") });
     promotionService = new TranslationRevisionPromotionService({ store, pageRevisionService,
       translatedImageService, sourcePreflightModule, translationPublicationService: publicationService,
-      createZip: createTestZip });
+      regionSnapshotRepository, createZip: createTestZip });
   });
 
   afterEach(() => {
@@ -112,7 +117,11 @@ describe("TranslationRevisionPromotionService", () => {
     store.updateJob({ id: "root-job", result: { ...rootResult, publication } });
     createStoredJob("revision-job", "running", { ...identity, sourceImageIds: ["source-2"],
       revision: { rootJobId: "root-job", parentJobId: "root-job",
-        reason: "text_region_correction", sourceImageIds: ["source-2"] } }, revisionResult);
+        reason: "text_region_correction", sourceImageIds: ["source-2"] },
+      regionCorrections: { sourceJobId: "root-job", pages: [{
+        sourceImageId: "source-2", baseRegionSetRevisionId: "region-set-old-2",
+        operations: [{ type: "update", regionId: "region-old-2", sourceText: "new-2" }],
+      }] } }, revisionResult);
     await pageRevisionService.synchronizeJob("root-job");
     await pageRevisionService.synchronizeJob("revision-job", { allowRunning: true });
     return revisionResult;
@@ -159,6 +168,42 @@ describe("TranslationRevisionPromotionService", () => {
 
     const selection = (entries) => entries.map(({ sourceImageId, revisionId }) => ({ sourceImageId, revisionId }));
     expect(selection(store.listActiveTranslationPageRevisions("root-job"))).toEqual(selection(before));
+    expect(publicationService.getChapter("manga", "translator", "chapter").activeRevisionId)
+      .toBe("translation_revision_root-job");
+  });
+
+  test("rejects promotion when the active base changes after the Job was queued", async () => {
+    const revisionResult = await prepareJobs();
+    const revised = store.listTranslationPageRevisions("root-job")
+      .find((entry) => entry.jobId === "revision-job");
+    store.activateTranslationPageRevisions("root-job", [{
+      sourceImageId: "source-2", revisionId: revised.revisionId,
+    }]);
+
+    await expect(promotionService.promote("revision-job", revisionResult)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "stale_region_set_revision",
+    });
+    expect(publicationService.getChapter("manga", "translator", "chapter").activeRevisionId)
+      .toBe("translation_revision_root-job");
+  });
+
+  test("uses compare-and-swap when the active page changes during promotion", async () => {
+    const revisionResult = await prepareJobs();
+    const revised = store.listTranslationPageRevisions("root-job")
+      .find((entry) => entry.jobId === "revision-job");
+    const originalBuildPages = promotionService.buildPages.bind(promotionService);
+    promotionService.buildPages = async (...args) => {
+      const pages = await originalBuildPages(...args);
+      store.activateTranslationPageRevisions("root-job", [{
+        sourceImageId: "source-2", revisionId: revised.revisionId,
+      }]);
+      return pages;
+    };
+
+    await expect(promotionService.promote("revision-job", revisionResult)).rejects.toMatchObject({
+      code: "stale_region_set_revision",
+    });
     expect(publicationService.getChapter("manga", "translator", "chapter").activeRevisionId)
       .toBe("translation_revision_root-job");
   });

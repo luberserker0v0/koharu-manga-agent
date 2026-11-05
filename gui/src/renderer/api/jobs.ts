@@ -200,7 +200,25 @@ export type TextRegionSnapshot = {
   pages: TextRegionPage[];
 };
 
+export type TextRegionReviewRegion = {
+  box: [number, number, number, number];
+  text: string;
+};
+
+export type TextRegionReviewRequest = {
+  sourceImageId: string;
+  baseRegionSetRevisionId: string;
+};
+
+export type TextRegionReviewResult = {
+  count: number;
+  regions: TextRegionReviewRegion[];
+};
+
+export type TextRegionReviewApplyRequest = TextRegionReviewRequest & TextRegionReviewResult;
+
 export type TextRegionCorrectionRequest = {
+  sourceLanguage?: string | string[] | null;
   pages: Array<{
     sourceImageId: string;
     baseRegionSetRevisionId: string;
@@ -799,6 +817,28 @@ export function getTextRegions(jobId: string): Promise<TextRegionSnapshot> {
   return apiFetch(`/jobs/${encodeURIComponent(jobId)}/text-regions`, { timeoutMs: 30000 });
 }
 
+export function reviewTextRegions(
+  jobId: string,
+  payload: TextRegionReviewRequest,
+): Promise<TextRegionReviewResult> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/text-region-reviews`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 300000,
+  });
+}
+
+export function applyTextRegionReview(
+  jobId: string,
+  payload: TextRegionReviewApplyRequest,
+): Promise<GuiJob> {
+  return apiFetch(`/jobs/${encodeURIComponent(jobId)}/text-region-reviews/apply`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeoutMs: 30000,
+  });
+}
+
 export function createTextRegionCorrectionJob(
   jobId: string,
   payload: TextRegionCorrectionRequest,
@@ -873,6 +913,7 @@ export function deleteIngestionKnowledgeReport(
 export type TranslationJobPayload = {
   translationMode: "quick" | "reference_style" | "local_style" | "learning_style";
   sourcePreflightId?: string;
+  sourceLanguage?: string | string[] | null;
   targetLanguage?: string;
   baseUrl?: string;
   qualityCheck?: boolean;

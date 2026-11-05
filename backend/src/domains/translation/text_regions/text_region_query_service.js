@@ -63,13 +63,39 @@ class TextRegionQueryService {
   }
 
   async revisionMap(job, snapshot) {
-    await this.pageRevisionService?.synchronizeJob(job.id);
+    await this.synchronizeRevisionLineage(job, new Set());
     const revisions = this.store.listTranslationPageRevisions(snapshot.rootJobId);
-    return new Map(
-      revisions
-        .filter((entry) => entry.jobId === job.id)
-        .map((entry) => [entry.sourceImageId, entry.revisionId]),
-    );
+    return this.composeRevisionMap(job, revisions, new Set());
+  }
+
+  async synchronizeRevisionLineage(job, visited) {
+    if (visited.has(job.id)) {
+      throw apiError("Translation revision ancestry contains a cycle.", 409, "revision_ancestry_invalid");
+    }
+    visited.add(job.id);
+    const parentJobId = job.payload?.revision?.parentJobId || job.parentJobId || null;
+    if (parentJobId) {
+      const parent = this.store.getJob(parentJobId);
+      if (!parent || parent.type !== "translation") {
+        throw apiError("Translation revision parent is unavailable.", 409, "revision_parent_unavailable");
+      }
+      await this.synchronizeRevisionLineage(parent, visited);
+    }
+    await this.pageRevisionService?.synchronizeJob(job.id);
+  }
+
+  composeRevisionMap(job, revisions, visited) {
+    if (visited.has(job.id)) {
+      throw apiError("Translation revision ancestry contains a cycle.", 409, "revision_ancestry_invalid");
+    }
+    visited.add(job.id);
+    const parentJobId = job.payload?.revision?.parentJobId || job.parentJobId || null;
+    let result = new Map();
+    if (parentJobId) result = this.composeRevisionMap(this.store.getJob(parentJobId), revisions, visited);
+    for (const entry of revisions.filter((candidate) => candidate.jobId === job.id)) {
+      result.set(entry.sourceImageId, entry.revisionId);
+    }
+    return result;
   }
 
   selectPages(snapshot, sourceImageId) {

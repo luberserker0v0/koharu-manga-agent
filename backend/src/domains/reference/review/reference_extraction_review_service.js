@@ -108,7 +108,7 @@ class ReferenceExtractionReviewService {
       throw error;
     }
     const sessionId = crypto.randomUUID();
-    this.jobManager.acquireKoharuReviewLease({ sessionId, referenceSetId });
+    this.jobManager.acquireMangaProcessorReviewLease({ sessionId, referenceSetId });
     try {
       const project = await this.resolveProject(referenceSetId, metadata);
       await this.client.openProject(project.id, this.baseUrl);
@@ -116,7 +116,7 @@ class ReferenceExtractionReviewService {
       const next = saveReviewMetadata(referenceSetId, buildEditingMetadata(metadata, project, sessionId));
       return buildStartResult(referenceSetId, next, sessionId, this.baseUrl);
     } catch (error) {
-      this.jobManager.releaseKoharuReviewLease(sessionId);
+      this.jobManager.releaseMangaProcessorReviewLease(sessionId);
       throw error;
     }
   }
@@ -142,7 +142,7 @@ class ReferenceExtractionReviewService {
       await this.client.closeCurrentProject(this.baseUrl);
     } finally {
       this.activeSession = null;
-      this.jobManager.releaseKoharuReviewLease(sessionId);
+      this.jobManager.releaseMangaProcessorReviewLease(sessionId);
     }
     return getReviewDocument(referenceSetId) || next;
   }
@@ -154,7 +154,7 @@ class ReferenceExtractionReviewService {
       await this.client.closeCurrentProject(this.baseUrl);
     } finally {
       this.activeSession = null;
-      this.jobManager.releaseKoharuReviewLease(sessionId);
+      this.jobManager.releaseMangaProcessorReviewLease(sessionId);
     }
     return getReviewDocument(referenceSetId) || next;
   }

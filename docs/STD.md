@@ -100,7 +100,10 @@ Primary unit targets:
 - `backend/src/integrations/ao/tasks/ao_tasks.js`
 - `backend/src/integrations/ao/contracts/ao_contracts.js`
 - `backend/src/integrations/koharu/client/koharu_client.js`
+- `backend/src/integrations/koharu/koharu_manga_processing_adapter.js`
 - `backend/src/integrations/koharu/pipeline/pipeline_monitor.js`
+- `backend/src/domains/manga_processing/manga_processing_ports.js`
+- `backend/src/domains/manga_processing/scene_text_regions.js`
 
 ### Integration
 Purpose:

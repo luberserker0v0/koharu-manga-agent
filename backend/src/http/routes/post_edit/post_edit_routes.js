@@ -9,7 +9,7 @@ async function handlePostEditExport(ctx) {
     badRequest(ctx.res, "outputDir is backend-owned and is not accepted by this API.");
     return true;
   }
-  await ctx.jobManager.assertKoharuAvailableForJobType?.("post_edit_export", body);
+  await ctx.jobManager.assertMangaProcessorAvailableForJobType?.("post_edit_export", body);
   sendJson(ctx.res, 202, publicJob(ctx.jobManager.createPostEditExportJob(body)));
   return true;
 }

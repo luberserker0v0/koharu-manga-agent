@@ -1,5 +1,5 @@
 import type { DesktopApi } from "../../preload";
-import type { DesktopInfo, GuiSettings, KoharuHostProcessState, PathValidationSummary } from "../types/settings";
+import type { DesktopInfo, GuiSettings, MangaProcessorHostState, PathValidationSummary } from "../types/settings";
 import type { ImageFolderUploadRequest, ImageUploadResult } from "../../shared/image_upload";
 import type { ArtifactDownloadRequest, ArtifactDownloadResult } from "../../shared/artifact_download";
 
@@ -46,24 +46,24 @@ export function pickFile(options?: {
   return api ? api.pickFile(options) : Promise.reject(unavailableError());
 }
 
-export function getKoharuHostStatus(): Promise<KoharuHostProcessState> {
+export function getMangaProcessorHostStatus(): Promise<MangaProcessorHostState> {
   const api = getDesktopApi();
-  return api ? api.getKoharuHostStatus() : Promise.reject(unavailableError());
+  return api ? api.getMangaProcessorHostStatus() : Promise.reject(unavailableError());
 }
 
-export function startKoharuHost(executablePath: string): Promise<KoharuHostProcessState> {
+export function startMangaProcessorHost(executablePath: string): Promise<MangaProcessorHostState> {
   const api = getDesktopApi();
-  return api ? api.startKoharuHost(executablePath) : Promise.reject(unavailableError());
+  return api ? api.startMangaProcessorHost(executablePath) : Promise.reject(unavailableError());
 }
 
-export function installAndStartKoharuHost(): Promise<KoharuHostProcessState> {
+export function installAndStartMangaProcessorHost(): Promise<MangaProcessorHostState> {
   const api = getDesktopApi();
-  return api ? api.installAndStartKoharuHost() : Promise.reject(unavailableError());
+  return api ? api.installAndStartMangaProcessorHost() : Promise.reject(unavailableError());
 }
 
-export function stopKoharuHost(): Promise<KoharuHostProcessState> {
+export function stopMangaProcessorHost(): Promise<MangaProcessorHostState> {
   const api = getDesktopApi();
-  return api ? api.stopKoharuHost() : Promise.reject(unavailableError());
+  return api ? api.stopMangaProcessorHost() : Promise.reject(unavailableError());
 }
 
 export function pickDirectory(options?: {

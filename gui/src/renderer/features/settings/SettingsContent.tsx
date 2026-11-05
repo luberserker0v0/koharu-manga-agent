@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type {
-  BackendConfig, KoharuEngineCatalog, KoharuEngineOption, PipelineEngineKey,
+  BackendConfig, MangaProcessorEngineCatalog, MangaProcessorEngineOption, PipelineEngineKey,
 } from "../../api/runtime";
 import { BackendConnectionSettings } from "./components/BackendConnectionSettings";
 import { KoharuHostRuntimeSettings } from "./components/KoharuHostRuntimeSettings";
@@ -14,14 +14,17 @@ const ENGINE_KEYS: PipelineEngineKey[] = [
 type EngineKey = PipelineEngineKey;
 const TRANSLATION_MODES = ["quick", "reference_style", "local_style", "learning_style"] as const;
 type TranslationMode = (typeof TRANSLATION_MODES)[number];
-const ENGINE_CATALOG_KEYS: Record<EngineKey, (keyof KoharuEngineCatalog)[]> = {
+const ENGINE_CATALOG_KEYS: Record<EngineKey, (keyof MangaProcessorEngineCatalog)[]> = {
   detect: ["detectors"], fontDetect: ["fontDetectors", "detectors"],
   segment: ["segmenters", "detectors"], bubbleSegment: ["bubbleSegmenters", "detectors"],
   ocr: ["ocr"], translate: ["translators"], clean: ["inpainters"], render: ["renderers"],
 };
 
-function engineOptionsFor(catalog: KoharuEngineCatalog | undefined, key: EngineKey): KoharuEngineOption[] {
-  const options = new Map<string, KoharuEngineOption>();
+function engineOptionsFor(
+  catalog: MangaProcessorEngineCatalog | undefined,
+  key: EngineKey,
+): MangaProcessorEngineOption[] {
+  const options = new Map<string, MangaProcessorEngineOption>();
   for (const catalogKey of ENGINE_CATALOG_KEYS[key]) {
     for (const option of catalog?.[catalogKey] || []) {
       if (option?.id && !options.has(option.id)) options.set(option.id, option);
@@ -61,8 +64,8 @@ function RuntimeCard({ model }: { model: SettingsModel }) {
       <StatusBadge label={model.t("settings.runtime.backend")}
         value={`${model.t(`settings.runtime.backendMode.${runtime.backend.deploymentMode || "standalone"}`)} - ${runtime.backend.host}:${runtime.backend.port}`} tone="good" />
       <StatusBadge label={model.t("settings.runtime.koharu")}
-        value={`${runtime.koharu.status} - ${runtime.koharu.baseUrl || model.config?.api?.baseUrl || unavailable}`}
-        tone={runtime.koharu.status === "running" ? "good" : "warn"} />
+        value={`${runtime.mangaProcessor.status} - ${runtime.mangaProcessor.baseUrl || model.config?.api?.baseUrl || unavailable}`}
+        tone={runtime.mangaProcessor.status === "running" ? "good" : "warn"} />
       <StatusBadge label={model.t("settings.ao.runtimeLabel")}
         value={`${runtime.agent.status} - ${runtime.agent.baseUrl || model.config?.agent?.baseUrl || unavailable}`}
         tone={agentReady ? "good" : "warn"} />
@@ -111,7 +114,7 @@ function StorageCard({ model }: { model: SettingsModel }) {
   if (!model.settings) return null;
   return <SettingsCard><Section title={model.t("settings.storage.title")} description={model.t("settings.storage.description")}>
     <StorageLocations backend={model.pathsQuery.data?.backend} desktopInfo={model.desktopInfo}
-      koharu={model.pathsQuery.data?.koharu} onOpen={model.openStoragePath} settings={model.settings} t={model.t} />
+      koharu={model.pathsQuery.data?.mangaProcessor} onOpen={model.openStoragePath} settings={model.settings} t={model.t} />
   </Section></SettingsCard>;
 }
 
@@ -276,12 +279,12 @@ function KoharuDiagnostics({ model }: { model: SettingsModel }) {
   const unknown = model.t("settings.koharu.paths.unknown");
   const keys = ["dataRoot", "projectsRoot", "modelsRoot", "runtimeRoot", "configPath", "executablePath"] as const;
   return <details><summary>{model.t("settings.koharu.diagnostics.title")}</summary><div className="summary-grid">
-    <DiagnosticValue label={model.t("settings.koharu.runtimeVersion")} value={model.runtimeQuery.data?.koharu.version || unknown} />
-    <DiagnosticValue label={model.t("settings.koharu.runtimePid")} value={model.runtimeQuery.data?.koharu.managedPid || unknown} />
+    <DiagnosticValue label={model.t("settings.koharu.runtimeVersion")} value={model.runtimeQuery.data?.mangaProcessor.version || unknown} />
+    <DiagnosticValue label={model.t("settings.koharu.runtimePid")} value={model.runtimeQuery.data?.mangaProcessor.managedPid || unknown} />
     {keys.map((key) => <DiagnosticValue key={key} label={model.t(`settings.koharu.paths.${key}`)}
-      value={model.pathsQuery.data?.koharu[key] || unknown} code />)}
-    {model.runtimeQuery.data?.koharu.lastError ? <DiagnosticValue label={model.t("settings.koharu.runtimeError")}
-      value={model.runtimeQuery.data.koharu.lastError} /> : null}
+      value={model.pathsQuery.data?.mangaProcessor[key] || unknown} code />)}
+    {model.runtimeQuery.data?.mangaProcessor.lastError ? <DiagnosticValue label={model.t("settings.koharu.runtimeError")}
+      value={model.runtimeQuery.data.mangaProcessor.lastError} /> : null}
   </div></details>;
 }
 
@@ -290,7 +293,7 @@ function KoharuCard({ model }: { model: SettingsModel }) {
   return <SettingsCard><Section title={model.t("settings.koharu.translationTitle")}
     description={model.t("settings.koharu.translationDescription")}>
     {model.settings ? <KoharuHostRuntimeSettings autoStart={model.settings.koharuAutoStart}
-      executablePath={model.settings.koharuExecutablePath} process={model.desktopInfo?.koharuProcess || null}
+      executablePath={model.settings.koharuExecutablePath} process={model.desktopInfo?.mangaProcessorProcess || null}
       onAutoStartChange={model.updateAutoStart} onExecutablePathChange={(value) => model.updateLocal("koharuExecutablePath", value)}
       onBrowse={() => void model.chooseKoharuExecutable()} t={model.t} /> : null}
     <KoharuFields model={model} />

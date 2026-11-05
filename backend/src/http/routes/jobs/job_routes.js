@@ -252,7 +252,7 @@ async function retryJob(ctx, jobId) {
   if (["translation", "translation_quality_repair"].includes(sourceJob.type)) {
     await ctx.jobManager.assertAgentAvailableForTranslation?.(sourceJob.payload);
   }
-  await ctx.jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
+  await ctx.jobManager.assertMangaProcessorAvailableForJobType?.(sourceJob.type, sourceJob.payload);
   const job = ctx.jobManager.retryJob(jobId);
   if (!job) return notFound(ctx.res);
   sendJson(ctx.res, 202, publicJob(job));
@@ -268,7 +268,7 @@ async function handleJobRetry(ctx) {
 async function resumeJob(ctx, jobId) {
   const sourceJob = ctx.jobManager.getJob(jobId);
   if (!sourceJob) return notFound(ctx.res);
-  await ctx.jobManager.assertKoharuAvailableForJobType?.(sourceJob.type, sourceJob.payload);
+  await ctx.jobManager.assertMangaProcessorAvailableForJobType?.(sourceJob.type, sourceJob.payload);
   const job = ctx.jobManager.resumeJob(jobId);
   if (!job) return notFound(ctx.res);
   sendJson(ctx.res, 202, publicJob(job));

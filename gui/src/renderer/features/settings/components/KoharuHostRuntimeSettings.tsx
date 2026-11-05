@@ -1,11 +1,11 @@
-import type { KoharuHostProcessState } from "../../../types/settings";
+import type { MangaProcessorHostState } from "../../../types/settings";
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 type Props = {
   autoStart: boolean;
   executablePath: string;
-  process: KoharuHostProcessState | null;
+  process: MangaProcessorHostState | null;
   onAutoStartChange: (enabled: boolean) => void;
   onExecutablePathChange: (value: string) => void;
   onBrowse: () => void;

@@ -14,7 +14,7 @@ const {
   permanentlyDeleteMatchingJobs,
   resolveMangaDisplayLabel,
 } = require("./reference_management");
-const { applyManagedKoharuBaseUrl } = require("../runtime/runtime_context");
+const { applyManagedMangaProcessorBaseUrl } = require("../runtime/runtime_context");
 const { badRequest, notFound, readJsonBody, sendJson } = require("../../server/http_helpers");
 const { publicSourcePreflight, streamPreflightImage } = require("./source_preflight_http");
 const { publicJob, withoutInternalLocations } = require("../jobs/job_http");
@@ -82,9 +82,9 @@ function requireExtractionReviewService(ctx) {
 }
 
 async function prepareExtractionReviewRuntime(ctx) {
-  if (!ctx.jobManager.koharuRuntimeManager) return;
-  const status = await ctx.jobManager.koharuRuntimeManager.ensureRunning();
-  applyManagedKoharuBaseUrl(ctx, status?.baseUrl);
+  if (!ctx.jobManager.mangaProcessingRuntime) return;
+  const status = await ctx.jobManager.mangaProcessingRuntime.ensureRunning();
+  applyManagedMangaProcessorBaseUrl(ctx, status?.baseUrl);
   if (status?.baseUrl && ctx.extractionReviewService) ctx.extractionReviewService.baseUrl = status.baseUrl;
 }
 
@@ -307,7 +307,7 @@ async function handleSourcePreflightRead(ctx) {
 async function handleReferenceExtractionJob(ctx) {
   if (ctx.req.method !== "POST" || ctx.url.pathname !== "/jobs/reference-extraction") return false;
   const body = await readJsonBody(ctx.req);
-  await ctx.jobManager.assertKoharuAvailableForJobType?.("reference_extraction", body);
+  await ctx.jobManager.assertMangaProcessorAvailableForJobType?.("reference_extraction", body);
   sendJson(ctx.res, 202, publicJob(ctx.jobManager.createReferenceExtractionJob(body)));
   return true;
 }

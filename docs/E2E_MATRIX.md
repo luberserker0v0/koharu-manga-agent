@@ -37,6 +37,7 @@ It answers:
 | `E2E-IMP-GUI-REORDER-001` | Image reorder UX and apply-order behavior | Important | Manual | Local GUI | `docs/GUI_SMOKE_CHECKLIST.md` | No GUI automation |
 | `E2E-BLK-TRAN-003` | Optional quality stage executes when enabled | Blocker | Automated | Backend + AO runtime | `tests/e2e/backend_job_flow.test.js` now passes through the official preflight-aware translation path before quality assertions | GUI toggle verification remains manual |
 | `E2E-BLK-TRAN-004` | Optional knowledge stage executes when enabled | Blocker | Automated | Backend + AO runtime | `tests/e2e/backend_job_flow.test.js`, `tests/e2e/knowledge_base.test.js`; the backend flow covers the official preflight-aware translation path before knowledge assertions | GUI toggle verification remains manual |
+| `E2E-BLK-OCR-001` | Extension OCR create/delete correction and chapter promotion | Blocker | Hybrid | `koharu-manga-extension` + backend + manga processor | `tests/integration/text_regions_api.test.js`, `tests/unit/text_region_correction_service.test.js`, `tests/unit/text_region_patch_ops.test.js`, `tests/unit/text_region_correction_workflow.test.js`, `tests/unit/translation_revision_promotion.test.js` | GitHub issue #3 remains open until the real extension verifies mixed create/delete, returned ID mapping, authoritative snapshot, rendered page, and final chapter export |
 | `E2E-BLK-SYNC-001` | `Job List` SSE-first sync | Blocker | Hybrid | Local GUI + backend SSE | `GET /jobs/stream` behavior via backend API coverage, `docs/GUI_SMOKE_CHECKLIST.md` | No dedicated automated GUI assertion |
 | `E2E-BLK-SYNC-002` | `Job Detail` SSE-first sync | Blocker | Hybrid | Local GUI + backend SSE + Koharu | per-job runtime behavior exercised indirectly, `docs/GUI_SMOKE_CHECKLIST.md` | GUI live projection still manually verified |
 | `E2E-BLK-SYNC-003` | Workflow / Engines / Page Progress projection | Blocker | Hybrid | Local GUI + backend + Koharu SSE | `tests/unit/pipeline_monitor.test.js`, `docs/GUI_SMOKE_CHECKLIST.md` | Visual correctness is manual |
@@ -105,6 +106,29 @@ It answers:
   - visible 5-second batch jumps remain
   - badge never leaves `Connecting`
 
+### `E2E-BLK-OCR-001` Extension OCR create/delete correction
+- **Tracking**
+  - [GitHub issue #3](https://github.com/luberserker0v0/koharu-manga-agent/issues/3)
+- **Automated coverage already present**
+  - request validation covers create, update, delete, mixed batches, bounds, stale revisions, conflicts, and inherited settings
+  - REST integration coverage verifies the mixed operation request reaches the normal queued Job boundary
+  - workflow tests verify OCR, atomic scene correction, translation, cleaning, rendering, and promotion contracts
+- **Manual extension acceptance still required**
+  1. Read the parent Job's authoritative `text-regions` snapshot.
+  2. Draw one missing OCR region, enter source text, and delete one false-positive region.
+  3. Submit both drafts in one `operations` request and monitor the returned Job through SSE/GET.
+  4. Resolve `result.textRegionOperations.created[].clientOperationId` to its returned opaque `regionId`.
+  5. Refresh `text-regions`, translated images, and the complete chapter export.
+- **Expected result**
+  - the created region appears with the returned backend-owned ID and deterministic reading order
+  - the deleted region is absent and does not reappear during the correction rerun
+  - cleaning/inpainting removes the original lettering before the created region is rendered
+  - the complete chapter publication changes only after successful finalization
+- **Failure signal**
+  - the extension invents an upstream node ID or calls the manga processor directly
+  - the created-ID mapping is missing, the deleted region reappears, or the rendered page/export is stale
+  - a failed, blocked, or canceled correction changes the active chapter
+
 ### `E2E-BLK-JOBS-003` Delete to Trash and Undo
 - **Preconditions**
   - at least one terminal job exists
@@ -136,6 +160,7 @@ It answers:
 - **Current high-value automated baseline is green** for:
   - `tests/integration/backend_api.test.js`
   - `tests/e2e/backend_job_flow.test.js`
+  - OCR correction contract suites listed under `E2E-BLK-OCR-001`
   - `tests/unit/ao_client.test.js`
   - `tests/unit/ao_assets.test.js`
   - plus `gui` `typecheck` and `build`
@@ -165,3 +190,5 @@ liveness. Release validation must also inspect `/ready` or `/runtime/status`.
 - No headless GUI automation currently validates badge transitions, pane resizing, or drag-reorder interactions.
 - `Job List` and `Job Detail` live-sync behavior is specified and manually testable, but not fully machine-asserted in desktop UI.
 - Long-duration soak tests are still ad hoc rather than formalized in Jest.
+- GitHub issue #3 remains open pending the real `koharu-manga-extension` acceptance flow; backend-only
+  integration coverage currently stops at the queued Job boundary and does not replace that check.

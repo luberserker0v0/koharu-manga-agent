@@ -55,7 +55,7 @@ describe("PageRevisionService", () => {
       payload: {
         sourcePreflightId: "preflight-1",
         translationTarget: { providerId: "openai", modelId: "gpt-5" },
-        sourceLanguage: "ja",
+        sourceLanguage: ["ja", "en"],
         targetLanguage: "zh-TW",
       },
       imageNames: ["page-1.png", "page-2.png", "page-3.png"],
@@ -80,6 +80,7 @@ describe("PageRevisionService", () => {
     const initial = await service.list("root-job");
     expect(initial.pages.map((page) => page.revisions.length)).toEqual([1, 2, 2]);
     expect(initial.pages[1].revisions.map((revision) => revision.revisionNumber)).toEqual([1, 2]);
+    expect(initial.pages[0].revisions[0].sourceLanguage).toEqual(["ja", "en"]);
     expect(initial.pages[1].revisions[1]).toEqual(expect.objectContaining({
       active: false,
       jobId: "selective-job",

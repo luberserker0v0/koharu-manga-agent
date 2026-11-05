@@ -4,35 +4,31 @@ import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import type {
+  MangaProcessorHostService,
+  MangaProcessorHostState,
+} from "./manga_processor_host_contract";
 
 const KOHARU_VERSION = "0.61.2";
 const KOHARU_REPOSITORY = "koharu-rs/koharu";
 const KOHARU_WINDOWS_X64_ASSET = "koharu_windows_x64.exe";
 
-type KoharuHostStatus = "checking" | "downloading" | "running" | "stopped" | "unavailable" | "failed";
 type ReleaseAsset = {
   name?: string;
   size?: number;
   browser_download_url?: string;
 };
 
-export type KoharuHostProcessState = {
-  mode: "external" | "managed";
-  status: KoharuHostStatus;
-  baseUrl: string;
-  executablePath: string | null;
-  pid: number | null;
-  note: string;
-};
-
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export class KoharuHostProcessService {
+export class KoharuHostProcessService implements MangaProcessorHostService {
   private child: ChildProcess | null = null;
   private readonly baseUrl = "http://127.0.0.1:4000";
-  private state: KoharuHostProcessState = {
+  private state: MangaProcessorHostState = {
+    providerId: "koharu",
+    providerName: "Koharu",
     mode: "external",
     status: "stopped",
     baseUrl: this.baseUrl,
@@ -41,7 +37,7 @@ export class KoharuHostProcessService {
     note: "Koharu has not been checked yet.",
   };
 
-  getState(): KoharuHostProcessState {
+  getState(): MangaProcessorHostState {
     return this.state;
   }
 
@@ -188,7 +184,7 @@ export class KoharuHostProcessService {
     }
   }
 
-  async installAndStart(): Promise<KoharuHostProcessState> {
+  async installAndStart(): Promise<MangaProcessorHostState> {
     if (await this.isReachable()) return this.inspect();
     const executablePath = await this.install();
     return this.start(executablePath);
@@ -203,7 +199,7 @@ export class KoharuHostProcessService {
     }
   }
 
-  async inspect(): Promise<KoharuHostProcessState> {
+  async inspect(): Promise<MangaProcessorHostState> {
     const reachable = await this.isReachable();
     if (reachable) {
       this.state = {
@@ -224,7 +220,7 @@ export class KoharuHostProcessService {
     return this.state;
   }
 
-  async ensureStarted(options: { autoStart: boolean; executablePath: string }): Promise<KoharuHostProcessState> {
+  async ensureStarted(options: { autoStart: boolean; executablePath: string }): Promise<MangaProcessorHostState> {
     this.state = {
       ...this.state,
       status: "checking",
@@ -313,13 +309,15 @@ export class KoharuHostProcessService {
     throw new Error(this.state.note);
   }
 
-  async start(executablePath: string): Promise<KoharuHostProcessState> {
+  async start(executablePath: string): Promise<MangaProcessorHostState> {
     if (await this.isReachable()) return this.inspect();
     const resolvedExecutable = this.resolveExecutable(executablePath);
     if (this.child && !this.child.killed) return this.inspect();
     const child = this.spawnKoharu(resolvedExecutable);
     this.child = child;
     this.state = {
+      providerId: "koharu",
+      providerName: "Koharu",
       mode: "managed",
       status: "checking",
       baseUrl: this.baseUrl,
@@ -332,7 +330,7 @@ export class KoharuHostProcessService {
     return this.waitUntilReachable();
   }
 
-  async stopManaged(): Promise<KoharuHostProcessState> {
+  async stopManaged(): Promise<MangaProcessorHostState> {
     if (!this.child || this.child.killed) return this.inspect();
     const child = this.child;
     this.state = {

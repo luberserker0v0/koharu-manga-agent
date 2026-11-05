@@ -18,11 +18,15 @@ curl http://127.0.0.1:4001/health
 curl http://127.0.0.1:4001/ready
 ```
 
-The default Compose mapping is loopback-only:
+The default Compose mapping publishes the backend on every host interface:
 
 ```text
-127.0.0.1:4001 -> backend:4001
+0.0.0.0:4001 -> backend:4001
 ```
+
+Local clients can still use `http://127.0.0.1:4001`. Remote clients use the Docker host's IP or
+DNS name. In contrast, the native and desktop fallback backend continues to bind only to
+`127.0.0.1:4001`.
 
 The backend runs as the non-root `node` user. Its writable state is stored in the `backend-data` named volume at `/data`.
 
@@ -50,7 +54,7 @@ Runtime ownership differs by deployment:
 | Docker backend without GUI | Docker Compose | Operator-managed host process | `http://host.docker.internal:4000` |
 
 The Linux container cannot install or execute the Windows Koharu binary. Its
-`koharuRuntime.managed` setting is therefore `false`; `/runtime/koharu/start` cannot replace the
+`koharuRuntime.managed` setting is therefore `false`; `/runtime/manga-processor/start` cannot replace the
 required host process in Docker mode.
 
 The Docker profile sets `api.pageUploadMode` to `multipart`. This is required because host Koharu cannot open `/data/...` paths from the backend container. Do not change it to `from-paths` unless Backend and Koharu intentionally share the same filesystem and path namespace.
@@ -77,7 +81,7 @@ different network namespaces.
 
 Keep the host firewall restricted to the Docker/local-machine path. `GET /health` remains HTTP `200`
 while Koharu is offline because it reports backend liveness. `GET /ready` returns HTTP `503` with a
-`koharu_unavailable` blocker, and `/api/v1/runtime/status` provides the detailed external dependency
+`manga_processor_unavailable` blocker, and `/api/v1/runtime/status` provides the detailed external dependency
 state. Koharu-backed create/retry/resume requests are rejected before a job is created.
 
 Operational checks:
@@ -91,13 +95,13 @@ Invoke-RestMethod http://127.0.0.1:4001/ready
 Expected states:
 
 - `/health`: `200` whenever the backend process is alive;
-- `/runtime/status`: `backend.status = ready`; in Docker, Koharu uses `mode = external`;
+- `/runtime/status`: `backend.status = ready`; in Docker, `mangaProcessor` uses `mode = external` and `providerId = koharu`;
 - `/ready`: `200` only after host Koharu is reachable, otherwise `503` with
-  `koharu_unavailable` and `retrySafe: true` on rejected Koharu-backed requests.
+  `manga_processor_unavailable` and `retrySafe: true` on rejected manga-processing requests.
 
 Koharu translation credentials remain on the host. Configure DeepL, Google Cloud Translation, or
 Caiyun in Koharu, then inspect the sanitized backend view at
-`GET /api/v1/runtime/koharu/translation-providers`. Never put those provider API keys in the browser
+`GET /api/v1/runtime/manga-processor/translation-providers`. Never put those provider API keys in the browser
 extension, Docker image, Job payload, or `docker/koharu.json`.
 
 ## Configuration And Data
@@ -150,9 +154,10 @@ Browser clients should use `/api/v1`. Image input is uploaded through `/api/v1/u
 Run the complete REST Translation workflow with `scripts/rest_translation_workflow.mjs`. Its request sequence and client responsibilities are documented in `docs/REST_WORKFLOW.md`.
 
 `GET /health` and `GET /ready` are intentionally public for deployment probes. Compose uses `/health`
-so a temporary external-service outage does not restart the persistence backend. The default container
-publishes only to loopback and leaves `server.authToken` unset for initial local development. Set a
-strong token before exposing the port beyond the local machine.
+so a temporary external-service outage does not restart the persistence backend. The default
+container publishes on `0.0.0.0:4001` and leaves `server.authToken` unset for convenient local or
+trusted-network use. Bearer authentication remains opt-in. Configure a strong token and restrict
+`server.corsAllowedOrigins` when the host network is not trusted or the API is exposed beyond it.
 
 ## Persistence Check
 

@@ -45,7 +45,7 @@ function createRunJobHooks(manager, jobId, job) {
 async function prepareRunJob(manager, job, hooks, jobId) {
   manager.store.updateJob({ id: jobId, blockedReason: null });
   hooks.setStage("running", job.type);
-  await manager.ensureKoharuReadyForJob(job, hooks);
+  await manager.ensureMangaProcessorReadyForJob(job, hooks);
   assertJobType(job.type, job.executionKind || "job");
   if (job.executionKind === "workflow") {
     throw new Error(`Workflow ${job.type} cannot run as an atomic job.`);

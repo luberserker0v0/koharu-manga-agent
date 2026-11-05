@@ -25,6 +25,22 @@ describe("workflow engine manga-management binding sync", () => {
         format: "rendered",
       }),
     };
+    const ocrLanguageResolution = {
+      requestedSourceLanguages: ["en", "ja"], effectiveSourceLanguages: ["en", "ja"],
+      primarySourceLanguage: "en", engineId: "paddle-ocr-vl-1.5",
+      hintsSupported: false, hintsApplied: false,
+    };
+    const projectSetup = { run: jest.fn().mockResolvedValue({
+      projectName: "translate_binding", operationId: "op-binding",
+      engines: { ocr: "paddle-ocr-vl-1.5" }, steps: [], ocrLanguageResolution,
+    }) };
+    const translationMemoryComposer = jest.fn().mockReturnValue({
+      translationMode: "quick",
+      policy: { useReferenceMemory: false, useLocalMemory: false, runQuality: false, commitKnowledge: false },
+      readiness: { reference: true, local: true },
+      effective: { glossary: [], sourceIdentity: [], story: null, style: null, localKnowledge: null },
+      usage: {}, warnings: [], revisions: [], layers: { reference: null, local: null }, fingerprint: "test-quick",
+    });
     const engine = new WorkflowEngine({
       sourcePreflightModule: {
         resolveSourceSelection: jest.fn().mockReturnValue({
@@ -37,14 +53,7 @@ describe("workflow engine manga-management binding sync", () => {
           images: [{ id: "source-image-1", orderedPath: "C:\\source\\001.png", orderIndex: 0 }],
         }),
       },
-      projectSetup: {
-        run: jest.fn().mockResolvedValue({
-          projectName: "translate_binding",
-          operationId: "op-binding",
-          engines: {},
-          steps: [],
-        }),
-      },
+      projectSetup,
       pipelineMonitor: {
         run: jest.fn().mockResolvedValue({
           summary: { finalStatus: "completed", totalPages: 1, steps: {} },
@@ -73,17 +82,11 @@ describe("workflow engine manga-management binding sync", () => {
         run: jest.fn().mockResolvedValue({ translationPairs: 0 }),
       },
       exportModule,
-      projectLifecycle: {
-        client: { getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }) },
+      mangaProcessor: {
+        getScene: jest.fn().mockResolvedValue({ scene: { pages: {} } }),
         closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
       },
-      translationMemoryComposer: () => ({
-        translationMode: "quick",
-        policy: { useReferenceMemory: false, useLocalMemory: false, runQuality: false, commitKnowledge: false },
-        readiness: { reference: true, local: true },
-        effective: { glossary: [], sourceIdentity: [], story: null, style: null, localKnowledge: null },
-        usage: {}, warnings: [], revisions: [], layers: { reference: null, local: null }, fingerprint: "test-quick",
-      }),
+      translationMemoryComposer,
       postEditWorkspaceModule: null,
       jobStore: null,
       translationPublicationService: {
@@ -102,7 +105,7 @@ describe("workflow engine manga-management binding sync", () => {
       isCanceled: jest.fn().mockReturnValue(false),
     };
 
-    await engine.runTranslationJob(
+    const result = await engine.runTranslationJob(
       {
         translationMode: "quick",
         sourcePreflightId: "preflight_001",
@@ -112,6 +115,7 @@ describe("workflow engine manga-management binding sync", () => {
         translatorLabel: "Self Team",
         chapterId: "chapter_001",
         chapterTitle: "Chapter 001",
+        sourceLanguage: ["en", "ja"],
         targetLanguage: "zh-TW",
       },
       hooks
@@ -120,6 +124,10 @@ describe("workflow engine manga-management binding sync", () => {
     expect(exportModule.run).toHaveBeenCalledWith(expect.objectContaining({
       outputDir: expect.stringMatching(/[\\/]manga_phantom_fantasy[\\/]translator_self_team[\\/]chapter_001[\\/]translation-job_translation_001$/),
     }));
+    expect(translationMemoryComposer).toHaveBeenCalledWith(expect.objectContaining({ sourceLanguage: "en" }));
+    expect(projectSetup.run).toHaveBeenCalledWith(expect.objectContaining({ sourceLanguage: ["en", "ja"] }));
+    expect(hooks.emit).toHaveBeenCalledWith("ocr.language_resolution", ocrLanguageResolution);
+    expect(result.ocrLanguageResolution).toEqual(ocrLanguageResolution);
 
     expect(syncMangaManagementBinding).toHaveBeenCalledWith({
       mangaId: "manga_phantom_fantasy",
@@ -173,8 +181,8 @@ describe("workflow engine manga-management binding sync", () => {
       qualityModule: { run: jest.fn() },
       knowledgeModule: null,
       exportModule: { run: jest.fn().mockResolvedValue({ path: "resume.zip", size: 1, format: "rendered" }) },
-      projectLifecycle: {
-        client: projectClient,
+      mangaProcessor: {
+        ...projectClient,
         closeCurrentProject: jest.fn().mockResolvedValue({ success: true }),
       },
       translationMemoryComposer: jest.fn(),
@@ -239,7 +247,7 @@ describe("workflow engine manga-management binding sync", () => {
       qualityModule: null,
       knowledgeModule: null,
       exportModule: null,
-      projectLifecycle: null,
+      mangaProcessor: null,
       postEditWorkspaceModule: null,
       jobStore: null,
     });

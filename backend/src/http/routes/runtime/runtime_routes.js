@@ -1,9 +1,9 @@
 const fs = require("fs");
 const { DATA_ROOT, PROJECT_CONFIG_PATH, paths } = require("../../../config");
 const { validateConfigPatch } = require("../../../config_service");
-const { normalizeTranslationCatalog } = require("../../../integrations/koharu/translation/translation_targets");
+const { normalizeTranslationCatalog } = require("../../../domains/manga_processing/translation_targets");
 const { readJsonBody, sendJson } = require("../../server/http_helpers");
-const { applyManagedKoharuBaseUrl } = require("./runtime_context");
+const { applyManagedMangaProcessorBaseUrl } = require("./runtime_context");
 
 function createRuntimeAoClient(ctx, body) {
   const agent = ctx.jobManager.getConfig()?.agent || {};
@@ -67,33 +67,33 @@ async function handleAoRuntime(ctx) {
   return true;
 }
 
-function requireKoharuClient(ctx, method, message) {
-  const client = ctx.jobManager?.engine?.projectLifecycle?.client;
-  if (!client?.[method]) throw new Error(message);
-  return client;
+function requireMangaProcessor(ctx, method, message) {
+  const processor = ctx.jobManager?.engine?.mangaProcessor;
+  if (!processor?.[method]) throw new Error(message);
+  return processor;
 }
 
-async function resolveKoharuBaseUrl(ctx) {
+async function resolveMangaProcessorBaseUrl(ctx) {
   const override = ctx.url.searchParams.get("baseUrl");
-  if (!override && ctx.jobManager.koharuRuntimeManager) {
-    const status = await ctx.jobManager.koharuRuntimeManager.ensureRunning();
-    applyManagedKoharuBaseUrl(ctx, status?.baseUrl);
+  if (!override && ctx.jobManager.mangaProcessingRuntime) {
+    const status = await ctx.jobManager.mangaProcessingRuntime.ensureRunning();
+    applyManagedMangaProcessorBaseUrl(ctx, status?.baseUrl);
   }
-  return override || ctx.jobManager.koharuRuntimeManager?.baseUrl || ctx.jobManager.resolvedConfig?.api?.baseUrl;
+  return override || ctx.jobManager.mangaProcessingRuntime?.baseUrl || ctx.jobManager.resolvedConfig?.api?.baseUrl;
 }
 
-async function handleKoharuEngines(ctx) {
-  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/koharu/engines") return false;
-  const client = requireKoharuClient(ctx, "getEngines", "Koharu client is not configured.");
-  const baseUrl = await resolveKoharuBaseUrl(ctx);
+async function handleMangaProcessorEngines(ctx) {
+  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/manga-processor/engines") return false;
+  const client = requireMangaProcessor(ctx, "getEngines", "Manga processor is not configured.");
+  const baseUrl = await resolveMangaProcessorBaseUrl(ctx);
   sendJson(ctx.res, 200, { engines: await client.getEngines(baseUrl) });
   return true;
 }
 
-async function handleKoharuTranslationProviders(ctx) {
-  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/koharu/translation-providers") return false;
-  const client = requireKoharuClient(ctx, "getTranslationCatalog", "Koharu translation catalog is not configured.");
-  const baseUrl = await resolveKoharuBaseUrl(ctx);
+async function handleMangaProcessorTranslationProviders(ctx) {
+  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/manga-processor/translation-providers") return false;
+  const client = requireMangaProcessor(ctx, "getTranslationCatalog", "Translation catalog is not configured.");
+  const baseUrl = await resolveMangaProcessorBaseUrl(ctx);
   const catalog = normalizeTranslationCatalog(await client.getTranslationCatalog(baseUrl));
   sendJson(ctx.res, 200, {
     baseUrl,
@@ -103,9 +103,9 @@ async function handleKoharuTranslationProviders(ctx) {
   return true;
 }
 
-function requireManagedKoharu(ctx) {
-  if (!ctx.jobManager.koharuRuntimeManager) throw new Error("Managed Koharu runtime is not configured.");
-  return ctx.jobManager.koharuRuntimeManager;
+function requireMangaProcessingRuntime(ctx) {
+  if (!ctx.jobManager.mangaProcessingRuntime) throw new Error("Manga processing runtime is not configured.");
+  return ctx.jobManager.mangaProcessingRuntime;
 }
 
 function backendRuntimePaths() {
@@ -119,54 +119,54 @@ function backendRuntimePaths() {
   };
 }
 
-async function handleKoharuPaths(ctx) {
-  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/koharu/paths") return false;
-  const runtime = requireManagedKoharu(ctx);
-  const client = ctx.jobManager?.engine?.projectLifecycle?.client || null;
+async function handleMangaProcessorPaths(ctx) {
+  if (ctx.req.method !== "GET" || ctx.url.pathname !== "/runtime/manga-processor/paths") return false;
+  const runtime = requireMangaProcessingRuntime(ctx);
+  const client = ctx.jobManager?.engine?.mangaProcessor || null;
   const baseUrl =
     ctx.url.searchParams.get("baseUrl") || runtime.baseUrl || ctx.jobManager.resolvedConfig?.api?.baseUrl;
   sendJson(ctx.res, 200, {
     backend: backendRuntimePaths(),
-    koharu: await runtime.inspectPaths({ client, baseUrl }),
+    mangaProcessor: await runtime.inspectPaths({ client, baseUrl }),
   });
   return true;
 }
 
-async function handleKoharuInstall(ctx) {
-  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/koharu/install") return false;
-  sendJson(ctx.res, 200, { koharu: await requireManagedKoharu(ctx).ensureInstalled() });
+async function handleMangaProcessorInstall(ctx) {
+  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/manga-processor/install") return false;
+  sendJson(ctx.res, 200, { mangaProcessor: await requireMangaProcessingRuntime(ctx).ensureInstalled() });
   return true;
 }
 
-async function handleKoharuStart(ctx) {
-  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/koharu/start") return false;
-  const status = await requireManagedKoharu(ctx).ensureRunning();
-  applyManagedKoharuBaseUrl(ctx, status?.baseUrl);
-  sendJson(ctx.res, 200, { koharu: status });
+async function handleMangaProcessorStart(ctx) {
+  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/manga-processor/start") return false;
+  const status = await requireMangaProcessingRuntime(ctx).ensureRunning();
+  applyManagedMangaProcessorBaseUrl(ctx, status?.baseUrl);
+  sendJson(ctx.res, 200, { mangaProcessor: status });
   return true;
 }
 
-async function handleKoharuPrepare(ctx) {
-  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/koharu/prepare") return false;
-  sendJson(ctx.res, 200, { koharu: await requireManagedKoharu(ctx).prepareRuntime() });
+async function handleMangaProcessorPrepare(ctx) {
+  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/manga-processor/prepare") return false;
+  sendJson(ctx.res, 200, { mangaProcessor: await requireMangaProcessingRuntime(ctx).prepareRuntime() });
   return true;
 }
 
-async function handleKoharuStop(ctx) {
-  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/koharu/stop") return false;
-  sendJson(ctx.res, 200, { koharu: await requireManagedKoharu(ctx).stopManaged() });
+async function handleMangaProcessorStop(ctx) {
+  if (ctx.req.method !== "POST" || ctx.url.pathname !== "/runtime/manga-processor/stop") return false;
+  sendJson(ctx.res, 200, { mangaProcessor: await requireMangaProcessingRuntime(ctx).stopManaged() });
   return true;
 }
 
 const RUNTIME_ROUTE_HANDLERS = [
   handleAoRuntime,
-  handleKoharuEngines,
-  handleKoharuTranslationProviders,
-  handleKoharuPaths,
-  handleKoharuInstall,
-  handleKoharuStart,
-  handleKoharuPrepare,
-  handleKoharuStop,
+  handleMangaProcessorEngines,
+  handleMangaProcessorTranslationProviders,
+  handleMangaProcessorPaths,
+  handleMangaProcessorInstall,
+  handleMangaProcessorStart,
+  handleMangaProcessorPrepare,
+  handleMangaProcessorStop,
 ];
 
 async function handleRuntimeRoutes(ctx) {

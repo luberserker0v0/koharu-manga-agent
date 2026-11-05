@@ -25,6 +25,9 @@ The Compose service contains only the backend. In Docker mode, Koharu remains a 
 service on port `4000`; the container reaches it as `http://host.docker.internal:4000`. The desktop
 GUI can download, start, and stop that host process when Koharu auto-start is enabled. When running
 Compose without the GUI, start Koharu yourself with `--host 0.0.0.0 --port 4000 --headless`.
+Compose publishes Backend on `0.0.0.0:4001`; local clients may continue using
+`http://127.0.0.1:4001`, while another machine must use the Docker host's address. Bearer
+authentication remains optional and is disabled by default.
 
 After host Koharu is available, `scripts/rest_translation_workflow.mjs` exercises the complete REST lifecycle from image upload through artifact download. See `docs/REST_WORKFLOW.md`.
 
@@ -54,6 +57,7 @@ npm run preview
 Startup behavior:
 - if the configured backend is running, the GUI connects without changing that process
 - otherwise Electron starts the bundled/local `backend/server.js` as a local-process fallback
+- the bundled/local fallback listens only on `127.0.0.1:4001`
 - packaged releases include the backend source and a compatible Node 24 runtime
 - closing the GUI stops only the local-process backend started by that GUI session
 - closing the GUI does not stop an externally started backend
@@ -149,6 +153,9 @@ the matching page capture when screenshots are ready.
 - `GET /jobs/stream`
 - `GET /jobs/:jobId`
 - `GET /jobs/:jobId/stream`
+- `GET /jobs/:jobId/text-regions`
+- `POST /jobs/:jobId/text-region-reviews`
+- `POST /jobs/:jobId/text-region-reviews/apply`
 - `POST /jobs/:jobId/retry`
 - `POST /jobs/:jobId/cancel`
 - `GET /ready` for dependency-aware readiness and capability reporting
@@ -162,7 +169,8 @@ the matching page capture when screenshots are ready.
 - `JobManager` is a façade over job factory, queue, lifecycle, retry, query, event, runtime, and
   domain-workflow modules under `backend/src/domains/jobs/`
 - workflow engine inside the backend process
-- AO API is the only LLM execution boundary for quality and knowledge tasks
+- AO API is the only Agent execution boundary for quality and knowledge tasks
+- bounded OCR region review uses the configured LM Studio vision HTTP endpoint directly
 - AO task stages record `import_manifest.json` and `export_manifest.json`
 - AO conversations are created per stage, initialized over HTTP, polled until `ready=true`, then used for task messages
 - each agent stage records `import_manifest.json` and `export_manifest.json`
@@ -225,6 +233,8 @@ For manga-scoped knowledge storage, translation jobs may provide:
 - `chapterId`
 - `sourceChapterId`
 - `glossaryMode`
+- `sourceLanguage` as one BCP 47 tag or an ordered array; the first item is primary and the complete
+  list drives language-aware OCR-engine selection
 
 Translation jobs never run Reference Ingestion. Reference and learning modes compose completed
 Reference assets and self-learning data into an immutable Translation Memory snapshot. Local and
@@ -261,6 +271,9 @@ Important fields:
 Translation modes select named image-pipeline profiles. The default `quick` mapping uses the `fast`
 profile with `lama-manga`; the `quality` profile uses `flux2-klein`. Explicit profile engines are
 validated against the live Koharu catalog and never silently replaced.
+When a profile does not explicitly select OCR, the Koharu adapter selects a compatible engine from
+the ordered `sourceLanguage` values. It does not rely on catalog order, and it records that Koharu
+0.61.2 cannot receive OCR language hints.
 
 ## Tests
 ```bash

@@ -12,10 +12,10 @@ import { SettingsPage } from "../pages/SettingsPage";
 import { KoharuRecoveryDialog } from "../features/runtime/components/KoharuRecoveryDialog";
 import {
   getDesktopInfo,
-  installAndStartKoharuHost,
+  installAndStartMangaProcessorHost,
   pickFile,
   readSettings,
-  startKoharuHost,
+  startMangaProcessorHost,
   writeSettings,
 } from "../services/desktop_api";
 import { useLanguageStore } from "../stores/language_store";
@@ -195,7 +195,7 @@ function useStartConfiguredExecutable(
         });
         setSettings(saved);
       }
-      await startKoharuHost(executablePath);
+      await startMangaProcessorHost(executablePath);
       await refreshRuntimeState();
     } catch (error) {
       recovery.setRecoveryError(error instanceof Error ? error.message : String(error));
@@ -240,7 +240,7 @@ function useDownloadAndStartKoharu(
     recovery.setRecoveryDownloading(true);
     recovery.setRecoveryError("");
     try {
-      const processState = await installAndStartKoharuHost();
+      const processState = await installAndStartMangaProcessorHost();
       if (!processState.executablePath) {
         throw new Error(t("app.koharuRecovery.downloadMissingPath"));
       }
@@ -301,13 +301,13 @@ function useAutoRecoveryEffect(
       recovery.setRecoveryError("");
       return;
     }
-    const status = desktopInfoQuery.data?.koharuProcess.status;
+    const status = desktopInfoQuery.data?.mangaProcessorProcess.status;
     if (!shouldAutoRecover(status, koharuUnavailable, autoRecoveryAttempted.current, recovery.recoveryBusy, settings))
       return;
     autoRecoveryAttempted.current = true;
     void startConfiguredExecutable(settings?.koharuExecutablePath || "", false);
   }, [
-    desktopInfoQuery.data?.koharuProcess.status,
+    desktopInfoQuery.data?.mangaProcessorProcess.status,
     koharuUnavailable,
     recovery.recoveryBusy,
     settings,
@@ -326,7 +326,7 @@ function useStatusSummary(
     if (!runtimeQuery.data) return t("status.runtimeUnavailable");
     return t("status.backendAgent", {
       backend: runtimeQuery.data.backend.status,
-      koharu: runtimeQuery.data.koharu.status,
+      koharu: runtimeQuery.data.mangaProcessor.status,
       agent: runtimeQuery.data.agent.status,
     });
   }, [runtimeQuery.data, runtimeQuery.isError, runtimeQuery.isLoading, t]);
@@ -488,7 +488,7 @@ function AppNavigation(props: AppLayoutProps) {
 
 function AppMain(props: AppLayoutProps) {
   const showAlert =
-    props.koharuUnavailable && (props.readinessQuery.data || props.desktopInfoQuery.data?.koharuProcess);
+    props.koharuUnavailable && (props.readinessQuery.data || props.desktopInfoQuery.data?.mangaProcessorProcess);
   return (
     <main className="main-content">
       <ExportDeliveryAlert {...props} />
@@ -536,11 +536,11 @@ function useKoharuRecoveryActions(
 function resolveKoharuState(queries: ReturnType<typeof useAppQueries>) {
   const { readinessQuery, desktopInfoQuery } = queries;
   const unavailable = readinessQuery.data
-    ? !readinessQuery.data.capabilities.koharuJobs
-    : desktopInfoQuery.data?.koharuProcess.status !== "running";
+    ? !readinessQuery.data.capabilities.mangaProcessingJobs
+    : desktopInfoQuery.data?.mangaProcessorProcess.status !== "running";
   const detail =
-    readinessQuery.data?.blockers.find((item) => item.service === "koharu")?.message ||
-    desktopInfoQuery.data?.koharuProcess.note ||
+    readinessQuery.data?.blockers.find((item) => item.service === "manga_processor")?.message ||
+    desktopInfoQuery.data?.mangaProcessorProcess.note ||
     "";
   return { unavailable, detail };
 }

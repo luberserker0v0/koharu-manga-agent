@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { paths } = require("../../../config");
-const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { collectSceneTextRegionPages } = require("../../manga_processing/scene_text_regions");
 
 function ensureDir(targetPath) {
   fs.mkdirSync(targetPath, { recursive: true });

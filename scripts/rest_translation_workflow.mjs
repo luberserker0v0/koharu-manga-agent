@@ -31,7 +31,7 @@ Options:
                                (default: quick)
   --reference-translator-id ID Required by reference_style and learning_style
   --target-language TAG        Target language (default: zh-TW)
-  --source-language TAG        Optional source language
+  --source-language TAG        Optional source language; repeat for ordered fallback languages
   --translation-provider ID   Optional Koharu provider ID, for example deepl
   --translation-model ID      Optional Koharu model ID, for example mt
   --quality-check              Enable optional Quality for supported modes
@@ -88,7 +88,11 @@ function parseArgs(argv) {
     if (!key) throw new Error(`Unknown argument: ${flag}`);
     const value = argv[index + 1];
     if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value.`);
-    options[key] = key === "timeoutMs" ? Number(value) : value;
+    if (key === "sourceLanguage" && options.sourceLanguage) {
+      options.sourceLanguage = [options.sourceLanguage].flat().concat(value);
+    } else {
+      options[key] = key === "timeoutMs" ? Number(value) : value;
+    }
     index += 1;
   }
   return options;
@@ -294,14 +298,16 @@ async function main() {
 
   const runtime = await client.json("/runtime/status");
   if (runtime.backend?.status !== "ready") throw new Error("Backend runtime is not ready.");
-  if (runtime.koharu?.status !== "running") {
-    throw new Error(`Koharu is not ready (${runtime.koharu?.status || "unknown"}) at ${runtime.koharu?.baseUrl || "unknown URL"}.`);
+  if (runtime.mangaProcessor?.status !== "running") {
+    throw new Error(
+      `Manga processor is not ready (${runtime.mangaProcessor?.status || "unknown"}) at ${runtime.mangaProcessor?.baseUrl || "unknown URL"}.`,
+    );
   }
   if (options.mode !== "quick" && runtime.agent?.status !== "ready") {
     throw new Error(`AO is required by ${options.mode} but is ${runtime.agent?.status || "unknown"}.`);
   }
   if (options.translationProvider) {
-    const catalog = await client.json("/runtime/koharu/translation-providers");
+    const catalog = await client.json("/runtime/manga-processor/translation-providers");
     const provider = catalog.providers?.find((entry) => entry.providerId === options.translationProvider);
     const model = provider?.models?.find((entry) => entry.modelId === options.translationModel);
     if (!provider || !model) throw new Error(`Unknown translation target ${options.translationProvider}/${options.translationModel}.`);

@@ -3,7 +3,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { paths } = require("../../../config");
 const { DEFAULT_LANGUAGE_TAG, normalizeLanguageTag } = require("../../../language_codes");
-const { collectSceneTextRegionPages } = require("../../../integrations/koharu/scene/scene_text_regions");
+const { collectSceneTextRegionPages } = require("../../manga_processing/scene_text_regions");
 const { listKnowledgeSeries, syncMangaManagementBinding } = require("../../knowledge/registry/knowledge_paths");
 
 const KNOWN_IMAGE_EXTENSIONS = new Set([

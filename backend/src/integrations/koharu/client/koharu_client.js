@@ -59,6 +59,15 @@ async function ensureJson(res, label) {
   return res.json();
 }
 
+async function ensureOptionalJson(res, label) {
+  if (!res.ok) {
+    const text = await readTextSafe(res);
+    throw new Error(`${label} failed (${res.status}): ${text}`);
+  }
+  const text = await readTextSafe(res);
+  return text ? JSON.parse(text) : null;
+}
+
 function buildExportBody(format, pages) {
   const body = { format };
   if (pages && pages.length > 0) body.pages = pages;
@@ -96,6 +105,22 @@ class KoharuClient {
     return ensureJson(res, "Read scene");
   }
 
+  async getConfig(baseUrl) {
+    const res = await apiFetch(ENDPOINTS.CONFIG, {
+      baseUrl: this.resolveBaseUrl(baseUrl),
+    });
+    return ensureJson(res, "Read Koharu config");
+  }
+
+  async patchConfig(patch, baseUrl) {
+    const res = await apiFetch(ENDPOINTS.CONFIG, {
+      method: "PATCH",
+      baseUrl: this.resolveBaseUrl(baseUrl),
+      body: patch,
+    });
+    return ensureOptionalJson(res, "Configure Koharu");
+  }
+
   async getEngines(baseUrl) {
     const res = await apiFetch(ENDPOINTS.ENGINES, {
       baseUrl: this.resolveBaseUrl(baseUrl),
@@ -117,11 +142,11 @@ class KoharuClient {
     return ensureJson(res, "Get current translation target");
   }
 
-  async setTranslationTarget(target, baseUrl) {
+  async setTranslationTarget(target, baseUrl, options = null) {
     const res = await apiFetch(ENDPOINTS.LLM_CURRENT, {
       method: "PUT",
       baseUrl: this.resolveBaseUrl(baseUrl),
-      body: { target },
+      body: { target, ...(options ? { options } : {}) },
     });
     if (!res.ok) {
       const text = await readTextSafe(res);
@@ -147,6 +172,28 @@ class KoharuClient {
       body: { id: projectId },
     });
     return ensureJson(res, "Open project");
+  }
+
+  async uploadPagesFromPaths(paths, baseUrl, { replace = false } = {}) {
+    const res = await apiFetch(ENDPOINTS.PAGES_FROM_PATHS, {
+      method: "POST",
+      baseUrl: this.resolveBaseUrl(baseUrl),
+      body: { paths, replace },
+    });
+    if (!res.ok) return null;
+    return ensureJson(res, "Upload pages from paths");
+  }
+
+  async uploadPagesMultipart(paths, baseUrl) {
+    const form = new FormData();
+    for (const filePath of paths) {
+      form.append("files", new Blob([fs.readFileSync(filePath)]), path.basename(filePath));
+    }
+    const res = await fetch(buildUrl(ENDPOINTS.PAGES, this.resolveBaseUrl(baseUrl)), {
+      method: "POST",
+      body: form,
+    });
+    return ensureJson(res, "Upload pages");
   }
 
   async listOperations(baseUrl) {
@@ -183,6 +230,16 @@ class KoharuClient {
     });
     const data = await ensureJson(res, "Start pipeline");
     return data.operationId || data.id;
+  }
+
+  async openEventStream(baseUrl, signal) {
+    const res = await fetch(buildUrl(ENDPOINTS.EVENTS, this.resolveBaseUrl(baseUrl)), {
+      method: "GET",
+      headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
+      signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`SSE listen failed (${res.status})`);
+    return res;
   }
 
   async exportCurrentProject({ format, pages, outputDir, baseUrl }) {
@@ -241,8 +298,5 @@ class KoharuClient {
 }
 
 module.exports = {
-  ENDPOINTS,
   KoharuClient,
-  apiFetch,
-  buildUrl,
 };

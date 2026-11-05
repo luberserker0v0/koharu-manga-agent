@@ -2,8 +2,8 @@ const { config } = require("../../../config");
 const { assertTranslationExportComplete } = require("../exports/translation_export_validation");
 
 class ExportModule {
-  constructor(client) {
-    this.client = client;
+  constructor(processor) {
+    this.processor = processor;
   }
 
   async run({ baseUrl, exportFormat = config.defaults.exportFormat, outputDir, expectedImageCount = null }) {
@@ -11,7 +11,7 @@ class ExportModule {
       throw new Error("Export outputDir is required.");
     }
 
-    const artifact = await this.client.exportCurrentProject({
+    const artifact = await this.processor.exportCurrentProject({
       format: exportFormat,
       outputDir: outputDir.trim(),
       baseUrl,

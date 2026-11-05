@@ -160,17 +160,17 @@ describe("JobManager cancellation", () => {
       runReferenceExtractionJob: jest.fn(async () => ({ referenceSetId: "ref-lease" })),
     };
     const { manager } = createManager(engine);
-    manager.acquireKoharuReviewLease({ sessionId: "session-lease", referenceSetId: "ref-review" });
+    manager.acquireMangaProcessorReviewLease({ sessionId: "session-lease", referenceSetId: "ref-review" });
     const job = manager.createReferenceExtractionJob({ referenceSetId: "ref-lease" });
     await nextTurn();
 
     expect(manager.getJob(job.id)).toEqual(expect.objectContaining({
       status: "waiting_dependency",
-      stage: "waiting_koharu_review",
+      stage: "waiting_manga_processor_review",
     }));
     expect(engine.runReferenceExtractionJob).not.toHaveBeenCalled();
 
-    manager.releaseKoharuReviewLease("session-lease");
+    manager.releaseMangaProcessorReviewLease("session-lease");
     await waitForStatus(manager, job.id, "succeeded");
     expect(engine.runReferenceExtractionJob).toHaveBeenCalledTimes(1);
   });
@@ -191,7 +191,7 @@ describe("JobManager cancellation", () => {
     const job = manager.createReferenceExtractionJob({ referenceSetId: "ref-running" });
     await started;
 
-    expect(() => manager.acquireKoharuReviewLease({
+    expect(() => manager.acquireMangaProcessorReviewLease({
       sessionId: "session-blocked",
       referenceSetId: "ref-review",
     })).toThrow(/still running/);

@@ -6,6 +6,7 @@ const {
   RegionSnapshotRepository,
 } = require("../../backend/src/domains/translation/text_regions/region_snapshot_repository");
 const {
+  correctionBootstrapEngines,
   TextRegionCorrectionService,
 } = require("../../backend/src/domains/translation/text_regions/text_region_correction_service");
 
@@ -33,8 +34,16 @@ describe("text-region correction validation", () => {
       jobId: "job-1", rootJobId: "job-1", sourcePreflightId: "preflight-1",
       sourceImages: [{ id: "source-1", orderIndex: 0, fileName: "001.png" }], scene: scene(),
     });
-    sourceJob = { id: "job-1", result: { regionSnapshotPath: snapshotPath } };
-    service = new TextRegionCorrectionService({ store: {}, snapshotRepository });
+    sourceJob = { id: "job-1", type: "translation", payload: {}, result: { regionSnapshotPath: snapshotPath, engines: {
+      detect: "comic-text-detector", fontDetect: "font-detector", segment: "segmenter",
+      bubbleSegment: "bubble-segmenter", ocr: "manga-ocr", translate: "llm", clean: "cleaner",
+    } } };
+    const store = {
+      listActiveTranslationPageRevisions: () => [{ sourceImageId: "source-1", revisionId: "revision-1" }],
+      getTranslationPageRevision: () => ({ revisionId: "revision-1", jobId: "job-1" }),
+      getJob: () => sourceJob,
+    };
+    service = new TextRegionCorrectionService({ store, snapshotRepository });
   });
 
   afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -62,11 +71,29 @@ describe("text-region correction validation", () => {
       reason: "text_region_correction",
       sourceImageIds: ["source-1"],
     }));
-    expect(result.payload.regionCorrections.pages[0].regions[0]).toEqual({
+    expect(result.payload.regionCorrections.pages[0].operations[0]).toEqual({
+      type: "update",
       regionId: snapshot.pages[0].regions[0].id,
       sourceText: "intergalactic",
       geometry: { x: 12, y: 22, width: 320, height: 90, rotation: 2 },
     });
+    expect(result.payload.correctionBootstrapEngines).toEqual({
+      detect: "comic-text-detector", fontDetect: "font-detector", segment: "segmenter",
+      bubbleSegment: "bubble-segmenter", ocr: "manga-ocr",
+    });
+  });
+
+  test("does not perpetuate an accidental OCR-engine change through correction ancestry", () => {
+    const correctionChild = {
+      id: "correction-child", type: "translation", parentJobId: "job-1",
+      payload: { revision: { reason: "text_region_correction", parentJobId: "job-1" } },
+      result: { engines: { detect: "comic-text-detector", ocr: "paddle-ocr-vl-1.5" } },
+    };
+    const store = { getJob: (id) => id === "job-1" ? sourceJob : null };
+
+    expect(correctionBootstrapEngines(store, correctionChild)).toEqual(expect.objectContaining({
+      detect: "comic-text-detector", ocr: "manga-ocr",
+    }));
   });
 
   test("rejects a stale region-set revision", () => {
@@ -94,5 +121,46 @@ describe("text-region correction validation", () => {
 
     expect(() => service.prepare(sourceJob, request()))
       .toThrow(expect.objectContaining({ code: "text_region_coordinate_space_unavailable", statusCode: 409 }));
+  });
+
+  test("accepts mixed create, update, and delete operations", () => {
+    const page = snapshot.pages[0];
+    const mixed = { pages: [{
+      sourceImageId: page.sourceImageId,
+      baseRegionSetRevisionId: page.regionSetRevisionId,
+      operations: [
+        { type: "update", regionId: page.regions[0].id, sourceText: "updated" },
+        { type: "create", clientOperationId: "create-1", sourceText: "missing",
+          geometry: { x: 400, y: 500, width: 100, height: 60, rotation: 0 } },
+      ],
+    }] };
+
+    expect(service.prepare(sourceJob, mixed).payload.regionCorrections.pages[0].operations)
+      .toEqual(mixed.pages[0].operations);
+  });
+
+  test("rejects conflicting operations for one existing region", () => {
+    const page = snapshot.pages[0];
+    const invalid = { pages: [{ sourceImageId: page.sourceImageId,
+      baseRegionSetRevisionId: page.regionSetRevisionId, operations: [
+        { type: "update", regionId: page.regions[0].id, sourceText: "updated" },
+        { type: "delete", regionId: page.regions[0].id },
+      ] }] };
+
+    expect(() => service.prepare(sourceJob, invalid)).toThrow(expect.objectContaining({
+      code: "conflicting_text_region_operation", statusCode: 400,
+    }));
+  });
+
+  test("requires source text and bounded geometry for created regions", () => {
+    const page = snapshot.pages[0];
+    const invalid = { pages: [{ sourceImageId: page.sourceImageId,
+      baseRegionSetRevisionId: page.regionSetRevisionId, operations: [{
+        type: "create", clientOperationId: "create-1",
+        geometry: { x: 400, y: 500, width: 100, height: 60 },
+      }] }] };
+
+    expect(() => service.prepare(sourceJob, invalid))
+      .toThrow(expect.objectContaining({ code: "invalid_ocr_text", statusCode: 422 }));
   });
 });

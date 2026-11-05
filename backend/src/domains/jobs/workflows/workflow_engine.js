@@ -12,12 +12,10 @@ const {
 const {
   buildBootstrapPipelineSteps,
   buildExportPipelineSteps,
-  buildTranslationPatchOps,
+  buildTranslationUpdates,
   createRebuiltProjectName,
   matchPostEditDocumentToScene,
   reorderRenderedZip,
-  startPipeline,
-  uploadPages,
 } = require("../../post_edit/export/post_edit_export");
 const {
   ensureChapterObservation,
@@ -40,12 +38,11 @@ const {
 const { resolveTranslationModePolicy } = require("../../translation/modes/translation_modes");
 const { resolvePipelineProfile } = require("../../translation/pipeline/pipeline_profiles");
 const { resolveExportOutputDir } = require("../../translation/execution/export_output_path");
-const { buildTextRegionCorrectionOps } = require("../../translation/text_regions/text_region_patch_ops");
-const { isMachineTranslationTarget } = require("../../../integrations/koharu/translation/translation_targets");
+const { isMachineTranslationTarget } = require("../../manga_processing/translation_targets");
+const { primarySourceLanguage } = require("../../manga_processing/source_languages");
 const { deleteChapterLearningData } = require("../../knowledge/learning/knowledge");
 const { buildPipelinePlan, resolveReferenceUsage, translationSceneFingerprint } = require("./workflow_helpers");
-const { PipelineMetricsCollector } = require("../../../integrations/koharu/pipeline/pipeline_metrics");
-const projectOrchestrator = require("../../../integrations/koharu/pipeline/project_orchestrator");
+const { PipelineMetricsCollector } = require("../../translation/pipeline/pipeline_metrics");
 
 function resolveDeepAuditOutputDir(sourceJob, jobId) {
   return resolveExportOutputDir({
@@ -138,13 +135,24 @@ class WorkflowEngine {
       knowledgeModule: deps.knowledgeModule,
       translationDeepAuditModule: deps.translationDeepAuditModule,
       exportModule: deps.exportModule,
-      projectLifecycle: deps.projectLifecycle,
+      mangaProcessor: deps.mangaProcessor,
       postEditWorkspaceModule: deps.postEditWorkspaceModule,
       regionSnapshotRepository: deps.regionSnapshotRepository,
       jobStore: deps.jobStore,
+      ocrTextReviewService: deps.ocrTextReviewService,
     });
     this.translationMemoryComposer = deps.translationMemoryComposer || composeTranslationMemory;
     this.translationPublicationService = deps.translationPublicationService || null;
+  }
+
+  async runOcrTextReviewJob(payload, hooks) {
+    if (!this.ocrTextReviewService) {
+      const error = new Error("OCR text-review service is unavailable.");
+      error.code = "ocr_text_review_unavailable";
+      error.statusCode = 503;
+      throw error;
+    }
+    return this.ocrTextReviewService.run(payload, hooks);
   }
 
   async runReferenceExtractionJob(payload, hooks) {
@@ -523,7 +531,7 @@ class WorkflowEngine {
       chapterTitle: payload.chapterTitle || payload.chapterLabel || null,
       sourceChapterId: payload.sourceChapterId || null,
       glossaryMode: ctx.glossaryMode,
-      sourceLanguage: payload.sourceLanguage || null,
+      sourceLanguage: primarySourceLanguage(payload.sourceLanguage),
       targetLanguage: ctx.targetLanguage,
     });
   }
@@ -583,22 +591,22 @@ class WorkflowEngine {
     const baseUrl = ctx.baseUrl;
     const resume = ctx.resume;
     hooks.setStage("running", "resume_quality");
-    const client = this.projectLifecycle?.client;
-    if (!client || typeof client.listProjects !== "function" || typeof client.openProject !== "function") {
-      throw new Error("Translation resume requires Koharu project access.");
+    const processor = this.mangaProcessor;
+    if (!processor || typeof processor.listProjects !== "function" || typeof processor.openProject !== "function") {
+      throw new Error("Translation resume requires manga processor project access.");
     }
-    const project = await this._findResumeTranslationProject(client, baseUrl, resume);
-    await client.openProject(project.id, baseUrl);
+    const project = await this._findResumeTranslationProject(processor, baseUrl, resume);
+    await processor.openProject(project.id, baseUrl);
     this._applyResumeTranslationProject(ctx, resume, project, hooks);
   }
 
-  async _findResumeTranslationProject(client, baseUrl, resume) {
+  async _findResumeTranslationProject(processor, baseUrl, resume) {
     let projects;
     try {
-      projects = await client.listProjects(baseUrl);
+      projects = await processor.listProjects(baseUrl);
     } catch (cause) {
-      const error = new Error(`Koharu is unavailable at ${baseUrl} while resuming translation quality.`);
-      error.code = "koharu_unavailable";
+      const error = new Error(`Manga processor is unavailable at ${baseUrl} while resuming translation quality.`);
+      error.code = "manga_processor_unavailable";
       error.cause = cause;
       throw error;
     }
@@ -616,6 +624,7 @@ class WorkflowEngine {
       engines: resume.engines || {},
       steps: resume.steps || [],
       pipelineProfile: resume.pipelineProfile || null,
+      ocrLanguageResolution: resume.ocrLanguageResolution || null,
       resumed: true,
     };
     ctx.pipeline = {
@@ -623,6 +632,9 @@ class WorkflowEngine {
       sourceJobId: resume.sourceJobId,
       summary: { finalStatus: "completed" },
     };
+    if (ctx.setup.ocrLanguageResolution) {
+      hooks.emit("ocr.language_resolution", ctx.setup.ocrLanguageResolution);
+    }
     hooks.emit("translation.resumed", {
       sourceJobId: resume.sourceJobId,
       projectId: project.id,
@@ -641,6 +653,7 @@ class WorkflowEngine {
 
   _translationProjectOptions(ctx) {
     return {
+      sourceLanguage: ctx.payload.sourceLanguage,
       targetLanguage: ctx.targetLanguage,
       baseUrl: ctx.baseUrl,
       systemPrompt: ctx.machineTranslationRequested ? null : ctx.systemPrompt,
@@ -651,6 +664,8 @@ class WorkflowEngine {
       lmStudioBaseUrl: ctx.lmStudioBaseUrl,
       translationProxy: ctx.translationProxy,
       translationMode: ctx.translationMode,
+      ...(ctx.textRegionCorrection && ctx.payload.correctionBootstrapEngines
+        ? { engines: ctx.payload.correctionBootstrapEngines } : {}),
     };
   }
 
@@ -662,6 +677,9 @@ class WorkflowEngine {
       targetKind: ctx.setup.translationTarget?.targetKind || null,
       referencePostEdit: ctx.machineTranslationPostEdit,
     });
+    if (ctx.setup.ocrLanguageResolution) {
+      ctx.hooks.emit("ocr.language_resolution", ctx.setup.ocrLanguageResolution);
+    }
     ctx.hooks.emit("setup.completed", ctx.setup);
   }
 
@@ -678,7 +696,9 @@ class WorkflowEngine {
 
   async _runTextRegionCorrectionBootstrap(ctx) {
     const steps = buildBootstrapPipelineSteps(ctx.setup.engines);
-    const started = await startPipeline(steps, ctx.targetLanguage, ctx.baseUrl);
+    const started = await this.mangaProcessor.startResolvedPipeline(
+      steps, ctx.targetLanguage, ctx.baseUrl, null, ctx.payload.sourceLanguage,
+    );
     ctx.hooks.setStage("waiting_pipeline", "correction_ocr");
     await this.pipelineMonitor.run({
       operationId: started.operationId,
@@ -704,17 +724,21 @@ class WorkflowEngine {
   async _applyTextRegionCorrections(ctx) {
     ctx.hooks.setStage("running", "apply_text_region_corrections");
     const snapshot = this._loadTextRegionCorrectionSnapshot(ctx);
-    const scene = await this.projectLifecycle.client.getScene(ctx.baseUrl);
-    const ops = buildTextRegionCorrectionOps(snapshot, ctx.payload.regionCorrections, scene);
-    await this.projectLifecycle.client.applyHistoryBatch({
-      ops, label: `text_region_correction_${ctx.hooks.jobId}`, baseUrl: ctx.baseUrl,
+    const outcome = await this.mangaProcessor.applyTextRegionCorrections({
+      snapshot, corrections: ctx.payload.regionCorrections,
+      label: `text_region_correction_${ctx.hooks.jobId}`, baseUrl: ctx.baseUrl,
     });
-    ctx.hooks.emit("text_region_correction.applied", { updatedRegions: ops.length });
+    ctx.textRegionOperationOutcome = outcome;
+    ctx.hooks.emit("text_region_correction.applied", {
+      createdRegions: outcome.created.length,
+      updatedRegions: outcome.updated.length,
+      deletedRegions: outcome.deleted.length,
+    });
   }
 
   async _startTextRegionCorrectionCompletion(ctx) {
     const steps = buildCorrectionCompletionSteps(ctx.setup.engines);
-    const started = await startPipeline(
+    const started = await this.mangaProcessor.startResolvedPipeline(
       steps, ctx.targetLanguage, ctx.baseUrl,
       ctx.machineTranslationRequested ? null : ctx.systemPrompt,
     );
@@ -762,7 +786,7 @@ class WorkflowEngine {
   }
 
   _validateSceneClient(ctx) {
-    const sceneClient = this.projectLifecycle?.client || this.qualityModule?.client;
+    const sceneClient = this.mangaProcessor || this.qualityModule?.processor;
     if (!sceneClient || typeof sceneClient.getScene !== "function") {
       throw new Error("Translation workflow cannot read the Koharu scene.");
     }
@@ -796,7 +820,8 @@ class WorkflowEngine {
       mangaId: payload.mangaId || null,
       chapterId: payload.chapterId || null,
       chapterTitle: payload.chapterTitle || payload.chapterLabel || null,
-      contentLanguage: payload.sourceLanguage || ctx.translationMemory.languages?.sourceLanguage || null,
+      contentLanguage: primarySourceLanguage(payload.sourceLanguage) ||
+        ctx.translationMemory.languages?.sourceLanguage || null,
       translationMemory: ctx.translationMemory,
       isCanceled: hooks.isCanceled,
       onProgress: (progress) => hooks.emit("translation_observation.progress", progress),
@@ -874,7 +899,8 @@ class WorkflowEngine {
       glossaryMode,
       jobId: hooks.jobId || null,
       translationMemory,
-      sourceLanguage: payload.sourceLanguage || translationMemory.languages?.sourceLanguage || null,
+      sourceLanguage: primarySourceLanguage(payload.sourceLanguage) ||
+        translationMemory.languages?.sourceLanguage || null,
       targetLanguage,
       semanticRoleEvidence: translationObservation?.observation?.nodes || [],
       semanticEvidenceFingerprint: translationObservation?.observation?.fingerprint || null,
@@ -1071,6 +1097,9 @@ class WorkflowEngine {
       fingerprint: ctx.regionSnapshot.fingerprint,
       pageCount: ctx.regionSnapshot.pages.length,
     });
+    ctx.textRegionOperationOutcome = this.mangaProcessor.finalizeTextRegionCorrectionOutcome(
+      ctx.textRegionOperationOutcome, ctx.regionSnapshot,
+    );
   }
 
   _buildFinalTranslationSnapshot(ctx) {
@@ -1184,7 +1213,7 @@ class WorkflowEngine {
     const { payload, hooks } = ctx;
     const baseUrl = ctx.baseUrl;
     hooks.setStage("closing", "close_project");
-    await this.projectLifecycle.closeCurrentProject({ baseUrl });
+    await this.mangaProcessor.closeCurrentProject(baseUrl);
     hooks.emit("project.closed", { baseUrl });
   }
 
@@ -1306,8 +1335,9 @@ class WorkflowEngine {
       operationId: ctx.setup.operationId,
       postEditDocumentPath: ctx.postEditDocumentPath,
       sourcePreflight: ctx.sourcePreflight,
-      engines: ctx.setup.engines,
-      steps: ctx.setup.steps,
+      engines: ctx.setup.engines, steps: ctx.setup.steps,
+      ocrLanguageResolution: ctx.setup.ocrLanguageResolution,
+      pipelineProfile: ctx.setup.pipelineProfile,
       translationMode: ctx.translationMode,
       translationPolicy: ctx.translationPolicy,
       translationTarget: ctx.setup.translationTarget || ctx.requestedTranslationTarget,
@@ -1318,6 +1348,7 @@ class WorkflowEngine {
       publication: ctx.publication,
       discardedChapterLearning: ctx.discardedChapterLearning,
       pipeline: ctx.pipeline,
+      textRegionOperations: ctx.textRegionOperationOutcome || null,
       quality: ctx.quality,
       qualityObservationPath: ctx.quality?.qualityObservationPath || null,
       qualityReportPath: ctx.quality?.reportPath || null,
@@ -1509,32 +1540,32 @@ class WorkflowEngine {
   async _openDeepAuditProject(state, hooks) {
     const { sourceJob, sourceResult } = state;
     const baseUrl = sourceJob.payload?.baseUrl || config.api.baseUrl;
-    const client = this.projectLifecycle?.client;
+    const processor = this.mangaProcessor;
     hooks.setStage("running", "deep_audit_apply_open_project");
-    const project = await this._findDeepAuditProject(client, baseUrl, sourceResult);
-    await client.openProject(project.id, baseUrl);
-    const scene = await client.getScene(baseUrl);
+    const project = await this._findDeepAuditProject(processor, baseUrl, sourceResult);
+    await processor.openProject(project.id, baseUrl);
+    const scene = await processor.getScene(baseUrl);
     const before = collectTranslations(scene);
     if (
       sourceResult.reviewSceneFingerprint &&
       translationSceneFingerprint(before.translations) !== sourceResult.reviewSceneFingerprint
     ) {
-      throw new Error("Koharu scene changed after the Quality review package was created.");
+      throw new Error("Manga processor scene changed after the Quality review package was created.");
     }
     state.baseUrl = baseUrl;
-    state.client = client;
+    state.processor = processor;
     state.project = project;
     state.before = before;
     state.currentById = new Map(before.translations.map((entry) => [entry.id, entry]));
   }
 
-  async _findDeepAuditProject(client, baseUrl, sourceResult) {
+  async _findDeepAuditProject(processor, baseUrl, sourceResult) {
     let projects;
     try {
-      projects = await client.listProjects(baseUrl);
+      projects = await processor.listProjects(baseUrl);
     } catch (cause) {
-      const error = new Error(`Koharu is unavailable at ${baseUrl} while finalizing translation quality.`);
-      error.code = "koharu_unavailable";
+      const error = new Error(`Manga processor is unavailable at ${baseUrl} while finalizing translation quality.`);
+      error.code = "manga_processor_unavailable";
       error.cause = cause;
       throw error;
     }
@@ -1549,7 +1580,7 @@ class WorkflowEngine {
 
   _applyDeepAuditSceneChanges(state) {
     const { decisionById, proposalById, currentById } = state;
-    const manualOps = [];
+    const manualUpdates = [];
     for (const [nodeId, decision] of decisionById) {
       const current = currentById.get(nodeId);
       if (!current) throw new Error(`Quality decision references unknown node ${nodeId}.`);
@@ -1560,28 +1591,22 @@ class WorkflowEngine {
             ? proposalById.get(nodeId)?.revisedTranslation || current.translation
             : current.translation;
       if (desired !== current.translation) {
-        manualOps.push({
-          updateNode: {
-            page: current.pageId,
-            id: nodeId,
-            patch: { data: { text: { translation: desired } } },
-          },
-        });
+        manualUpdates.push({ pageId: current.pageId, nodeId, translation: desired });
       }
     }
-    state.manualOps = manualOps;
+    state.manualUpdates = manualUpdates;
   }
 
   async _applyDeepAuditHistory(state) {
-    const { manualOps, client, baseUrl, hooks } = state;
-    if (manualOps.length > 0) {
-      await client.applyHistoryBatch({
-        ops: manualOps,
+    const { manualUpdates, processor, baseUrl, hooks } = state;
+    if (manualUpdates.length > 0) {
+      await processor.applyTranslationUpdates({
+        updates: manualUpdates,
         label: `deep_audit_apply_${hooks.jobId}`,
         baseUrl,
       });
     }
-    const finalScene = await client.getScene(baseUrl);
+    const finalScene = await processor.getScene(baseUrl);
     state.finalTranslations = collectTranslations(finalScene);
   }
 
@@ -1745,7 +1770,7 @@ class WorkflowEngine {
     hooks.setStage("exporting", "deep_audit_apply_render");
     const profile = resolvePipelineProfile(config.pipeline);
     const exportSteps = buildExportPipelineSteps(sourceResult.engines || profile.engines);
-    const pipeline = await startPipeline(
+    const pipeline = await this.mangaProcessor.startResolvedPipeline(
       exportSteps,
       sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,
       baseUrl,
@@ -1764,7 +1789,7 @@ class WorkflowEngine {
       exportFormat: sourceJob.payload?.exportFormat || config.defaults.exportFormat,
       outputDir,
     });
-    await this.projectLifecycle.closeCurrentProject({ baseUrl });
+    await this.mangaProcessor.closeCurrentProject(baseUrl);
     return artifact;
   }
 
@@ -1871,9 +1896,9 @@ class WorkflowEngine {
   async _rebuildPostEditProject(state, hooks) {
     const { baseUrl, rebuiltProjectName, sourceImagePaths, sourcePreflightId, postEditDocument } = state;
     hooks.setStage("running", "rebuild_project");
-    const createdProject = await this.projectLifecycle.client.createProject(rebuiltProjectName, baseUrl);
-    await this.projectLifecycle.client.openProject(createdProject.id, baseUrl);
-    const upload = await uploadPages(sourceImagePaths, baseUrl);
+    const createdProject = await this.mangaProcessor.createProject(rebuiltProjectName, baseUrl);
+    await this.mangaProcessor.openProject(createdProject.id, baseUrl);
+    const upload = await this.mangaProcessor.uploadPages(sourceImagePaths, baseUrl);
     const bootstrapPipeline = await this._startPostEditBootstrapPipeline(state, baseUrl);
     hooks.emit("post_edit.rebuild_started", {
       projectId: createdProject.id,
@@ -1882,7 +1907,7 @@ class WorkflowEngine {
       sourcePreflightId,
     });
     await this._monitorPostEditBootstrapPipeline(state, hooks, bootstrapPipeline, sourceImagePaths);
-    const rebuiltScene = await this.projectLifecycle.client.getScene(baseUrl);
+    const rebuiltScene = await this.mangaProcessor.getScene(baseUrl);
     const { matches, unresolved } = matchPostEditDocumentToScene(postEditDocument, rebuiltScene);
     if (unresolved.length > 0) {
       throw new Error(
@@ -1898,12 +1923,16 @@ class WorkflowEngine {
 
   async _startPostEditBootstrapPipeline(state, baseUrl) {
     const profile = resolvePipelineProfile(config.pipeline);
-    const engines = await projectOrchestrator.resolveEngines(baseUrl, profile.engines);
+    const engines = await this.mangaProcessor.resolveEngines(
+      baseUrl, profile.engines, state.sourceJob.payload?.sourceLanguage,
+    );
     const bootstrapSteps = buildBootstrapPipelineSteps(engines);
-    return startPipeline(
+    return this.mangaProcessor.startResolvedPipeline(
       bootstrapSteps,
       state.sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,
       baseUrl,
+      null,
+      state.sourceJob.payload?.sourceLanguage,
     );
   }
 
@@ -1922,19 +1951,19 @@ class WorkflowEngine {
   async _applyPostEditChanges(state, hooks) {
     const { matches, baseUrl, hooks: _h } = state;
     hooks.setStage("running", "apply_post_edit");
-    const ops = buildTranslationPatchOps(matches);
-    if (ops.length > 0) {
-      await this.projectLifecycle.client.applyHistoryBatch({
-        ops,
+    const updates = buildTranslationUpdates(matches);
+    if (updates.length > 0) {
+      await this.mangaProcessor.applyTranslationUpdates({
+        updates,
         label: `post_edit_${hooks.jobId}`,
         baseUrl,
       });
     }
     hooks.emit("post_edit.applied", {
-      updatedNodes: ops.length,
+      updatedNodes: updates.length,
       matchedNodes: matches.length,
     });
-    state.ops = ops;
+    state.updates = updates;
   }
 
   async _exportPostEdit(state, hooks) {
@@ -1966,9 +1995,11 @@ class WorkflowEngine {
 
   async _startPostEditExportPipeline(state, baseUrl) {
     const profile = resolvePipelineProfile(config.pipeline);
-    const engines = await projectOrchestrator.resolveEngines(baseUrl, profile.engines);
+    const engines = await this.mangaProcessor.resolveEngines(
+      baseUrl, profile.engines, state.sourceJob.payload?.sourceLanguage,
+    );
     const exportSteps = buildExportPipelineSteps(engines);
-    return startPipeline(
+    return this.mangaProcessor.startResolvedPipeline(
       exportSteps,
       state.sourceJob.payload?.targetLanguage || config.defaults.targetLanguage,
       baseUrl,
@@ -1988,9 +2019,9 @@ class WorkflowEngine {
   }
 
   async _finalizePostEditExport(state, hooks, artifact) {
-    const { baseUrl, sourceJob, postEditDocument, createdProject, matches, unresolved, ops, postEditPaths } = state;
+    const { baseUrl, sourceJob, postEditDocument, createdProject, matches, unresolved, updates, postEditPaths } = state;
     hooks.setStage("closing", "close_project");
-    await this.projectLifecycle.closeCurrentProject({ baseUrl });
+    await this.mangaProcessor.closeCurrentProject(baseUrl);
     hooks.emit("project.closed", { baseUrl });
     const finalArtifact = state.finalArtifact || artifact;
     return {
@@ -2001,7 +2032,7 @@ class WorkflowEngine {
       rebuiltProjectName: state.rebuiltProjectName,
       matchedNodeCount: matches.length,
       unresolvedNodeCount: unresolved.length,
-      updatedNodes: ops.length,
+      updatedNodes: updates.length,
       pageOrderChanged:
         (postEditDocument.sourcePageOrder || []).join("|") !== (postEditDocument.pageOrder || []).join("|"),
       nodeOrderCustomized: Object.values(postEditDocument.pages || {}).some((page) => {

@@ -4,6 +4,7 @@ const path = require("path");
 const MAIN_AGENT_DOC_PATH = path.join(__dirname, "../../AGENTS.md");
 const README_PATH = path.join(__dirname, "../../README.md");
 const RUNTIME_CONFIG_PATH = path.join(__dirname, "../../backend/src/config.js");
+const COMPOSE_PATH = path.join(__dirname, "../../compose.yaml");
 
 describe("workflow contracts", () => {
   test("main agent doc defines backend as the official runtime", () => {
@@ -11,7 +12,9 @@ describe("workflow contracts", () => {
 
     expect(content).toContain("node backend/server.js");
     expect(content).toContain("the backend is the workflow and persistence owner");
-    expect(content).toContain("ao http api is the only llm execution boundary");
+    expect(content).toContain("ao http api is the only agent execution boundary");
+    expect(content).toContain("bounded, tool-free ocr region review");
+    expect(content).toContain("must not create an ao conversation or expose a generic prompt proxy");
     expect(content).toContain("do not restore `agent_sdk`");
     expect(content).not.toContain("dispatch subagents with the task tool");
   });
@@ -31,6 +34,15 @@ describe("workflow contracts", () => {
     expect(runtimeConfig.runtime.host).toBe("127.0.0.1");
     expect(runtimeConfig.runtime.port).toBe(4001);
     expect(runtimeConfig.paths.database).toContain(path.join("state", "jobs.sqlite"));
+  });
+
+  test("docker publishes publicly while the native backend stays on loopback", () => {
+    const compose = fs.readFileSync(COMPOSE_PATH, "utf-8");
+    const runtimeConfig = require(RUNTIME_CONFIG_PATH);
+
+    expect(compose).toContain('"0.0.0.0:4001:4001"');
+    expect(runtimeConfig.runtime.host).toBe("127.0.0.1");
+    expect(runtimeConfig.DEFAULT_CONFIG.server.authToken).toBeNull();
   });
 
 });

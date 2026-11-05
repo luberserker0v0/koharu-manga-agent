@@ -10,6 +10,9 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends zip unzip \
   && rm -rf /var/lib/apt/lists/*
 
+COPY --chown=node:node backend/package*.json ./backend/
+RUN npm ci --omit=dev --prefix backend
+
 COPY --chown=node:node backend ./backend
 COPY --chown=node:node docker ./docker
 

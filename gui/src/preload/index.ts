@@ -40,10 +40,11 @@ const desktopApi = {
   openKoharuEditor: (payload: { url: string; sessionId: string }) =>
     ipcRenderer.invoke(IPC_CHANNELS.OPEN_KOHARU_EDITOR, payload),
   closeKoharuEditor: (sessionId?: string) => ipcRenderer.invoke(IPC_CHANNELS.CLOSE_KOHARU_EDITOR, sessionId),
-  getKoharuHostStatus: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STATUS),
-  installAndStartKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_INSTALL_START),
-  startKoharuHost: (executablePath: string) => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_START, executablePath),
-  stopKoharuHost: () => ipcRenderer.invoke(IPC_CHANNELS.KOHARU_HOST_STOP),
+  getMangaProcessorHostStatus: () => ipcRenderer.invoke(IPC_CHANNELS.MANGA_PROCESSOR_HOST_STATUS),
+  installAndStartMangaProcessorHost: () => ipcRenderer.invoke(IPC_CHANNELS.MANGA_PROCESSOR_HOST_INSTALL_START),
+  startMangaProcessorHost: (executablePath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.MANGA_PROCESSOR_HOST_START, executablePath),
+  stopMangaProcessorHost: () => ipcRenderer.invoke(IPC_CHANNELS.MANGA_PROCESSOR_HOST_STOP),
   onKoharuEditorClosed: (callback: (payload: { sessionId: string | null }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, payload: { sessionId: string | null }) => callback(payload);
     ipcRenderer.on(IPC_CHANNELS.KOHARU_EDITOR_CLOSED, listener);

@@ -30,7 +30,8 @@
 - `backend/src/domains/translation/quality/quality.js` owns optional quality review
 - `backend/src/domains/knowledge/learning/knowledge.js` owns optional knowledge-base updates
 - `backend/src/domains/translation/execution/export.js` owns export
-- `backend/src/integrations/koharu/pipeline/project_lifecycle.js` owns close behavior
+- `backend/src/domains/manga_processing/manga_processing_ports.js` defines the workflow-facing capabilities
+- `backend/src/integrations/koharu/koharu_manga_processing_adapter.js` implements them for Koharu
 
 ## User-Facing Translation Modes
 | Mode | Reference memory | Local memory | Quality | Knowledge update |

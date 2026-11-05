@@ -4,6 +4,7 @@ const path = require("path");
 
 const { createZip } = require("../../../infrastructure/archive/zip_archive");
 const { writeJsonAtomic } = require("../../../infrastructure/filesystem/json_file");
+const { assertCurrentRegionSets } = require("../text_regions/text_region_concurrency");
 
 function promotionError(message, code) {
   return Object.assign(new Error(message), { code, statusCode: 409 });
@@ -145,7 +146,8 @@ class TranslationRevisionPromotionService {
     const rootJobId = context.root.id;
     const revisions = this.store.listTranslationPageRevisions(rootJobId);
     const revisionsById = new Map(revisions.map((entry) => [entry.revisionId, entry]));
-    const selected = new Map(this.store.listActiveTranslationPageRevisions(rootJobId)
+    const activeSelections = this.store.listActiveTranslationPageRevisions(rootJobId);
+    const selected = new Map(activeSelections
       .map((entry) => [entry.sourceImageId, revisionsById.get(entry.revisionId)]));
     const candidates = revisions.filter((entry) => entry.jobId === context.job.id);
     for (const revision of candidates) selected.set(revision.sourceImageId, revision);
@@ -155,7 +157,11 @@ class TranslationRevisionPromotionService {
     if (candidates.length === 0 || ordered.some((entry) => !entry.revision)) {
       throw promotionError("Revision cannot produce a complete chapter selection.", "revision_selection_incomplete");
     }
-    return { candidates, ordered };
+    const expectedSelections = activeSelections.map((entry) => ({
+      sourceImageId: entry.sourceImageId,
+      revisionId: entry.revisionId,
+    }));
+    return { candidates, ordered, expectedSelections };
   }
 
   producerResult(context, jobId) {
@@ -266,7 +272,7 @@ class TranslationRevisionPromotionService {
       revisionId: entry.revisionId,
     }));
     const previous = activePublication(this.translationPublicationService, context.identity);
-    this.store.activateTranslationPageRevisions(context.root.id, selections);
+    this.store.activateTranslationPageRevisions(context.root.id, selections, plan.expectedSelections);
     try {
       return this.translationPublicationService.publish(this.publicationInput(context, composite, previous));
     } catch (error) {
@@ -300,6 +306,13 @@ class TranslationRevisionPromotionService {
   async promote(jobId, result) {
     const context = this.createContext(jobId, result);
     if (!context) return result;
+    const corrections = context.job.payload.regionCorrections;
+    if (corrections) assertCurrentRegionSets({
+      store: this.store,
+      snapshotRepository: this.regionSnapshotRepository,
+      rootJobId: context.root.id,
+      pages: corrections.pages,
+    });
     const plan = this.buildSelectionPlan(context);
     const pages = await this.buildPages(context, plan);
     const composite = this.writeCompositeFiles(context, pages);

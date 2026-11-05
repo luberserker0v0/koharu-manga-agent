@@ -14,6 +14,7 @@ function atomicEngineMethod(job) {
   if (job.type === "translation_knowledge_commit") return "runTranslationKnowledgeCommitJob";
   if (job.type === "translation_deep_audit") return "runTranslationDeepAuditJob";
   if (job.type === "translation_deep_audit_apply") return "runTranslationDeepAuditApplyJob";
+  if (job.type === "ocr_text_review") return "runOcrTextReviewJob";
   return null;
 }
 

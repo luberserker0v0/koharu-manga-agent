@@ -1,8 +1,7 @@
-function applyManagedKoharuBaseUrl(ctx, baseUrl) {
+function applyManagedMangaProcessorBaseUrl(ctx, baseUrl) {
   if (!baseUrl) return;
   ctx.jobManager.resolvedConfig.api = { ...(ctx.jobManager.resolvedConfig.api || {}), baseUrl };
-  const client = ctx.jobManager?.engine?.projectLifecycle?.client;
-  if (client) client.defaultBaseUrl = baseUrl;
+  ctx.jobManager?.engine?.mangaProcessor?.setDefaultBaseUrl?.(baseUrl);
 }
 
-module.exports = { applyManagedKoharuBaseUrl };
+module.exports = { applyManagedMangaProcessorBaseUrl };

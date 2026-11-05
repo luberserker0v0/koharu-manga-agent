@@ -67,7 +67,7 @@ describe("selective retranslation and page revision API", () => {
     };
     const engine = {
       sourcePreflightModule,
-      projectLifecycle: { client },
+      mangaProcessor: client,
       runTranslationJob: jest.fn().mockImplementation(async (payload) => ({
         artifact: { path: selectiveZip, size: fs.statSync(selectiveZip).size, format: "rendered" },
         translationMode: payload.translationMode,

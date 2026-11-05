@@ -13,8 +13,8 @@ export const IPC_CHANNELS = {
   OPEN_KOHARU_EDITOR: "koharu-editor:open",
   CLOSE_KOHARU_EDITOR: "koharu-editor:close",
   KOHARU_EDITOR_CLOSED: "koharu-editor:closed",
-  KOHARU_HOST_STATUS: "koharu-host:status",
-  KOHARU_HOST_INSTALL_START: "koharu-host:install-start",
-  KOHARU_HOST_START: "koharu-host:start",
-  KOHARU_HOST_STOP: "koharu-host:stop",
+  MANGA_PROCESSOR_HOST_STATUS: "manga-processor-host:status",
+  MANGA_PROCESSOR_HOST_INSTALL_START: "manga-processor-host:install-start",
+  MANGA_PROCESSOR_HOST_START: "manga-processor-host:start",
+  MANGA_PROCESSOR_HOST_STOP: "manga-processor-host:stop",
 } as const;

@@ -3,7 +3,7 @@ const {
   resolveTranslationTarget,
   validateGenerationOptionsShape,
   validateTranslationTargetShape,
-} = require("../../backend/src/integrations/koharu/translation/translation_targets");
+} = require("../../backend/src/domains/manga_processing/translation_targets");
 
 function catalog() {
   return {

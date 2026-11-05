@@ -49,7 +49,7 @@ function observeWindow(input) {
 
 describe("standard quality flow", () => {
   test("runs projected windows, applies revisions, and persists projection/checkpoint", async () => {
-    const applyHistoryBatch = jest.fn().mockResolvedValue({ success: true });
+    const applyTranslationUpdates = jest.fn().mockResolvedValue({ success: true });
     const runQualityReviewAndOptimization = jest.fn().mockResolvedValue({
       windowId: "quality_completeness_001",
       issues: [{ type: "glossary_consistency", severity: "high", confidence: 0.98, nodeId: "n1", pageName: "1.jpg", message: "Use canonical form." }],
@@ -60,7 +60,7 @@ describe("standard quality flow", () => {
     const scene = (translation) => ({ scene: { pages: { p1: { name: "1.jpg", nodes: { n1: { kind: { text: { text: "月晶", translation } } } } } } } });
     const module = new QualityModule({
       getScene: jest.fn().mockResolvedValueOnce(scene("月晶")).mockResolvedValueOnce(scene("月之水晶")),
-      applyHistoryBatch,
+      applyTranslationUpdates,
     }, { runQualityReviewAndOptimization, runTranslationQualityObservationWindow: observeWindow });
 
     const result = await module.run({ baseUrl: "http://koharu", jobId: `quality_test_${Date.now()}`, translationMemory: memory() });
@@ -71,7 +71,7 @@ describe("standard quality flow", () => {
       context: expect.objectContaining({ glossary: expect.any(Array) }),
       candidates: expect.arrayContaining([expect.objectContaining({ nodeId: "n1" })]),
     }), expect.any(Object));
-    expect(applyHistoryBatch).toHaveBeenCalledTimes(1);
+    expect(applyTranslationUpdates).toHaveBeenCalledTimes(1);
     expect(result.coverage).toBe(1);
     expect(result.windowCount).toBe(1);
     expect(fs.existsSync(result.projectionPath)).toBe(true);
@@ -103,7 +103,7 @@ describe("standard quality flow", () => {
     } } } } };
     const module = new QualityModule({
       getScene: jest.fn().mockResolvedValue(scene),
-      applyHistoryBatch: jest.fn(),
+      applyTranslationUpdates: jest.fn(),
     }, { runTranslationQualityObservationWindow: observeWindow, runQualityReviewAndOptimization: jest.fn().mockResolvedValue({
       windowId: "quality_001",
       issues: [],
@@ -158,7 +158,7 @@ describe("standard quality flow", () => {
     });
     const module = new QualityModule({
       getScene: jest.fn().mockResolvedValue(scene),
-      applyHistoryBatch: jest.fn(),
+      applyTranslationUpdates: jest.fn(),
     }, {
       runTranslationQualityObservationWindow: observeTerminologyConflict,
       runQualityReviewAndOptimization: jest.fn().mockResolvedValue({
@@ -208,7 +208,7 @@ describe("standard quality flow", () => {
     });
     const module = new QualityModule({
       getScene: jest.fn().mockResolvedValue(scene),
-      applyHistoryBatch: jest.fn(),
+      applyTranslationUpdates: jest.fn(),
     }, {
       runTranslationQualityObservationWindow: missingRunner,
       runQualityReviewAndOptimization: specialist,
