@@ -96,11 +96,21 @@ function pathApiFor(targetPath) {
 }
 
 class KoharuRuntimeManager {
-  constructor({ config, installRoot, baseUrl = null, fetchImpl = globalThis.fetch, spawnImpl = spawn }) {
+  constructor({
+    config,
+    installRoot,
+    baseUrl = null,
+    fetchImpl = globalThis.fetch,
+    spawnImpl = spawn,
+    platform = process.platform,
+    arch = process.arch,
+  }) {
     this.config = config || {};
     this.installRoot = installRoot;
     this.fetchImpl = fetchImpl;
     this.spawnImpl = spawnImpl;
+    this.platform = platform;
+    this.arch = arch;
     this.child = null;
     this.lastError = null;
     this.lastInstall = null;
@@ -144,11 +154,11 @@ class KoharuRuntimeManager {
   }
 
   get executablePath() {
-    return path.join(this.versionDir, process.platform === "win32" ? "koharu.exe" : "koharu");
+    return path.join(this.versionDir, this.platform === "win32" ? "koharu.exe" : "koharu");
   }
 
   isSupportedPlatform() {
-    return process.platform === "win32" && process.arch === "x64";
+    return this.platform === "win32" && this.arch === "x64";
   }
 
   isManagedChildRunning() {
@@ -369,7 +379,11 @@ class KoharuRuntimeManager {
       defaultReleaseUrl(this.config.repository || "koharu-rs/koharu", this.version),
       "Fetch Koharu release",
     );
-    const asset = selectReleaseAsset({ assets: release.assets || [] });
+    const asset = selectReleaseAsset({
+      assets: release.assets || [],
+      platform: this.platform,
+      arch: this.arch,
+    });
     if (!asset?.browser_download_url) {
       throw new Error(`Koharu release ${this.version} does not include ${WINDOWS_X64_ASSET}.`);
     }

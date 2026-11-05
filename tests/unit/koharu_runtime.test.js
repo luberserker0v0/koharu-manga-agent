@@ -98,6 +98,8 @@ describe("KoharuRuntimeManager", () => {
       config: { version: "0.61.2", managed: true },
       installRoot,
       fetchImpl,
+      platform: "win32",
+      arch: "x64",
     });
 
     const status = await manager.ensureInstalled();
@@ -119,6 +121,8 @@ describe("KoharuRuntimeManager", () => {
       config: { version: "0.61.2", managed: true },
       installRoot,
       fetchImpl,
+      platform: "win32",
+      arch: "x64",
     });
 
     await expect(manager.ensureInstalled()).rejects.toThrow("Download Koharu failed");
@@ -139,6 +143,8 @@ describe("KoharuRuntimeManager", () => {
       installRoot,
       fetchImpl,
       spawnImpl,
+      platform: "win32",
+      arch: "x64",
     });
 
     const status = await manager.ensureRunning();

@@ -18,11 +18,15 @@ function withoutInternalLocations(value) {
   );
 }
 
+function portableBaseName(filePath) {
+  return path.posix.basename(String(filePath).replace(/\\/g, "/"));
+}
+
 function publicArtifact(jobId, artifact) {
   return {
     id: artifact.id,
     kind: artifact.kind,
-    fileName: path.basename(artifact.path || `artifact-${artifact.id}`),
+    fileName: portableBaseName(artifact.path || `artifact-${artifact.id}`),
     contentUrl: `/api/v1/jobs/${encodeURIComponent(jobId)}/artifacts/${artifact.id}/content`,
     metadata: withoutInternalLocations(artifact.metadata),
     createdAt: artifact.createdAt,
