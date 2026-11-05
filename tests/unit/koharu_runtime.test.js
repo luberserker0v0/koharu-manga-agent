@@ -143,8 +143,6 @@ describe("KoharuRuntimeManager", () => {
       installRoot,
       fetchImpl,
       spawnImpl,
-      platform: "win32",
-      arch: "x64",
     });
 
     const status = await manager.ensureRunning();
@@ -217,6 +215,8 @@ describe("KoharuRuntimeManager", () => {
       installRoot,
       fetchImpl,
       spawnImpl,
+      platform: "win32",
+      arch: "x64",
     });
 
     try {
